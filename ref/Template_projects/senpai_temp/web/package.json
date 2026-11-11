@@ -1,0 +1,38 @@
+{
+  "name": "senpai-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "setup": "node scripts/setup.mjs init",
+    "token:build": "cd contracts && forge build && cd .. && node scripts/export-artifact.mjs",
+    "token:deploy": "node scripts/setup.mjs deploy",
+    "status": "node scripts/setup.mjs status",
+    "model:pull": "node scripts/model-pull.mjs",
+    "test:e2e": "node scripts/e2e.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "@huggingface/transformers": "^4.3.2",
+    "@x402/core": "^2.29.0",
+    "@x402/evm": "^2.29.0",
+    "cmu-pronouncing-dictionary": "^3.0.0",
+    "next": "^16.4.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "server-only": "^0.0.1",
+    "viem": "^2.57.13",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@openzeppelin/contracts": "^5.6.1",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "playwright-core": "^1.64.1",
+    "typescript": "^5.9.3"
+  }
+}

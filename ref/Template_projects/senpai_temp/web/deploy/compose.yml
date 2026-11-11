@@ -1,0 +1,28 @@
+# SenpAI web on the Solana box: /opt/senpai-web, published on WireGuard only.
+# Image built on the Mac (deploy/Dockerfile) and loaded with `docker load`.
+#   up:   cd /opt/senpai-web && docker compose -p senpai-web up -d
+#   stop: cd /opt/senpai-web && docker compose -p senpai-web down
+name: senpai-web
+services:
+  web:
+    image: senpai-web:${TAG:-v1}
+    restart: unless-stopped
+    env_file: senpai.env
+    environment:
+      # Pronunciation scoring runs in a worker at nice 10; on the box's x64 CPU one
+      # thread scores about as fast as the person spoke, two keep up with an interview.
+      PRON_THREADS: "2"
+      NODE_OPTIONS: --max-old-space-size=512
+    ports:
+      - "10.66.0.3:8480:3000"
+    volumes:
+      # SQLite (accounts, history). Must be writable by uid 1000.
+      - ./data:/app/data
+      # Pronunciation model (~300 MB), copied once from the Mac's web/data/models.
+      - ./models:/app/models:ro
+    cpus: 2.0
+    mem_limit: 1536m
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
