@@ -6,11 +6,20 @@ Backend nền phục vụ xác thực, hồ sơ, nhóm và lời mời, danh m�
 
 1. Dùng Node.js 22.18 trở lên. Chạy `npm ci`.
 2. Sao chép `.env.example` thành `.env.local`. Điền URL và publishable key của project Supabase dev, `DATABASE_URL` của PostgreSQL, `APP_URL` và `OOPS_INVITE_SECRET`. Dùng cùng hostname trong `APP_URL` và khi truy cập app. Dùng một secret ngẫu nhiên ổn định có ít nhất 32 byte để các lần retry tạo lời mời trả lại đúng link.
-3. Áp dụng [migration nền](supabase/migrations/20261111000100_backend_foundation.sql) lên project dev được phép. Nếu dùng Supabase CLI đã đăng nhập, liên kết đúng project dev rồi chạy `supabase db push`. Dùng kết nối PostgreSQL trực tiếp hoặc Supavisor session pooler. Nếu cần chứng thư CA để xác minh TLS, tải từ project và đặt đường dẫn local ở `DATABASE_CA_FILE`.
+3. Áp dụng [migration nền](supabase/migrations/20261111000100_backend_foundation.sql) lên project dev được phép. Với Supabase CLI, chạy `supabase init` nếu chưa có `supabase/config.toml`, liên kết project dev, rồi chạy `supabase db push --remote`. Xác nhận project đích trong đầu ra của CLI. Dùng kết nối PostgreSQL trực tiếp hoặc Supavisor session pooler. Nếu cần chứng thư CA để xác minh TLS, tải từ project và đặt đường dẫn local ở `DATABASE_CA_FILE`.
 4. Điền `OOPS_DEV_PROJECT_REF`, `SUPABASE_SECRET_KEY` và mật khẩu demo `OOPS_DEMO_PASSWORD`, sau đó chạy `npm run db:seed`. Script tạo danh mục, năm hộ, một người bán và giỏ nước đã xác nhận tổng 12 chai. Seed giữ nguyên giỏ, vai trò và deadline đã có khi chạy lại.
 5. Chạy `npm run dev`. API đọc phiên cookie Supabase. Frontend dùng Supabase SSR client cùng origin và gửi JSON cho các thao tác ghi. Gửi `Idempotency-Key` cho POST nghiệp vụ và dùng lại khóa chỉ khi gửi lại đúng request.
 
 Tài khoản đại diện seed là `oops-dev-household-1@example.test`. Hộ còn lại có số 2–5, người bán là `oops-dev-seller@example.test`. Tài khoản seed dùng mật khẩu đặt lúc tạo. Từ phiên đại diện, GET `/api/v1/groups/{groupId}` lấy đợt gom, GET `/api/v1/campaigns/{id}/needs` xem trước 12 chai, rồi POST `/api/v1/campaigns/{id}/publish` với `{}` để đăng sớm. Feed đọc được bằng phiên người bán qua `GET /api/v1/feed?district=OOPS_DEMO&category=WATER`.
+
+## Thử luồng trên giao diện
+
+1. Mở `/` để vào ứng dụng. Đăng nhập bằng tài khoản demo tại `/login`.
+2. Tại **Nhóm của tôi**, đại diện xem thành viên, tạo lời mời hoặc mở **Quản lý đợt gom**. Người nhận mở liên kết `/join?token=…` và đăng nhập nếu cần.
+3. Mở một đợt. Hộ điền **Đang có** và **Còn thiếu**, lưu giỏ rồi xác nhận. Đại diện xem tổng đã xác nhận và **Đăng nhu cầu** trước hạn cần hàng.
+4. Dùng một phiên người bán để mở **Feed** và tìm bài vừa đăng. Trang **Tài khoản** hiển thị hồ sơ, liên hệ riêng và trạng thái ví từ API.
+
+Mở `/ui-preview` để xem các component thiết kế. Phần ví trong bản này hiển thị dữ liệu của backend nền. Giao dịch Fuji thuộc mốc tích hợp tiếp theo.
 
 Các bảng nghiệp vụ không mở trực tiếp cho browser. Giữ thông tin kết nối DB, secret Auth và secret lời mời ở server. Lời mời trả link `/join?token=…` cho frontend và lưu hash token ở DB.
 

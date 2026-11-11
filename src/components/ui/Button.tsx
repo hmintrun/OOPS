@@ -1,30 +1,28 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
 type ButtonProps = {
   variant?: ButtonVariant;
-  disabled?: boolean;
   /** Mặc định full-width như CTA trong STYLE.md; truyền false để co theo nội dung. */
   full?: boolean;
   loading?: boolean;
-  className?: string;
   children?: ReactNode;
-  onClick?: () => void;
-};
+} & ButtonHTMLAttributes<HTMLButtonElement>;
 
 /** Nút theo STYLE.md mục 6. Không viết hex ở nơi gọi. */
 export function Button({
   variant = "primary",
-  disabled = false,
   full = true,
   loading = false,
   className = "",
   children,
-  onClick,
-}: ButtonProps) {
-  const variantClass = {
+  disabled,
+  type = "button",
+  ...rest
+}: ButtonProps) {  const variantClass = {
     primary: "ui-btn--primary",
     secondary: "ui-btn--secondary",
     ghost: "ui-btn--ghost",
@@ -37,10 +35,11 @@ export function Button({
 
   return (
     <button
-      type="button"
+      {...rest}
+      type={type}
       className={classes}
       disabled={disabled || loading}
-      onClick={onClick}
+      aria-busy={loading || undefined}
     >
       {loading ? <span className="ui-btn__spinner" aria-hidden /> : null}
       {children}

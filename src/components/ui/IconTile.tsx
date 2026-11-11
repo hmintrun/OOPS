@@ -4,7 +4,8 @@ import { MaterialSymbol } from "./MaterialSymbol";
 export type TileTone = "sky" | "green" | "amber" | "rose";
 
 type IconTileProps = {
-  icon: string;
+  /** Ligature Material Symbols; bỏ trống khi truyền `children`. */
+  icon?: string;
   tone?: TileTone;
   size?: "sm" | "md";
   /** Thay cho icon, dùng khi cần nội dung khác (số, chữ cái). */
@@ -31,7 +32,7 @@ export function IconTile({
 
   return (
     <span className={classes}>
-      {children ?? <MaterialSymbol name={icon} filled={tone === "green"} />}
+      {children ?? (icon ? <MaterialSymbol name={icon} filled={tone === "green"} /> : null)}
     </span>
   );
 }

@@ -185,6 +185,9 @@
   align-items: stretch;
   gap: 4px;
   height: calc(var(--oops-nav-h) + env(safe-area-inset-bottom));
+  /* Trên desktop giữ nav cùng khung nội dung thay vì kéo hết màn. */
+  max-width: 430px;
+  margin-inline: auto;
   padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
   background: var(--oops-surface);
   box-shadow: var(--oops-shadow-nav);

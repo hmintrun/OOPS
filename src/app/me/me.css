@@ -1,0 +1,230 @@
+/**
+ * Style riêng của màn Tài khoản (/me). Chỉ bố cục + biến thể nhỏ trên nền
+ * component dùng chung; mọi màu/kích thước lấy từ design/tokens.css.
+ */
+
+.me-screen {
+  max-width: 430px;
+  margin: 0 auto;
+  min-height: 100dvh;
+}
+
+.me-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.me-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.me-card-head .ui-card__title {
+  margin: 0;
+}
+
+.me-rows {
+  display: grid;
+  gap: 16px;
+}
+.me-rows--divided > * + * {
+  border-top: 1px solid var(--oops-line);
+  padding-top: 16px;
+}
+
+.me-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.me-item__body {
+  flex: 1;
+  min-width: 0;
+}
+.me-item__label {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--oops-navy-900);
+}
+.me-item__value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.me-code {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--oops-navy-900);
+}
+
+.me-body-text {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--oops-navy-900);
+}
+.me-muted {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--oops-navy-600);
+}
+.me-hint {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--oops-navy-600);
+}
+.me-notice {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--oops-green-700);
+}
+.me-error {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--oops-danger);
+}
+
+/* ---------- Chip trạng thái ---------- */
+.me-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--oops-radius-pill);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.me-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--oops-radius-pill);
+  background: currentColor;
+}
+.me-chip--pending { background: var(--oops-amber-tint); color: var(--oops-navy-900); }
+.me-chip--pending .me-chip__dot { background: var(--oops-warn); }
+.me-chip--verified { background: var(--oops-green-100); color: var(--oops-green-700); }
+.me-chip--verified .me-chip__dot { background: var(--oops-green-600); }
+.me-chip--failed { background: var(--oops-rose-tint); color: var(--oops-danger); }
+.me-chip--link {
+  background: var(--oops-sky-tint);
+  color: var(--oops-navy-900);
+  font-weight: 600;
+  max-width: 100%;
+}
+.me-chip--link .material-symbols-rounded { color: var(--oops-navy-600); }
+.me-chip--link:hover { color: var(--oops-green-700); }
+
+.me-eligibility {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* ---------- Ô nhập liên hệ ---------- */
+.me-field-stack {
+  display: grid;
+  gap: 12px;
+}
+.me-input {
+  width: 100%;
+  height: var(--oops-control-h);
+  min-width: 0;
+  padding: 0 16px;
+  border: 1px solid var(--oops-line);
+  border-radius: var(--oops-radius-input);
+  background: var(--oops-surface);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--oops-navy-900);
+}
+.me-input::placeholder { color: var(--oops-navy-600); }
+.me-input:focus {
+  outline: none;
+  border-color: var(--oops-green-600);
+  box-shadow: 0 0 0 3px var(--oops-green-100);
+}
+.me-input:disabled { opacity: 0.6; }
+
+/* ---------- Nút sao chép ---------- */
+.me-copy-wrap {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+.me-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  flex: none;
+  border: 1px solid var(--oops-line);
+  border-radius: 12px;
+  background: var(--oops-surface);
+  color: var(--oops-navy-600);
+  cursor: pointer;
+}
+.me-copy:hover { background: var(--oops-sky-tint); color: var(--oops-navy-900); }
+.me-copy:focus-visible {
+  outline: 2px solid var(--oops-green-600);
+  outline-offset: 2px;
+}
+.me-copy[data-state="copied"] {
+  background: var(--oops-green-100);
+  border-color: var(--oops-green-100);
+  color: var(--oops-green-700);
+}
+.me-copy[data-state="failed"] {
+  background: var(--oops-rose-tint);
+  border-color: var(--oops-rose-tint);
+  color: var(--oops-danger);
+}
+
+/* ---------- Xác nhận đăng xuất ---------- */
+.me-confirm {
+  display: grid;
+  gap: 12px;
+}
+.me-confirm__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.me-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -4,6 +4,16 @@
  * phát ra `var(--oops-*)` thay vì chép giá trị — đổi token là đổi toàn app.
  */
 @theme inline {
+  /*
+   * Xoá toàn bộ bảng màu mặc định của Tailwind để không ai với tới màu ngoài brand
+   * (vd text-green-500, bg-sky-200). Chỉ 4 màu nền tảng được giữ lại.
+   */
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
   --color-sky-100: var(--oops-sky-100);
   --color-sky-300: var(--oops-sky-300);
   --color-sky-tint: var(--oops-sky-tint);
