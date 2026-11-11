@@ -1,0 +1,14 @@
+@import "tailwindcss";
+@import "../../design/tokens.css";
+@import "../../design/material-symbols.css";
+@import "../../design/tailwind.theme.css";
+@import "../components/ui/ui.css";
+
+@layer base {
+  body {
+    font-family: var(--oops-font-sans);
+    color: var(--oops-navy-900);
+    background: linear-gradient(180deg, var(--oops-sky-100), var(--oops-sky-300));
+    min-height: 100dvh;
+  }
+}

@@ -9,6 +9,7 @@ Tài liệu mô tả các bảng, trường, khóa và ràng buộc cho [OOPS MV
 - `ts` là `timestamptz`. `vnd` là `bigint` không âm, tính theo đồng.
 - Trường có `?` cho phép NULL. Các trường còn lại dùng `NOT NULL`.
 - Một SKU là một mã danh mục có đơn vị cố định. Một membership đại diện một hộ trong đợt gom.
+- `need_qty` lưu lượng còn thiếu đã nhập. Khi đăng nhu cầu, cộng trực tiếp `need_qty` từ các giỏ `CONFIRMED`.
 
 ## Tài khoản nhóm và nhu cầu
 
@@ -20,7 +21,7 @@ Tài liệu mô tả các bảng, trường, khóa và ràng buộc cho [OOPS MV
 | `invites` | `id, group_id fk, kind enum, token_hash text UQ, target_user_id fk?, expires_at ts, used_at ts?` | JOIN dùng link một lần. REP chỉ thành viên đích nhận được. Nhận quyền đại diện và chuyển vai trò cũ cùng giao dịch. |
 | `catalog_items` | `id, code text UQ, name text, category enum, unit text` | Một SKU gắn đơn vị đếm chuẩn. Các nhóm gồm nước, thực phẩm và nhu yếu phẩm. |
 | `campaigns` | `id, group_id fk, collect_until ts, need_by ts, support_requested bool, status enum, published_at ts?` | Đợt gom DRAFT hoặc PUBLISHED. collect_until < need_by. Sửa và xác nhận giỏ khi đợt còn DRAFT và chưa đến collect_until. Đại diện có thể đăng sớm để đóng gom, và chỉ đăng trước need_by. |
-| `carts`<br>`cart_items` | `carts(id, campaign_id fk, membership_id fk, household_size int, support_requested bool, state enum, version int)`<br>`cart_items(cart_id fk, sku_id fk, stock_qty int, need_qty int, rule_ref text?)` | UQ (campaign_id, membership_id). PK (cart_id, sku_id). Giỏ và đợt cùng nhóm. household_size > 0. stock_qty ≥ 0 và need_qty ≥ 0. Chỉ giỏ CONFIRMED được chụp khi đăng. |
+| `carts`<br>`cart_items` | `carts(id, campaign_id fk, membership_id fk, household_size int, support_requested bool, state enum, version int)`<br>`cart_items(cart_id fk, sku_id fk, stock_qty int, need_qty int, rule_ref text?)` | UQ (campaign_id, membership_id). PK (cart_id, sku_id). Giỏ và đợt cùng nhóm. household_size > 0. stock_qty ≥ 0 và need_qty ≥ 0. Giỏ ở DRAFT hoặc CONFIRMED. Chỉ giỏ CONFIRMED được chụp khi đăng. |
 | `demand_items`<br>`demand_shares` | `demand_items(id, campaign_id fk, sku_id fk, target int, pending int, reserved int, received int, support_requested bool)`<br>`demand_shares(demand_item_id fk, membership_id fk, target int, pending int, reserved int, received int)` | UQ (campaign_id, sku_id). PK (demand_item_id, membership_id). target > 0. pending, reserved và received đều ≥ 0. Tổng theo món bằng tổng các hộ. support_requested được chụp khi đăng, đúng nếu đợt hoặc ít nhất một hộ góp nhu cầu cho món đã bật cờ hỗ trợ. |
 
 ## Đề nghị, thương lượng và xác nhận

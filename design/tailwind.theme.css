@@ -1,0 +1,56 @@
+/**
+ * Map tokens OOPS sang utility Tailwind v4 (CSS-first).
+ * Nguồn sự thật: design/tokens.css (`--oops-*`). Dùng `@theme inline` để Tailwind
+ * phát ra `var(--oops-*)` thay vì chép giá trị — đổi token là đổi toàn app.
+ */
+@theme inline {
+  --color-sky-100: var(--oops-sky-100);
+  --color-sky-300: var(--oops-sky-300);
+  --color-sky-tint: var(--oops-sky-tint);
+  --color-navy-900: var(--oops-navy-900);
+  --color-navy-600: var(--oops-navy-600);
+  --color-green-600: var(--oops-green-600);
+  --color-green-700: var(--oops-green-700);
+  --color-green-100: var(--oops-green-100);
+  --color-amber-tint: var(--oops-amber-tint);
+  --color-rose-tint: var(--oops-rose-tint);
+  --color-surface: var(--oops-surface);
+  --color-line: var(--oops-line);
+  --color-danger: var(--oops-danger);
+  --color-warn: var(--oops-warn);
+
+  --radius-card: var(--oops-radius-card);
+  --radius-input: var(--oops-radius-input);
+  --radius-tile: var(--oops-radius-tile);
+  --radius-pill: var(--oops-radius-pill);
+
+  --shadow-card: var(--oops-shadow-card);
+  --shadow-nav: var(--oops-shadow-nav);
+
+  --font-sans: var(--oops-font-sans);
+
+  --spacing-screen: var(--oops-space-screen);
+  --spacing-card: var(--oops-space-card);
+  --spacing-gap: var(--oops-space-gap);
+  --spacing-control: var(--oops-control-h);
+  --spacing-nav: var(--oops-nav-h);
+
+  --text-display: 24px;
+  --text-display--line-height: 1.25;
+  --text-display--font-weight: 800;
+  --text-title: 18px;
+  --text-title--line-height: 1.35;
+  --text-title--font-weight: 700;
+  --text-button: 17px;
+  --text-button--line-height: 1.2;
+  --text-button--font-weight: 700;
+  --text-label: 15px;
+  --text-label--line-height: 1.3;
+  --text-label--font-weight: 600;
+  --text-body: 15px;
+  --text-body--line-height: 1.5;
+  --text-body--font-weight: 400;
+  --text-small: 12.5px;
+  --text-small--line-height: 1.35;
+  --text-small--font-weight: 600;
+}

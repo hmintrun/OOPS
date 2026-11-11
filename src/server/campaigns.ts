@@ -1,0 +1,267 @@
+import "server-only";
+import type { PoolClient } from "pg";
+import { z } from "zod";
+import { isoDateTime, uuid, type Campaign, type Cart, type CatalogItem, type DemandItem,
+  type DemandPreview, type Feed, type Needs, type createCampaignInput, type feedQuery,
+  type putCartInput } from "@/contracts/foundation";
+import { conflict, invalid, notFound } from "./errors";
+import { campaignDto, requireMember, requireRepresentative } from "./groups";
+
+type CampaignRow = {
+  id: string;
+  group_id: string;
+  status: Campaign["state"];
+  collect_until: Date;
+  need_by: Date;
+  support_requested: boolean;
+};
+type CartRow = { id: string; version: number; state: Cart["state"]; household_size: number; support_requested: boolean };
+
+export async function createCampaign(client: PoolClient, userId: string, groupId: string, body: z.output<typeof createCampaignInput>) {
+  await requireRepresentative(client, userId, groupId);
+  const collectUntil = new Date(body.collectUntil);
+  const needBy = new Date(body.needBy);
+  const { rows: [row] } = await client.query<CampaignRow>(
+    `insert into public.campaigns (group_id, collect_until, need_by, support_requested)
+     select $1, $2::timestamptz, $3::timestamptz, $4
+     where clock_timestamp() < $2::timestamptz and $2::timestamptz < $3::timestamptz
+     returning id, status, collect_until, need_by`,
+    [groupId, collectUntil, needBy, body.supportRequested ?? false],
+  );
+  if (!row) throw invalid("Thời hạn phải thỏa hiện tại < collectUntil < needBy.");
+  return campaignDto(row);
+}
+
+async function getCampaign(client: PoolClient, userId: string, id: string, lock = false) {
+  const { rows: [row] } = await client.query<CampaignRow>(
+    `select c.id, c.group_id, c.status, c.collect_until, c.need_by, c.support_requested
+     from public.campaigns c
+     where c.id = $1 and exists (
+       select 1 from public.memberships m where m.user_id = $2 and m.group_id = c.group_id and m.left_at is null
+     ) ${lock ? "for update" : ""}`,
+    [id, userId],
+  );
+  if (!row) throw notFound();
+  const member = await requireMember(client, userId, row.group_id);
+  return { row, member };
+}
+
+async function requireOpenCart(client: PoolClient, campaign: CampaignRow) {
+  const { rows: [{ before_deadline }] } = await client.query<{ before_deadline: boolean }>(
+    "select clock_timestamp() < $1::timestamptz as before_deadline", [campaign.collect_until],
+  );
+  if (campaign.status !== "DRAFT" || !before_deadline) throw conflict("Đợt đã đóng gom.");
+}
+
+export async function listCatalog(client: PoolClient, category?: CatalogItem["category"]) {
+  const { rows } = await client.query<CatalogItem>(
+    `select id as "skuId", name, category, unit from public.catalog_items
+     where ($1::public.catalog_category is null or category = $1) order by code, id`,
+    [category ?? null],
+  );
+  return { items: rows };
+}
+
+async function findCart(client: PoolClient, campaignId: string, membershipId: string) {
+  const { rows: [cart] } = await client.query<CartRow>(
+    `select id, version, state, household_size, support_requested
+     from public.carts where campaign_id = $1 and membership_id = $2`,
+    [campaignId, membershipId],
+  );
+  return cart;
+}
+
+async function cartDto(client: PoolClient, row: CartRow): Promise<Cart> {
+  const { rows: lines } = await client.query<Cart["lines"][number]>(
+    `select sku_id as "skuId", stock_qty as "stockQty", need_qty as "needQty"
+     from public.cart_items where cart_id = $1 order by sku_id`,
+    [row.id],
+  );
+  return {
+    cartId: row.id, version: row.version, state: row.state,
+    householdSize: row.household_size, supportRequested: row.support_requested, lines,
+  };
+}
+
+export async function readCart(client: PoolClient, userId: string, campaignId: string) {
+  const { member } = await getCampaign(client, userId, campaignId);
+  const row = await findCart(client, campaignId, member.id);
+  if (!row) throw notFound();
+  return cartDto(client, row);
+}
+
+export async function putCart(client: PoolClient, userId: string, campaignId: string, body: z.output<typeof putCartInput>) {
+  const { row, member } = await getCampaign(client, userId, campaignId, true);
+  await requireOpenCart(client, row);
+  const current = await findCart(client, campaignId, member.id);
+  if ((current?.version ?? 0) !== body.version) throw conflict("Phiên bản giỏ đã thay đổi.");
+  const catalogRows = await client.query("select id from public.catalog_items where id = any($1::uuid[])",
+    [body.lines.map(line => line.skuId)]);
+  if (catalogRows.rowCount !== body.lines.length) throw invalid("Giỏ có SKU không tồn tại.");
+  const { rows: [saved] } = await client.query<CartRow>(
+    `insert into public.carts (campaign_id, membership_id, household_size, support_requested, state, version)
+     values ($1, $2, $3, $4, 'DRAFT', 1)
+     on conflict (campaign_id, membership_id) do update set
+       household_size = excluded.household_size, support_requested = excluded.support_requested,
+       state = 'DRAFT', version = carts.version + 1
+     returning id, version, state, household_size, support_requested`,
+    [campaignId, member.id, body.householdSize, body.supportRequested],
+  );
+  await client.query("delete from public.cart_items where cart_id = $1", [saved.id]);
+  await client.query(
+    `insert into public.cart_items (cart_id, sku_id, stock_qty, need_qty)
+     select $1, "skuId", "stockQty", "needQty" from jsonb_to_recordset($2::jsonb)
+     as line("skuId" uuid, "stockQty" int, "needQty" int)`,
+    [saved.id, JSON.stringify(body.lines)],
+  );
+  return cartDto(client, saved);
+}
+
+export async function confirmCart(client: PoolClient, userId: string, campaignId: string, version: number) {
+  const { row, member } = await getCampaign(client, userId, campaignId, true);
+  await requireOpenCart(client, row);
+  const current = await findCart(client, campaignId, member.id);
+  if (!current) throw notFound();
+  if (current.version !== version) throw conflict("Phiên bản giỏ đã thay đổi.");
+  const { rows: [saved] } = await client.query<CartRow>(
+    `update public.carts set state = 'CONFIRMED', version = version + 1 where id = $1
+     returning id, version, state, household_size, support_requested`,
+    [current.id],
+  );
+  return cartDto(client, saved);
+}
+
+// Both the draft preview and the published snapshot use exactly the same source rows.
+const confirmedLines = `select ci.sku_id, ct.membership_id, ci.need_qty, ct.support_requested
+  from public.carts ct
+  join public.campaigns c on c.id = ct.campaign_id
+  join public.memberships m on m.id = ct.membership_id and m.group_id = c.group_id and m.left_at is null
+  join public.cart_items ci on ci.cart_id = ct.id
+  where ct.campaign_id = $1 and ct.state = 'CONFIRMED' and ci.need_qty > 0`;
+
+type DemandRow = Omit<DemandItem, "needBy" | "missing" | "offerable" | "state"> & { needBy: Date };
+
+export function quantities(target: number, pending: number, reserved: number, received: number) {
+  const missing = target - reserved - received;
+  return {
+    missing,
+    offerable: missing - pending,
+    state: (received === target ? "FULFILLED" : missing === 0 ? "COVERED" : "OPEN") as DemandItem["state"],
+  };
+}
+
+function demandDto(row: DemandRow): DemandItem {
+  return { ...row, needBy: row.needBy.toISOString(), ...quantities(row.target, row.pending, row.reserved, row.received) };
+}
+
+const demandColumns = `d.id as "demandItemId", d.campaign_id as "campaignId", d.sku_id as "skuId",
+  s.name, s.unit, g.district_code as "districtCode", g.ward_code as "wardCode", c.need_by as "needBy",
+  d.support_requested as "supportRequested", d.target, d.pending, d.reserved, d.received`;
+const demandFrom = `from public.demand_items d
+  join public.campaigns c on c.id = d.campaign_id
+  join public.groups g on g.id = c.group_id
+  join public.catalog_items s on s.id = d.sku_id`;
+
+export async function readNeeds(client: PoolClient, userId: string, campaignId: string): Promise<Needs> {
+  const { row, member } = await getCampaign(client, userId, campaignId);
+  if (row.status === "DRAFT") {
+    const { rows } = await client.query<DemandPreview>(
+      `with lines as (${confirmedLines})
+       select s.id as "skuId", s.name, s.unit, sum(l.need_qty)::int as target,
+         ($3::boolean or bool_or(l.support_requested)) as "supportRequested"
+       from lines l join public.catalog_items s on s.id = l.sku_id
+       where ($2::uuid is null or l.membership_id = $2)
+       group by s.id order by s.code, s.id`,
+      [campaignId, member.role === "REP" ? null : member.id, row.support_requested],
+    );
+    return { campaignState: "DRAFT", items: rows, activeRounds: [] };
+  }
+
+  const { rows } = await client.query<DemandRow & { myShare: Extract<Needs, { campaignState: "PUBLISHED" }>["items"][number]["myShare"] | null }>(
+    `select ${demandColumns},
+       case when ds.membership_id is not null then jsonb_build_object(
+         'target', ds.target, 'pending', ds.pending, 'reserved', ds.reserved, 'received', ds.received
+       ) end as "myShare"
+     ${demandFrom} left join public.demand_shares ds on ds.demand_item_id = d.id and ds.membership_id = $2
+     where d.campaign_id = $1 order by s.code, d.id`,
+    [campaignId, member.id],
+  );
+  return {
+    campaignState: "PUBLISHED",
+    items: rows.map(({ myShare, ...demand }) => ({ ...demandDto(demand), ...(myShare && { myShare }) })),
+    activeRounds: [], // This milestone does not create Fuji confirmation rounds.
+  };
+}
+
+export async function publishCampaign(client: PoolClient, userId: string, campaignId: string) {
+  const { row } = await getCampaign(client, userId, campaignId, true);
+  await requireRepresentative(client, userId, row.group_id);
+  const result = await client.query(
+    `update public.campaigns set status = 'PUBLISHED', published_at = clock_timestamp()
+     where id = $1 and status = 'DRAFT' and clock_timestamp() < need_by`,
+    [campaignId],
+  );
+  if (!result.rowCount) throw conflict("Đợt đã đăng hoặc quá hạn cần hàng.");
+
+  const demand = await client.query(
+    `with lines as (${confirmedLines})
+     insert into public.demand_items (campaign_id, sku_id, target, support_requested)
+     select $1, sku_id, sum(need_qty)::int, ($2::boolean or bool_or(support_requested))
+     from lines group by sku_id order by sku_id`,
+    [campaignId, row.support_requested],
+  );
+  if (!demand.rowCount) throw invalid("Không có lượng cần mua trong các giỏ đã xác nhận.");
+  await client.query(
+    `with lines as (${confirmedLines})
+     insert into public.demand_shares (demand_item_id, membership_id, target)
+     select d.id, l.membership_id, l.need_qty
+     from lines l join public.demand_items d on d.campaign_id = $1 and d.sku_id = l.sku_id
+     order by d.id, l.membership_id`,
+    [campaignId],
+  );
+  await client.query(
+    "insert into public.audit_events (actor_id, entity_type, entity_id, action) values ($1, 'CAMPAIGN', $2, 'PUBLISHED')",
+    [userId, campaignId],
+  );
+  const { rows } = await client.query<DemandRow>(
+    `select ${demandColumns} ${demandFrom} where d.campaign_id = $1 order by s.code, d.id`,
+    [campaignId],
+  );
+  return { campaignId, items: rows.map(demandDto) };
+}
+
+const cursorSchema = z.strictObject({ needBy: isoDateTime, id: uuid });
+
+function decodeCursor(cursor: string) {
+  try {
+    if (!/^[A-Za-z0-9_-]+$/.test(cursor)) throw invalid("Cursor không hợp lệ.");
+    return cursorSchema.parse(JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")));
+  } catch {
+    throw invalid("Cursor không hợp lệ.");
+  }
+}
+
+export async function readFeed(client: PoolClient, filters: z.output<typeof feedQuery>): Promise<Feed> {
+  const cursor = filters.cursor ? decodeCursor(filters.cursor) : undefined;
+  const limit = filters.limit ?? 20;
+  const { rows } = await client.query<DemandRow & { cursorNeedBy: string }>(
+    `select ${demandColumns},
+       to_char(c.need_by at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "cursorNeedBy"
+     ${demandFrom}
+     where c.status = 'PUBLISHED' and c.need_by > clock_timestamp() and d.target - d.reserved - d.received > 0
+       and ($1::text is null or g.district_code = $1)
+       and ($2::text is null or g.ward_code = $2)
+       and ($3::public.catalog_category is null or s.category = $3)
+       and ($4::timestamptz is null or (c.need_by, d.id) > ($4::timestamptz, $5::uuid))
+     order by c.need_by, d.id limit $6`,
+    [filters.district ?? null, filters.ward ?? null, filters.category ?? null,
+      cursor?.needBy ?? null, cursor?.id ?? null, limit + 1],
+  );
+  const items = rows.slice(0, limit).map(({ cursorNeedBy: _, ...row }) => demandDto(row));
+  if (rows.length <= limit) return { items };
+  const last = rows[limit - 1];
+  return {
+    items,
+    nextCursor: Buffer.from(JSON.stringify({ needBy: last.cursorNeedBy, id: last.demandItemId })).toString("base64url"),
+  };
+}

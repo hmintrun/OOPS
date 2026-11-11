@@ -52,6 +52,8 @@ Contract còn có sourceVersionId, version, sellerId, repId, depositDueAt, payme
 
 Campaign gồm campaignId, state, collectUntil và needBy. DemandItem gồm demandItemId, campaignId, skuId, name, unit, districtCode, wardCode, needBy, supportRequested, target, pending, reserved, received, missing, offerable và state. Cart gồm cartId, version, state, householdSize, supportRequested và lines theo dữ liệu PUT.
 
+`needQty` là lượng còn thiếu. Ví dụ hộ đang có 3 chai và cần thêm 7 chai thì gửi `stockQty: 3, needQty: 7`. Khi đăng nhu cầu, cộng trực tiếp `needQty` của các giỏ đã xác nhận.
+
 ### Receipt và Offer
 
 Receipt gồm receiptId, version, handedAt, lines, evidenceIds, state và approvals với role, approvedAt. Offer gồm proposalId, demandItemId, state, terms theo dữ liệu POST, goodsVnd, depositVnd và draftId? nếu đã khởi tạo thương lượng.
@@ -60,12 +62,82 @@ Receipt gồm receiptId, version, handedAt, lines, evidenceIds, state và approv
 
 ### Draft, DraftVersion, ConfirmationRound và Termination
 
-- `Draft` gồm draftId, proposalId, editRevision, draftOpen, tổng lượng/tổng tiền hiện tại, phần của người gọi và bản gửi mới nhất nếu có.
-- `DraftVersion` gồm versionId, version, versionHash, state, reasonCode?, qty, unitPriceVnd, totalVnd, lịch giao, sellerNote?, sellerResponseDueAt, confirmBy?, repApproveBy?, roundId? và contractId? khi đã chốt. Hộ thấy phần lượng, tiền và ghi chú của mình. Người bán và đại diện thấy các dòng cần duyệt. Thông tin riêng được lọc theo quyền.
-- `ConfirmationRound` gồm roundId, versionId, versionHash, roundKey, chainId, contractAddress, state, confirmBy, requiredCount và confirmedCount. Hộ có phần nhận trạng thái xác nhận của chính mình. Các số đếm phục vụ hiển thị tiến độ. Điều kiện duyệt cuối kiểm đủ từng hộ.
+Trong các kiểu dưới đây, `Uuid` là chuỗi UUID, `IsoDateTime` là chuỗi ISO 8601 có múi giờ và `UInt` là số nguyên không âm trong giới hạn số nguyên an toàn của JSON client. Trường `?` được bỏ khỏi JSON khi chưa có dữ liệu hoặc người gọi không có quyền. Các DTO này không dùng `null`.
+
+```ts
+type LineAmount = { qty: UInt; goodsVnd: UInt };
+type MyLine = LineAmount & { note?: string };
+
+type Draft = {
+  draftId: Uuid;
+  proposalId: Uuid;
+  editRevision: UInt;
+  draftOpen: boolean;
+  qty: UInt;
+  totalVnd: UInt;
+  myLine?: MyLine;
+  latestVersion?: DraftVersion;
+};
+
+type SellerDraftView = {
+  draftId: Uuid;
+  proposalId: Uuid;
+  latestVersion: DraftVersion;
+};
+
+type DraftVersion = {
+  versionId: Uuid;
+  version: UInt;
+  versionHash: string;
+  state: "SUBMITTED" | "CHANGES_REQUESTED" | "REJECTED"
+    | "AWAIT_CONFIRMATIONS" | "AWAIT_REP_APPROVAL"
+    | "EXPIRED" | "STOCK_CONFLICT" | "FINALIZED";
+  reasonCode?: "SELLER_TIMEOUT" | "CONFIRMATION_TIMEOUT" | "FINALIZE_TIMEOUT";
+  qty: UInt;
+  unitPriceVnd: UInt;
+  totalVnd: UInt;
+  handoffStart: IsoDateTime;
+  handoffBy: IsoDateTime;
+  sellerNote?: string;
+  sellerResponseDueAt: IsoDateTime;
+  confirmBy?: IsoDateTime;
+  repApproveBy?: IsoDateTime;
+  roundId?: Uuid;
+  contractId?: Uuid;
+  myLine?: MyLine;
+  lines?: LineAmount[];
+};
+
+type ConfirmationRound = {
+  roundId: Uuid;
+  versionId: Uuid;
+  versionHash: string;
+  roundKey: string;
+  chainId: UInt;
+  contractAddress: string;
+  state: "OPENING" | "OPEN" | "CONFIRMED" | "CLOSED";
+  confirmBy: IsoDateTime;
+  requiredCount: UInt;
+  confirmedCount: UInt;
+  myConfirmation?: {
+    walletAddress: string;
+    state: "PENDING" | "CONFIRMED";
+  };
+};
+```
+
+- `Draft.qty` và `Draft.totalVnd` là tổng của bản nháp đang sửa. `Draft.myLine` chỉ chứa dòng nháp của hộ gọi API. Seller chỉ nhận `SellerDraftView` và nhận `404` nếu chưa có bản gửi.
+- `DraftVersion` chứa dữ liệu đã chụp khi gửi. `version` bắt đầu từ 1 và là số dùng trong route `/versions/{version}`. Hộ có phần nhận `myLine` của mình. Seller của đề nghị và đại diện có quyền duyệt nhận `lines` gồm lượng và tiền theo từng phần. Các dòng trả cho người duyệt không chứa ghi chú riêng, định danh hộ hoặc địa chỉ ví. Nếu đại diện cũng có phần, `myLine` vẫn chỉ chứa phần của đại diện.
+- `roundId`, `confirmBy` và `repApproveBy` xuất hiện khi đã tạo vòng. `contractId` xuất hiện khi đã chốt. Định dạng chuỗi `versionHash` và `roundKey` theo ABI được chốt với BE–Fuji ở D1.
+- Chỉ ví thuộc dòng snapshot của chính hộ gọi mới xuất hiện trong `myConfirmation.walletAddress`. API trả `CONFIRMED` sau khi worker đã lưu xác nhận hợp lệ. Số đếm chỉ phục vụ hiển thị tiến độ. Backend duyệt cuối dựa vào tập xác nhận của từng hộ.
 - `Contract.termination` chỉ trả yêu cầu đang chờ cho người gọi có quyền xem. Dữ liệu gồm terminationId, baseVersion, proposedBy, reason, state và note?.
 
 ## Tài khoản nhóm và giỏ
+
+- `members` gồm các phần tử `{membershipId, userId, displayName, role}`. Role của nhóm là `MEMBER` hoặc `REP`. `repId` là userId của đại diện.
+- Lời mời hết hạn sau 24 giờ. Frontend đọc token từ `/join?token=…` và gửi đến `POST /invites/accept` sau khi có phiên.
+- `category` nhận `WATER`, `FOOD` hoặc `ESSENTIALS`.
+- GET giỏ trả `404` nếu chưa tạo. PUT tạo với `version: 0` và trả bản đã lưu ở version 1. Sửa hoặc xác nhận thành công tăng version thêm 1. Phát lại cùng khóa idempotency trả kết quả cũ.
 
 | Endpoint và quyền | Dữ liệu vào | Phản hồi |
 | --- | --- | --- |
@@ -93,7 +165,7 @@ Receipt gồm receiptId, version, handedAt, lines, evidenceIds, state và approv
 | `POST /needs/{id}/offers`<br>Người bán | {qty, unitPriceVnd, supportOffer, handoffStart, handoffBy, handoffPrivate}. Chấp nhận lượng dương đến missing, kể cả khi offerable bằng 0. Xem tiền ước tính ở UI theo [quy tắc dữ liệu](schema.md#quy-tắc-dữ-liệu). | 201 Offer gồm proposalId, state, terms và cọc dự kiến. 409 nếu không còn đủ missing hoặc đã hết hạn. |
 | `GET /needs/{id}/offers`<br>Thành viên nhóm hoặc người bán | id là demandItemId. Người bán chỉ đọc đề nghị của mình. Thành viên chỉ đọc đề nghị trong nhóm. | 200 {items: Offer[]}. Địa chỉ và liên hệ lọc theo quyền. |
 | `POST /offers/{id}/draft`<br>Hộ có nhu cầu | {}. Hộ khởi tạo mở nháp cho đề nghị còn hiệu lực. Seller của đề nghị không tham gia mua. | 201 Draft. 409 nếu đã có hồ sơ hoặc đề nghị đã đóng. |
-| `GET /drafts/{id}`<br>Thành viên liên quan hoặc seller | id là draftId. | 200 Draft và bản đã gửi lọc theo vai. Seller chỉ đọc bản đã gửi. |
+| `GET /drafts/{id}`<br>Thành viên liên quan hoặc seller | id là draftId. | 200 Draft cho thành viên liên quan hoặc SellerDraftView cho seller. |
 | `PUT /drafts/{id}/my-line`<br>Hộ có nhu cầu | {qty, note?, editRevision}. qty bằng 0 bỏ phần của hộ. Chỉ sửa khi nháp mở. | 200 Draft. 409 nếu revision cũ hoặc nháp đã khóa. |
 | `POST /drafts/{id}/submit`<br>Hộ khởi tạo | {editRevision}. Chụp bản có tổng dương, không vượt lượng chào, lịch còn hợp lệ. Server tính tiền. | 201 DraftVersion ở SUBMITTED với hạn seller phản hồi. |
 | `POST /drafts/{id}/versions/{version}/seller-response`<br>Người bán | {action: APPROVE, REJECT hoặc REQUEST_CHANGES, note?}. Với APPROVE, kiểm tất cả hộ có phần đều có ví verified và đủ quyền, rồi tạo vòng và outbox. | 200 DraftVersion. 409 WALLET_NOT_READY giữ bản SUBMITTED. Bản quá hạn, cũ hoặc sai trạng thái trả 409. |
@@ -104,6 +176,38 @@ Receipt gồm receiptId, version, handedAt, lines, evidenceIds, state và approv
 | `GET /contracts` và `GET /contracts/{id}`<br>Các bên liên quan | Danh sách hỗ trợ role=buyer hoặc seller, state?, cursor?, limit?. | 200 {items: Contract[], nextCursor?} hoặc Contract. Trả phần và khoản tiền theo quyền. |
 
 Ví dụ đề nghị chào 10 chai, ba hộ gửi bản 7 chai với phần 2+2+3. Ở giá 2.000đ/chai, bản gửi có totalVnd 14000 và hợp đồng chốt có depositVnd 50000. Với ca nghiệm thu khác, nhu cầu 12 chai và bản chốt 8 chai ở cùng đơn giá tạo tiền hàng 16000. Đơn giá 0 vẫn có depositVnd 50000. Sau khi cọc được ghi nhận, Feed của nhu cầu 12 chai trả reserved 8 và missing 4.
+
+Hộ khởi tạo gửi `POST /drafts/{id}/submit` với `Idempotency-Key: submit-v1` và body `{"editRevision":3}`. Ví dụ phản hồi `201` cho hộ góp 2 chai. Giá trị `versionHash` minh họa cho mã băm do server tạo.
+
+```json
+{
+  "versionId": "bf05cd2b-5143-41f0-91d6-8332c6b8257f",
+  "version": 1,
+  "versionHash": "<versionHash>",
+  "state": "SUBMITTED",
+  "qty": 7,
+  "unitPriceVnd": 2000,
+  "totalVnd": 14000,
+  "handoffStart": "2026-11-18T15:00:00+07:00",
+  "handoffBy": "2026-11-18T16:00:00+07:00",
+  "sellerResponseDueAt": "2026-11-18T10:00:00+07:00",
+  "myLine": {"qty": 2, "goodsVnd": 4000}
+}
+```
+
+Ví dụ seller gửi `POST /drafts/{id}/versions/1/seller-response` với `Idempotency-Key: approve-v1-attempt-1` và body `{"action":"APPROVE"}`. Nếu một hộ có phần chưa đủ điều kiện Fuji, API trả `409`:
+
+```json
+{
+  "error": {
+    "code": "WALLET_NOT_READY",
+    "message": "Có hộ chưa đủ điều kiện xác nhận trên Fuji"
+  },
+  "requestId": "9a4d1905-be5d-4898-8d21-deaa40504639"
+}
+```
+
+Giữ phiên bản ở `SUBMITTED`. Khi điều kiện ví đã thay đổi, seller thực hiện lần duyệt mới với khóa mới. API dùng `409 STOCK_CONFLICT` khi ghi nhận xung đột lượng ở bước duyệt cuối và `409 STATE_CONFLICT` khi thao tác không hợp lệ với trạng thái, phiên bản hoặc hạn hiện hành.
 
 ## Thanh toán và bàn giao
 
@@ -132,13 +236,13 @@ Checkout QR và webhook trong mục này phục vụ tích hợp sau demo. MVP c
 | --- | --- | --- |
 | `POST /contracts/{id}/issues`<br>Người bán hoặc đại diện | {reasonCode, note?}. Ghi rõ lệch hàng, không đến, không an toàn hoặc bằng chứng mâu thuẫn. Dùng từ lúc chờ bàn giao đến trước khi áp dụng biên nhận hoặc xác định hủy. | 200 Contract ở NEEDS_REVIEW với reviewScope HANDOFF nếu kết quả bàn giao chưa thống nhất. Giữ lượng và tạm dừng chi, hoàn. Khi có báo cáo mâu thuẫn về kết quả giao, chuyển biên nhận DRAFT hiện hành sang SUPERSEDED để hai bên duyệt lại trên bản mới. Thông báo bên kia. |
 | `POST /contracts/{id}/cancel`<br>Người bán | {reason}. Chỉ khi đang AWAIT_DEPOSIT, AWAIT_PAYMENT hoặc AWAIT_HANDOFF và chưa có bằng chứng, biên nhận hay sự cố bàn giao. | 200 Contract. Giải phóng lượng và lập hoàn tiền hàng. Cọc chưa rõ thì NEEDS_REVIEW với reviewScope DEPOSIT. 409 khi đã có dấu hiệu bàn giao hoặc tranh chấp. |
-
 | `POST /contracts/{id}/terminations`<br>`POST /terminations/{id}/accept`<br>Hai bên hợp đồng | Đề xuất {version, reason: EXCUSED_CANCEL, note?}. Bên kia duyệt {} nếu hai bên đồng ý hủy theo điều khoản. Khi đề xuất và duyệt, hợp đồng phải còn PENDING hoặc RESERVED về lượng, chưa có biên nhận được áp dụng. | 201 {terminationId, state} hoặc 200 Contract. Giải phóng lượng đúng một lần và hoàn theo điều khoản. 409 nếu phiên bản đã đổi hoặc biên nhận đã được áp dụng. |
+| `GET /ops/disbursements`<br>Tài khoản vận hành | state=PENDING, cursor?, limit?. | 200 {items: [{disbursementId, contractId, kind, amountVnd, state}], nextCursor?}. |
 | `POST /ops/disbursements/{id}/post`<br>Tài khoản vận hành | {transferRef}. Demo dùng mã chuyển SIM duy nhất cho khoản đủ điều kiện. Kiểm và ghi dưới khóa của hợp đồng và khoản chi. | 200 {disbursementId, state: POSTED, contractState}. Gửi lại cùng mã của cùng khoản trả kết quả đã ghi. 409 nếu mã thuộc khoản khác, khoản bị khóa hoặc khoản đã POSTED bằng mã khác. |
 | `GET /notifications`<br>`PATCH /notifications/{id}`<br>Chủ thông báo | GET cursor?, limit?. PATCH {read: true}. | 200 danh sách hoặc mục đã đọc. entityType và entityId mở đúng nhu cầu, bản thương lượng, vòng xác nhận hoặc hợp đồng. |
 
 Đổi giá/lượng và đổi lịch sau khi chốt thuộc phạm vi sau demo.
 
-Tài khoản vận hành xem khoản chờ chi qua `GET /ops/disbursements?state=PENDING`. API trả disbursementId, contractId, kind, amountVnd, state và nextCursor nếu có. Khi ops ghi khoản cuối cùng đã POSTED, transaction đưa đơn SETTLING sang COMPLETED nếu mọi khoản bắt buộc đã được ghi và không còn khoản bị khóa.
+Khi ops ghi khoản cuối cùng đã POSTED, transaction đưa đơn SETTLING sang COMPLETED nếu mọi khoản bắt buộc đã được ghi và không còn khoản bị khóa.
 
 Job xử lý hạn seller, xác nhận Fuji và đại diện duyệt theo [bảng trạng thái](architecture.md#trạng-thái-thương-lượng-và-thời-hạn). Job cũng nhắc hạn cọc, tiền hàng, báo sẵn sàng và giờ nhận. Khi hết hạn bàn giao mà chưa có biên nhận hoặc hết hạn duyệt mà chưa đủ hai lượt, worker chuyển đơn sang NEEDS_REVIEW phạm vi HANDOFF, giữ lượng và tạm dừng chi/hoàn. Lượt duyệt đã ghi vẫn có hiệu lực trên biên nhận hiện hành nếu chỉ quá hạn.

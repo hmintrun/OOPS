@@ -62,7 +62,7 @@ Ví dụ, hộ nhập *“Nhà mình có 4 người, còn 6 chai nước, có đ
 1. **Gom và đăng nhu cầu.** Hộ xác nhận giỏ trong **Nhóm của tôi**. Đại diện đăng nhu cầu đã gom, khu vực nhận và hạn cần hàng. Hộ hoặc nhóm có thể đánh dấu **Cần giá hỗ trợ**.
 2. **Người bán gửi đề nghị.** Đề nghị ghi món, số lượng có thể giao, đơn giá, tổng tiền hàng, điểm và hạn bàn giao. Có thể đáp ứng một phần nhu cầu. Ví dụ, nhóm cần 12 chai nước và một người bán đề nghị giao 8 chai với giá 2.000đ/chai hoặc 0đ/chai. Người bán hỗ trợ là bên trực tiếp cung cấp hàng và có cùng trách nhiệm giao hàng như người bán thường.
 3. **Gửi bản và chốt.** Các hộ góp số lượng vào một bản chung, tổng không vượt lượng chào. Người bán chấp thuận, từ chối hoặc yêu cầu sửa. Sau chấp thuận, tất cả hộ có phần dương phải xác nhận đúng bản trên Fuji rồi đại diện mới duyệt. Bản quá hạn hoặc thiếu lượng lúc duyệt không giữ hàng. Hộ khởi tạo có thể gửi bản mới nếu đề nghị còn hiệu lực. Đổi giá/lượng và đổi lịch sau chốt nằm trong phạm vi sau demo.
-4. **Người bán nộp cọc.** Khi cọc được ghi nhận, app giữ số lượng đã chốt trong lúc các hộ hoàn tất phần của mình. Với đơn có giá, hộ thanh toán qua QR theo hạn nạp. Với đơn 0đ, phần của hộ được xác nhận theo kết quả chốt và chuyển sang chờ bàn giao, không tạo QR tiền hàng. Nếu không đạt điều kiện gom hoặc quá hạn nạp, app hủy hợp đồng, hoàn các khoản đã nhận và mở lại phần nhu cầu tương ứng.
+4. **Người bán nộp cọc.** Khi cọc được ghi nhận, app giữ số lượng đã chốt. Với đơn có giá, từng hộ nộp phần tiền hàng của mình trước hạn qua luồng SIM. Đơn 0đ chuyển sang chờ bàn giao sau cọc và không tạo khoản tiền hàng. Khi quá hạn cọc hoặc tiền hàng, app hủy hợp đồng, hoàn các khoản đủ điều kiện và mở lại phần nhu cầu tương ứng.
 5. **Theo dõi phần còn thiếu.** Một nhu cầu có thể được đáp ứng bằng nhiều hợp đồng. Với ví dụ 12 chai, nếu 8 chai đã được giữ theo hợp đồng, Feed còn 4 chai để người bán khác đáp ứng. App phân biệt số lượng đã giữ, đã nhận và còn thiếu. Nếu hợp đồng bị hủy hoặc chỉ giao một phần, lượng chưa giao được mở lại. Khi nhiều hợp đồng cùng chốt, backend kiểm tra và cập nhật phần giữ trong cùng một thao tác để tổng lượng đã giữ không vượt nhu cầu.
 
 ### Trạng thái người dùng cần thấy
@@ -76,7 +76,7 @@ Ví dụ, hộ nhập *“Nhà mình có 4 người, còn 6 chai nước, có đ
 
 ## 4. Cọc người bán và thanh toán VND
 
-> **Cọc người bán = max(50.000đ, 10% × tổng tiền hàng ghi trong hợp đồng).**
+> **Cọc người bán = max(50.000đ, làm tròn lên đến đồng của 10% × tổng tiền hàng ghi trong hợp đồng).**
 
 Tổng tiền hàng tính theo **đơn giá đã chốt × số lượng cam kết của hợp đồng**, kể cả khi giá đã giảm xuống 0đ. App hiển thị cọc trước khi người bán gửi đề nghị và chốt số cọc theo tổng tiền hàng cuối cùng. Phí đại diện, nếu có, là dòng riêng và không tính vào cọc.
 
@@ -126,4 +126,4 @@ Avalanche dùng để xác minh ví và ghi xác nhận của mọi hộ có ph�
 5. **Một món gặp sự cố.** Món đã giao đủ được quyết toán riêng. Món quá hạn hoặc chỉ có một bên xác nhận chuyển sang **Cần xử lý**, không tự chi tiền. Người dùng thấy phần hàng chưa được đáp ứng và có thể tìm đề nghị khác khi phần đó được mở lại.
 6. **Giỏ AI có thể kiểm tra và chỉnh sửa.** Từ một câu mô tả đồ đang có, app tạo giỏ nháp. Người dùng sửa số lượng, xác nhận và thấy nhu cầu của nhóm cập nhật. Nếu Gemini chưa sẵn sàng hoặc trả lỗi, nhập tay vẫn chạy cùng luồng.
 
-DEV 1 bàn giao mã nhu cầu. DEV 2 bàn giao mã đề nghị và phiên bản. DEV 3 dựng staging trước cuối ngày 2 và bàn giao kết quả Fuji theo vòng và phiên bản. Ghép ca 0đ tới khi ops ghi hoàn cọc và đơn hoàn tất, rồi chạy đơn có giá, giao thiếu và Gemini. Lịch và quỹ giờ nằm trong [kế hoạch phát triển 7 ngày](OOPS-7-Day-Development-Plan.md).
+DEV 2 bàn giao mã nhu cầu, đề nghị, nháp và phiên bản từ API. DEV 1 nối UI theo contract chung. DEV 3 dựng staging trước cuối ngày 2, bàn giao kết quả Fuji theo vòng và phiên bản, đồng thời điều phối ca 0đ tới khi ops ghi hoàn cọc và đơn hoàn tất. Sau đó chạy đơn có giá, giao thiếu và Gemini. Lịch và quỹ giờ nằm trong [kế hoạch phát triển 7 ngày](OOPS-7-Day-Development-Plan.md).

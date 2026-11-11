@@ -115,7 +115,7 @@ Sau khi lấy khóa, đọc lại trạng thái, phiên bản, thời hạn và 
 
 | Tín hiệu | Điều kiện kiểm tra demo | Phụ trách | Tiêu chí |
 | --- | --- | --- | --- |
-| Thu và quyết toán | Khoản thu, chi và hoàn khớp sổ. Gửi webhook lặp không ghi thêm tiền. | Luồng VND | Bắt buộc |
+| Thu và quyết toán | Khoản thu, chi và hoàn khớp sổ. Phát lại sự kiện thu SIM không áp dụng thêm lần nữa. | DEV 2 + DEV 3 | Bắt buộc |
 | Xác nhận Fuji | Thiếu một ví thì chưa mở vòng. Mỗi hộ có phần xác nhận một lần đúng bản. Đại diện chỉ duyệt khi đủ xác nhận. | Tài khoản và Fuji | Bắt buộc |
 | Độ trễ tác vụ | Theo dõi độ trễ indexer, job quá hạn và tuổi outbox. Cảnh báo khi vượt hạn xử lý đã cấu hình. | Backend | Bắt buộc |
 | Toàn vẹn tồn lượng | Chạy hai ca chốt đồng thời. Tổng pending, reserved và received nằm trong target. | Giỏ và Feed | Bắt buộc |

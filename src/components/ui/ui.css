@@ -1,0 +1,226 @@
+/**
+ * Component dùng chung — toàn bộ giá trị lấy từ design/tokens.css (--oops-*).
+ * Không có hex trong file này; muốn đổi hình thức, sửa tokens.
+ */
+
+/* ---------- Button ---------- */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: var(--oops-control-h);
+  padding: 0 20px;
+  border: 1px solid transparent;
+  border-radius: var(--oops-radius-pill);
+  font-family: var(--oops-font-sans);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.ui-btn--full { width: 100%; }
+.ui-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ui-btn:focus-visible {
+  outline: 2px solid var(--oops-green-600);
+  outline-offset: 2px;
+}
+.ui-btn__icon { font-size: 22px; }
+.ui-btn__spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2.5px solid currentColor;
+  border-top-color: transparent;
+  animation: ui-spin 700ms linear infinite;
+}
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+
+.ui-btn--primary { background: var(--oops-green-600); color: var(--oops-surface); }
+.ui-btn--primary:hover:not(:disabled),
+.ui-btn--primary:active:not(:disabled) { background: var(--oops-green-700); }
+
+.ui-btn--secondary { background: var(--oops-green-100); color: var(--oops-green-700); }
+.ui-btn--secondary:hover:not(:disabled) { color: var(--oops-green-600); }
+
+.ui-btn--ghost {
+  background: var(--oops-surface);
+  color: var(--oops-navy-900);
+  border-color: var(--oops-line);
+}
+.ui-btn--ghost:hover:not(:disabled) { background: var(--oops-sky-tint); }
+
+.ui-btn--danger { background: var(--oops-danger); color: var(--oops-surface); }
+.ui-btn--danger:hover:not(:disabled) { filter: brightness(0.94); }
+
+/* ---------- Card ---------- */
+.ui-card {
+  background: var(--oops-surface);
+  border-radius: var(--oops-radius-card);
+  box-shadow: var(--oops-shadow-card);
+  padding: var(--oops-space-card);
+}
+.ui-card--tight { padding: 16px; }
+.ui-card--flush { padding: 0; }
+.ui-card__title {
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--oops-navy-900);
+}
+
+/* ---------- IconTile ---------- */
+.ui-icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--oops-radius-tile);
+  color: var(--oops-navy-900);
+}
+.ui-icon-tile .material-symbols-rounded { font-size: 24px; }
+.ui-icon-tile--sm { width: 36px; height: 36px; border-radius: 12px; }
+.ui-icon-tile--sm .material-symbols-rounded { font-size: 20px; }
+.ui-icon-tile--sky { background: var(--oops-sky-tint); }
+.ui-icon-tile--amber { background: var(--oops-amber-tint); }
+.ui-icon-tile--rose { background: var(--oops-rose-tint); color: var(--oops-danger); }
+.ui-icon-tile--green { background: var(--oops-green-100); color: var(--oops-green-700); }
+
+/* ---------- Select ---------- */
+.ui-select {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--oops-control-h);
+  padding: 0 14px 0 12px;
+  background: var(--oops-surface);
+  border: 1px solid var(--oops-line);
+  border-radius: var(--oops-radius-input);
+}
+.ui-select:focus-within {
+  border-color: var(--oops-green-600);
+  outline: 2px solid var(--oops-green-100);
+}
+.ui-select--disabled { opacity: 0.55; }
+.ui-select__label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--oops-navy-900);
+  white-space: nowrap;
+}
+.ui-select__value-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  min-width: 0;
+}
+.ui-select__value {
+  font-size: 15px;
+  color: var(--oops-navy-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-select__value--placeholder { color: var(--oops-navy-600); }
+.ui-select__chevron { font-size: 22px; color: var(--oops-navy-600); flex: none; }
+/* Select native phủ cả hàng để chạm mở trên mobile */
+.ui-select__native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 16px;
+  border: 0;
+}
+.ui-select--disabled .ui-select__native { cursor: not-allowed; }
+.ui-select__error {
+  display: block;
+  margin: 6px 2px 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--oops-danger);
+}
+
+/* ---------- ScreenHeader ---------- */
+.ui-screen-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px var(--oops-space-screen) 20px;
+}
+.ui-screen-header__text { min-width: 0; padding-top: 2px; }
+.ui-screen-header__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--oops-navy-900);
+}
+.ui-screen-header__subtitle {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--oops-navy-600);
+}
+.ui-screen-header__aside { margin-left: auto; padding-top: 4px; }
+
+/* ---------- BottomNav ---------- */
+.ui-nav {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: repeat(var(--nav-count, 4), 1fr);
+  align-items: stretch;
+  gap: 4px;
+  height: calc(var(--oops-nav-h) + env(safe-area-inset-bottom));
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  background: var(--oops-surface);
+  box-shadow: var(--oops-shadow-nav);
+  border-start-start-radius: 20px;
+  border-start-end-radius: 20px;
+}
+.ui-nav__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: var(--oops-radius-pill);
+  color: var(--oops-navy-600);
+  text-decoration: none;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.ui-nav__item .material-symbols-rounded { font-size: 24px; }
+.ui-nav__item:focus-visible {
+  outline: 2px solid var(--oops-green-600);
+  outline-offset: -2px;
+}
+.ui-nav__item--active { background: var(--oops-green-100); color: var(--oops-green-600); }
+.ui-nav__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* ---------- Khung màn hình có BottomNav ---------- */
+.ui-screen-body {
+  padding: 0 var(--oops-space-screen) calc(var(--oops-nav-h) + 24px + env(safe-area-inset-bottom));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-btn,
+  .ui-nav__item { transition: none; }
+  .ui-btn__spinner { animation: none; }
+}

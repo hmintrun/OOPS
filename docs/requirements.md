@@ -34,7 +34,7 @@ Một nhóm cần 12 chai nước trước 17h. Người bán đề nghị 8 cha
 
 ## Kế hoạch tích hợp
 
-Ghép giỏ nhập tay và Feed với Fuji và thanh toán mô phỏng. Người 1 bàn giao demandItemId, người 2 bàn giao proposalId và versionId. Người 3 trả xác nhận Fuji theo roundId gắn với versionId. Dựng staging trước cuối ngày 2. Chạy ca 0đ trước, sau đó đơn có giá và các nhánh lỗi.
+Ghép giỏ nhập tay và Feed với Fuji và thanh toán mô phỏng. DEV 2 bàn giao `demandItemId`, `proposalId`, `draftId` và `versionId` từ API. DEV 1 dùng các ID này để nối UI. DEV 3 trả xác nhận Fuji theo `roundId` gắn với `versionId` và dựng staging trước cuối ngày 2. Chạy ca 0đ trước, sau đó đơn có giá và các nhánh lỗi.
 
 | Mốc | Bàn giao | Điều kiện đạt |
 | --- | --- | --- |

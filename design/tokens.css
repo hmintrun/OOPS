@@ -1,0 +1,56 @@
+/**
+ * OOPS design tokens — nguồn sự thật duy nhất cho màu, radius, bóng, font.
+ * Xem design/STYLE.md. Không hard-code giá trị này trong JSX.
+ *
+ * Tiền tố `--oops-` để không đụng namespace `--color-*`, `--radius-*`, `--shadow-*`
+ * mà Tailwind v4 tự sinh trong @theme (design/tailwind.theme.css map sang).
+ */
+:root {
+  /* Màu nền */
+  --oops-sky-100: #eaf7fe;
+  --oops-sky-300: #bfe3f7;
+  --oops-sky-tint: #e3f2fd;
+
+  /* Chữ */
+  --oops-navy-900: #14385f;
+  --oops-navy-600: #3e6b99;
+
+  /* Primary */
+  --oops-green-600: #2fa84f;
+  --oops-green-700: #248a3f;
+  --oops-green-100: #e7f5ec;
+
+  /* Tile pastel */
+  --oops-amber-tint: #fff6e0;
+  --oops-rose-tint: #fde8ec;
+
+  /* Bề mặt */
+  --oops-surface: #ffffff;
+  --oops-line: #e2eaf2;
+
+  /* Ngữ nghĩa */
+  --oops-danger: #e5484d;
+  --oops-warn: #f5a623;
+
+  /* Radius */
+  --oops-radius-card: 24px;
+  --oops-radius-input: 16px;
+  --oops-radius-tile: 14px;
+  --oops-radius-pill: 999px;
+
+  /* Shadow */
+  --oops-shadow-card: 0 8px 24px rgba(20, 56, 95, 0.08);
+  --oops-shadow-nav: 0 -4px 16px rgba(20, 56, 95, 0.06);
+
+  /* Font */
+  --oops-font-sans: "Nunito", system-ui, -apple-system, sans-serif;
+
+  /* Spacing */
+  --oops-space-screen: 16px;
+  --oops-space-card: 20px;
+  --oops-space-gap: 12px;
+
+  /* Control height */
+  --oops-control-h: 52px;
+  --oops-nav-h: 64px;
+}
