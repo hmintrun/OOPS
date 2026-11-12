@@ -15,7 +15,7 @@ Tài khoản đại diện seed là `oops-dev-household-1@example.test`. Hộ c�
 ## Thử luồng trên giao diện
 
 1. Mở `/` để vào ứng dụng. Đăng nhập bằng tài khoản demo tại `/login`.
-2. Tại **Nhóm của tôi**, đại diện xem thành viên, tạo lời mời hoặc mở **Quản lý đợt gom**. Người nhận mở liên kết `/join?token=…` và đăng nhập nếu cần.
+2. Tại **Nhóm của tôi**, đại diện xem thành viên, tạo lời mời hoặc mở **Quản lý đợt gom**. Người nhận mở liên kết mời và đăng nhập nếu cần. Người chưa có nhóm cũng có thể chọn **Tham gia nhóm** rồi dán liên kết mời.
 3. Mở một đợt. Hộ điền **Đang có** và **Còn thiếu**, lưu giỏ rồi xác nhận. Đại diện xem tổng đã xác nhận và **Đăng nhu cầu** trước hạn cần hàng.
 4. Dùng một phiên người bán để mở **Feed** và tìm bài vừa đăng. Trang **Tài khoản** hiển thị hồ sơ, liên hệ riêng và trạng thái ví từ API.
 
@@ -34,4 +34,4 @@ Các bảng nghiệp vụ không mở trực tiếp cho browser. Giữ thông ti
 
 `test:db` hỗ trợ PostgreSQL thử nghiệm trên loopback có bảng `auth.users` và các role Supabase, hoặc project Supabase dev được xác nhận bằng `OOPS_DEV_PROJECT_REF`. Với Supabase dev, suite dùng secret Auth để tạo và xóa tài khoản test tạm thời.
 
-Mốc tiếp theo nối API đề nghị, thương lượng, Core Wallet/Fuji và duyệt hợp đồng vào `demandItemId` từ Feed. Quyết toán, Gemini và worker nghiệp vụ triển khai theo các mốc trong [kế hoạch 7 ngày](docs/OOPS-7-Day-Development-Plan.md).
+Mốc tiếp theo nối API đề nghị, thương lượng, Core Wallet/Fuji và duyệt hợp đồng vào `demandItemId` từ Feed. Xem [checklist công việc còn lại](docs/OOPS-Remaining-Work.md) và [kế hoạch 7 ngày](docs/OOPS-7-Day-Development-Plan.md).

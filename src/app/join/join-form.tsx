@@ -13,14 +13,11 @@ type ApiErrorBody = { error?: { code?: unknown; message?: unknown }; requestId?:
 
 type JoinState =
   | { kind: "working"; message: string }
-  | { kind: "missing-token" }
   | { kind: "need-login"; message: string }
   | { kind: "error"; message: string }
   | { kind: "success"; membership: AcceptedMembership };
 
 const GENERIC_MESSAGE = "Không gửi được yêu cầu. Vui lòng kiểm tra kết nối và thử lại.";
-const MISSING_TOKEN_MESSAGE =
-  "Không tìm thấy liên kết mời. Vui lòng mở lại đường dẫn trong tin nhắn mời của nhóm.";
 
 /**
  * UUID cho header Idempotency-Key. `crypto.randomUUID` chỉ có ở secure context,
@@ -44,9 +41,68 @@ function readErrorMessage(body: unknown): string | null {
   return typeof message === "string" && message.trim() ? message : null;
 }
 
+function joinHref(token: string): string {
+  return `/join?token=${encodeURIComponent(token)}`;
+}
+
 /** Giữ nguyên token khi chuyển sang màn đăng nhập: /login?next=/join?token=… */
 function loginHref(token: string): string {
-  return `/login?next=${encodeURIComponent(`/join?token=${encodeURIComponent(token)}`)}`;
+  return `/login?next=${encodeURIComponent(joinHref(token))}`;
+}
+
+function InviteLinkForm() {
+  const router = useRouter();
+  const [link, setLink] = useState("");
+  const [error, setError] = useState("");
+
+  return (
+    <Card>
+      <CardTitle>Tham gia nhóm</CardTitle>
+      <form
+        className="grid gap-3"
+        onSubmit={event => {
+          event.preventDefault();
+          const origin = window.location.origin;
+          let url: URL;
+          try {
+            url = new URL(link.trim(), origin);
+          } catch {
+            setError("Liên kết mời không hợp lệ.");
+            return;
+          }
+          const tokens = url.searchParams.getAll("token");
+          const token = tokens.length === 1 ? tokens[0].trim() : "";
+          if (url.origin !== origin || url.pathname !== "/join" || url.username || url.password || !token) {
+            setError("Vui lòng dán đúng liên kết mời của OOPS trên địa chỉ bạn đang dùng.");
+            return;
+          }
+          router.replace(joinHref(token));
+        }}
+      >
+        <p id="invite-link-help" className="text-body text-navy-600">
+          Liên kết do đại diện gửi, có hiệu lực 24 giờ và chỉ dùng được một lần.
+        </p>
+        <label htmlFor="invite-link" className="text-label text-navy-900">Liên kết mời</label>
+        <input
+          id="invite-link"
+          className="h-control w-full rounded-input border border-line bg-surface px-4 text-body text-navy-900"
+          type="text"
+          inputMode="url"
+          autoComplete="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          value={link}
+          required
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "invite-link-help invite-link-error" : "invite-link-help"}
+          onChange={event => { setLink(event.target.value); setError(""); }}
+        />
+        {error && <p id="invite-link-error" role="alert" className="text-small text-danger">{error}</p>}
+        <Button type="submit">Tham gia nhóm</Button>
+        <Link href="/groups" className="ui-btn ui-btn--ghost ui-btn--full">Về nhóm của tôi</Link>
+      </form>
+    </Card>
+  );
 }
 
 /**
@@ -55,12 +111,14 @@ function loginHref(token: string): string {
  * duy nhất, chỉ sinh khóa mới khi người dùng chủ động thử lại.
  */
 export function JoinForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token")?.trim() ?? "";
-  const [state, setState] = useState<JoinState>(() =>
-    token ? { kind: "working", message: "Đang xử lý lời mời…" } : { kind: "missing-token" },
-  );
+  return token ? <AcceptInvite key={token} token={token} /> : <InviteLinkForm />;
+}
+
+function AcceptInvite({ token }: { token: string }) {
+  const router = useRouter();
+  const [state, setState] = useState<JoinState>({ kind: "working", message: "Đang xử lý lời mời…" });
 
   // Khóa của lần gửi đang chạy; xóa khi lần gửi kết thúc để lượt thử lại có khóa mới.
   const keyRef = useRef<string | null>(null);
@@ -191,26 +249,24 @@ export function JoinForm() {
     );
   }
 
-  const title = state.kind === "missing-token" ? "Thiếu liên kết mời" : "Chưa vào được nhóm";
-  const message = state.kind === "missing-token" ? MISSING_TOKEN_MESSAGE : state.message;
-
   return (
     <Card>
-      <CardTitle>{title}</CardTitle>
+      <CardTitle>Chưa vào được nhóm</CardTitle>
       <div className="flex items-start gap-3">
         <IconTile icon="error" tone="rose" />
-        <p className="text-body text-navy-900">{message}</p>
+        <p className="text-body text-navy-900">{state.message}</p>
       </div>
       <p className="mt-3 text-small text-navy-600">
         Lời mời có hiệu lực 24 giờ. Nếu đã hết hạn, hãy nhờ đại diện nhóm gửi liên kết mới.
       </p>
       <div className="mt-4 grid gap-2">
-        {state.kind === "error" && (
-          <Button onClick={retry}>
-            <MaterialSymbol name="refresh" className="ui-btn__icon" />
-            Thử lại
-          </Button>
-        )}
+        <Button onClick={retry}>
+          <MaterialSymbol name="refresh" className="ui-btn__icon" />
+          Thử lại
+        </Button>
+        <Link href="/join" className="ui-btn ui-btn--secondary ui-btn--full">
+          Nhập liên kết khác
+        </Link>
         <Link href="/groups" className="no-underline">
           <span className="ui-btn ui-btn--ghost ui-btn--full">
             <MaterialSymbol name="home" className="ui-btn__icon" />
