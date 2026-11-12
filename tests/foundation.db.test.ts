@@ -14,6 +14,11 @@ import { POST as postConfirm } from "@/app/api/v1/campaigns/[id]/cart/confirm/ro
 import { GET as getNeeds } from "@/app/api/v1/campaigns/[id]/needs/route";
 import { POST as postPublish } from "@/app/api/v1/campaigns/[id]/publish/route";
 import { GET as getFeed } from "@/app/api/v1/feed/route";
+import { GET as getOffers, POST as postOffer } from "@/app/api/v1/needs/[id]/offers/route";
+import { POST as postDraft } from "@/app/api/v1/offers/[id]/draft/route";
+import { GET as getDraft } from "@/app/api/v1/drafts/[id]/route";
+import { PUT as putDraftLine } from "@/app/api/v1/drafts/[id]/my-line/route";
+import { draft, offer, offers } from "@/contracts/negotiation";
 import { closeDatabase, transaction } from "@/server/db";
 import { householdNeeds, waterSkuId } from "./fixtures/foundation";
 
@@ -108,13 +113,18 @@ function publish(rep: string, id: string) {
   return call(postPublish, rep, { id, method: "POST", body: {} });
 }
 
-describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("Foundation API on PostgreSQL", () => {
+describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", () => {
   afterAll(async () => {
     try {
       if (users.length === 0) return;
       await transaction(async client => {
         const groups = "(select id from public.groups where district_code = $1)";
         const campaigns = `(select id from public.campaigns where group_id in ${groups})`;
+        const proposals = `(select id from public.proposals where seller_id = any($1::uuid[]))`;
+        await client.query(`delete from public.negotiation_draft_lines where negotiation_id in
+          (select id from public.negotiations where proposal_id in ${proposals})`, [users]);
+        await client.query(`delete from public.negotiations where proposal_id in ${proposals}`, [users]);
+        await client.query(`delete from public.proposals where id in ${proposals}`, [users]);
         await client.query(`delete from public.demand_shares where demand_item_id in
           (select id from public.demand_items where campaign_id in ${campaigns})`, [district]);
         await client.query(`delete from public.demand_items where campaign_id in ${campaigns}`, [district]);
@@ -266,11 +276,107 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("Foundation API on Postgre
     expect(profile.groupId).toBeDefined();
   });
 
+  it("opens an offer and draft while enforcing roles, revisions and stock boundaries", async () => {
+    const [rep, second, third, fourth, fifth, seller, otherSeller, outsider] =
+      await Promise.all(Array.from({ length: 8 }, newUser));
+    const groupId = await newGroup(rep);
+    const buyers = [rep, second, third, fourth, fifth];
+    for (const buyer of buyers.slice(1)) {
+      const { token } = await makeInvite(rep, groupId);
+      expect((await accept(buyer, token)).status).toBe(200);
+    }
+    const campaignId = await newCampaign(rep, groupId);
+    for (const [index, buyer] of buyers.entries()) {
+      const saved = cart.parse((await put(buyer, campaignId, householdNeeds[index])).data);
+      expect((await confirm(buyer, campaignId, saved.version)).status).toBe(200);
+    }
+    const { items: [item] } = publishResult.parse((await publish(rep, campaignId)).data);
+    const id = item.demandItemId;
+    // Pending stock can take all offerable units while Feed still shows missing units.
+    await transaction(async client => {
+      await client.query("update public.demand_items set pending = target where id = $1", [id]);
+      await client.query("update public.demand_shares set pending = target where demand_item_id = $1", [id]);
+    });
+
+    const terms = {
+      qty: 10, unitPriceVnd: 2_000, supportOffer: false,
+      handoffStart: dateIn(1.25), handoffBy: dateIn(1.5), handoffPrivate: "Điểm giao riêng",
+    };
+    const request = { id, method: "POST", body: terms, key: "new-offer" };
+    expect((await call(postOffer, seller, { ...request, key: undefined, body: { ...terms, qty: 13 } })).status).toBe(409);
+    expect((await call(postOffer, seller, { ...request, key: undefined, body: {
+      ...terms, unitPriceVnd: Number.MAX_SAFE_INTEGER,
+    } })).status).toBe(422);
+    expect((await call(postOffer, seller, { ...request, key: undefined, body: {
+      ...terms, handoffStart: dateIn(-2), handoffBy: dateIn(-1),
+    } })).status).toBe(409);
+    const created = await call(postOffer, seller, request);
+    expect(created.status).toBe(201);
+    const proposal = offer.parse(created.data);
+    expect(proposal).toMatchObject({ state: "SUBMITTED", goodsVnd: 20_000, depositVnd: 50_000 });
+    expect(await call(postOffer, seller, request)).toEqual(created);
+    expect((await call(postOffer, seller, { ...request, body: { ...terms, qty: 9 } })).status).toBe(409);
+    const supported = offer.parse((await call(postOffer, otherSeller, {
+      ...request, body: { ...terms, unitPriceVnd: 0, supportOffer: true },
+    })).data);
+    expect(supported).toMatchObject({ goodsVnd: 0, depositVnd: 50_000 });
+    expect((await call(getOffers, outsider, { id })).status).toBe(404);
+    const sellerOffers = offers.parse((await call(getOffers, seller, { id })).data).items;
+    expect(sellerOffers).toEqual([proposal]);
+    const memberOffers = offers.parse((await call(getOffers, second, { id })).data).items;
+    expect(memberOffers).toHaveLength(2);
+    expect(memberOffers.every(entry => !("handoffPrivate" in entry.terms))).toBe(true);
+    expect(offers.parse((await call(getOffers, rep, { id })).data).items[0].terms.handoffPrivate)
+      .toBe(terms.handoffPrivate);
+
+    const open = { id: proposal.proposalId, method: "POST", body: {} };
+    expect((await call(postDraft, seller, open)).status).toBe(403);
+    expect((await call(postDraft, outsider, open)).status).toBe(404);
+    const attempts = await Promise.all([call(postDraft, rep, open), call(postDraft, second, open)]);
+    expect(attempts.map(result => result.status).sort()).toEqual([201, 409]);
+    const initial = draft.parse(attempts.find(result => result.status === 201)!.data);
+    expect(initial).toMatchObject({ editRevision: 0, draftOpen: true, qty: 0 });
+    const draftId = initial.draftId;
+    expect((await call(getDraft, seller, { id: draftId })).status).toBe(404);
+    expect((await call(getDraft, outsider, { id: draftId })).status).toBe(404);
+
+    const edit = (userId: string, qty: number, editRevision: number, note?: string, key?: string) =>
+      call(putDraftLine, userId, { id: draftId, method: "PUT", key, body: { qty, editRevision, note } });
+    expect((await edit(seller, 1, 0)).status).toBe(403);
+    expect((await edit(rep, 3, 0)).status).toBe(422);
+    const firstEdit = await edit(rep, 2, 0, "Ghi chú riêng", "edit-rep");
+    expect(firstEdit.status).toBe(200);
+    expect(await edit(rep, 2, 0, "Ghi chú riêng", "edit-rep")).toEqual(firstEdit);
+    const competingEdits = await Promise.all([edit(second, 2, 1), edit(third, 3, 1)]);
+    expect(competingEdits.map(result => result.status).sort()).toEqual([200, 409]);
+    const [remainingBuyer, remainingQty] = competingEdits[0].status === 409 ? [second, 2] as const : [third, 3] as const;
+    expect((await edit(remainingBuyer, remainingQty, 2)).status).toBe(200);
+    const repDraft = draft.parse((await call(getDraft, rep, { id: draftId })).data);
+    expect(repDraft).toMatchObject({
+      qty: 7, totalVnd: 14_000, editRevision: 3, myLine: { qty: 2, goodsVnd: 4_000, note: "Ghi chú riêng" },
+    });
+    const thirdDraft = draft.parse((await call(getDraft, third, { id: draftId })).data);
+    expect(thirdDraft.myLine).toEqual({ qty: 3, goodsVnd: 6_000 });
+    expect(draft.parse((await edit(third, 0, 3)).data)).toMatchObject({ qty: 4, totalVnd: 8_000 });
+    expect(draft.parse((await call(getDraft, third, { id: draftId })).data).myLine).toBeUndefined();
+    await transaction(client => client.query("update public.negotiations set draft_open = false where id = $1", [draftId]));
+    expect((await edit(third, 1, 4)).status).toBe(409);
+    const { pending, reserved, received } = await transaction(async client => {
+      const { rows: [row] } = await client.query(
+        "select pending, reserved, received from public.demand_items where id = $1", [id],
+      );
+      return row;
+    });
+    expect({ pending, reserved, received }).toEqual({ pending: 12, reserved: 0, received: 0 });
+  }, 30_000);
+
   it("denies direct table access to the authenticated browser role", async () => {
-    await expect(transaction(async client => {
-      await client.query("set local role authenticated");
-      await client.query("select * from public.carts");
-    })).rejects.toMatchObject({ code: "42501" });
+    for (const table of ["carts", "proposals", "negotiations", "negotiation_draft_lines"]) {
+      await expect(transaction(async client => {
+        await client.query("set local role authenticated");
+        await client.query(`select * from public.${table}`);
+      })).rejects.toMatchObject({ code: "42501" });
+    }
     await expect(transaction(async client => {
       await client.query("set local role authenticated");
       await client.query("delete from public.groups where false");

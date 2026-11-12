@@ -58,6 +58,8 @@ Campaign gồm campaignId, state, collectUntil và needBy. DemandItem gồm dema
 
 Receipt gồm receiptId, version, handedAt, lines, evidenceIds, state và approvals với role, approvedAt. Offer gồm proposalId, demandItemId, state, terms theo dữ liệu POST, goodsVnd, depositVnd và draftId? nếu đã khởi tạo thương lượng.
 
+`terms.handoffPrivate` chỉ trả cho người bán của đề nghị và đại diện đang hoạt động của nhóm. Tổng tiền hàng và cọc dự kiến trong Offer tính trên lượng chào.
+
 `Receipt.scheduledHandoffBy` là hạn giao chụp khi lập biên nhận. Hệ thống so sánh `handedAt` với mốc này để xét giao muộn.
 
 ### Draft, DraftVersion, ConfirmationRound và Termination
@@ -166,7 +168,7 @@ type ConfirmationRound = {
 | `GET /needs/{id}/offers`<br>Thành viên nhóm hoặc người bán | id là demandItemId. Người bán chỉ đọc đề nghị của mình. Thành viên chỉ đọc đề nghị trong nhóm. | 200 {items: Offer[]}. Địa chỉ và liên hệ lọc theo quyền. |
 | `POST /offers/{id}/draft`<br>Hộ có nhu cầu | {}. Hộ khởi tạo mở nháp cho đề nghị còn hiệu lực. Seller của đề nghị không tham gia mua. | 201 Draft. 409 nếu đã có hồ sơ hoặc đề nghị đã đóng. |
 | `GET /drafts/{id}`<br>Thành viên liên quan hoặc seller | id là draftId. | 200 Draft cho thành viên liên quan hoặc SellerDraftView cho seller. |
-| `PUT /drafts/{id}/my-line`<br>Hộ có nhu cầu | {qty, note?, editRevision}. qty bằng 0 bỏ phần của hộ. Chỉ sửa khi nháp mở. | 200 Draft. 409 nếu revision cũ hoặc nháp đã khóa. |
+| `PUT /drafts/{id}/my-line`<br>Hộ có nhu cầu | {qty, note?, editRevision}. qty bằng 0 bỏ phần của hộ. Lượng góp tối đa là nhu cầu đã đăng của hộ cho món. Nháp mới có editRevision 0. | 200 Draft với editRevision tăng 1. 409 nếu revision cũ, nháp đã khóa hoặc đề nghị hết hạn. |
 | `POST /drafts/{id}/submit`<br>Hộ khởi tạo | {editRevision}. Chụp bản có tổng dương, không vượt lượng chào, lịch còn hợp lệ. Server tính tiền. | 201 DraftVersion ở SUBMITTED với hạn seller phản hồi. |
 | `POST /drafts/{id}/versions/{version}/seller-response`<br>Người bán | {action: APPROVE, REJECT hoặc REQUEST_CHANGES, note?}. Với APPROVE, kiểm tất cả hộ có phần đều có ví verified và đủ quyền, rồi tạo vòng và outbox. | 200 DraftVersion. 409 WALLET_NOT_READY giữ bản SUBMITTED. Bản quá hạn, cũ hoặc sai trạng thái trả 409. |
 | `POST /drafts/{id}/revise`<br>Hộ khởi tạo | {version}. Chỉ từ CHANGES_REQUESTED, EXPIRED hoặc STOCK_CONFLICT khi đề nghị và lịch còn hợp lệ. | 200 Draft mở để sửa từng phần. Lần submit tiếp theo tạo version mới. |
