@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { MaterialSymbol } from "./MaterialSymbol";
 
@@ -10,7 +10,18 @@ export type NavItem = {
   icon: string; // ligature Material Symbols, vd "groups"
   href: string;
   relatedPath?: string;
+  prefetch?: boolean;
 };
+
+function NavIcon({ icon, active }: { icon: string; active: boolean }) {
+  const { pending } = useLinkStatus();
+  return (
+    <span className="grid size-6 place-items-center">
+      {pending ? <span className="ui-btn__spinner" aria-hidden /> : <MaterialSymbol name={icon} size={24} filled={active} />}
+      <span role="status" className="sr-only">{pending ? "Đang tải…" : ""}</span>
+    </span>
+  );
+}
 
 /**
  * Thanh điều hướng dưới theo STYLE.md mục 6: các mục grid bằng nhau, mục active
@@ -34,10 +45,11 @@ export function BottomNav({ items }: { items: NavItem[] }) {
           <Link
             key={item.key}
             href={item.href}
+            prefetch={item.prefetch}
             className={`ui-nav__item ${active ? "ui-nav__item--active" : ""}`}
             aria-current={active ? "page" : undefined}
           >
-            <MaterialSymbol name={item.icon} size={24} filled={active} />
+            {item.prefetch === false ? <NavIcon icon={item.icon} active={active} /> : <MaterialSymbol name={item.icon} size={24} filled={active} />}
             <span className="ui-nav__label">{item.label}</span>
           </Link>
         );

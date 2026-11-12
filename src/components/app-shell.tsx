@@ -6,7 +6,7 @@ import { ScreenHeader } from "@/components/ui";
 
 /** Các mục BottomNav theo design/STYLE.md mục 6. */
 export const SHELL_NAV_ITEMS: NavItem[] = [
-  { key: "groups", label: "Nhóm của tôi", icon: "groups", href: "/groups", relatedPath: "/campaigns" },
+  { key: "groups", label: "Nhóm của tôi", icon: "groups", href: "/groups", relatedPath: "/campaigns", prefetch: false },
   { key: "feed", label: "Nhu cầu", icon: "newspaper", href: "/feed" },
   { key: "orders", label: "Đơn hàng", icon: "inventory_2", href: "/orders" },
   { key: "me", label: "Tài khoản", icon: "person", href: "/me" },

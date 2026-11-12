@@ -6,7 +6,7 @@ import { ApiFailure, unauthenticated, unavailable } from "./errors";
 
 export type Actor = { userId: string; displayName: string };
 
-export async function authenticatedActor(): Promise<Actor> {
+export async function authenticatedActor({ readOnly = false } = {}): Promise<Actor> {
   const cookieStore = await cookies();
   const client = createServerClient(
     requiredEnv("NEXT_PUBLIC_SUPABASE_URL"),
@@ -15,6 +15,7 @@ export async function authenticatedActor(): Promise<Actor> {
       cookies: {
         getAll: () => cookieStore.getAll(),
         setAll: entries => {
+          if (readOnly) return;
           for (const { name, value, options } of entries) {
             cookieStore.set(name, value, { ...options, sameSite: "lax", secure: process.env.APP_URL?.startsWith("https://") ?? false });
           }
