@@ -1,0 +1,36 @@
+/** Ô nhập text của màn Feed — cùng hình thức với control trong STYLE.md mục 6, chỉ dùng token. */
+.feed-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: var(--oops-control-h);
+  padding: 0 14px 0 8px;
+  background: var(--oops-surface);
+  border: 1px solid var(--oops-line);
+  border-radius: var(--oops-radius-input);
+}
+
+.feed-field:focus-within {
+  border-color: var(--oops-green-600);
+  outline: 2px solid var(--oops-green-100);
+}
+
+.feed-field input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--oops-font-sans);
+  font-size: 15px;
+  color: var(--oops-navy-900);
+}
+
+.feed-field input:focus {
+  outline: none;
+}
+
+.feed-field input::placeholder {
+  color: var(--oops-navy-600);
+}

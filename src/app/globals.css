@@ -5,6 +5,11 @@
 @import "../components/ui/ui.css";
 
 @layer base {
+  html {
+    /* Màu overscroll (iOS rubber-band) khớp đáy gradient, tránh lộ nền trắng. */
+    background-color: var(--oops-sky-300);
+    color-scheme: light;
+  }
   body {
     font-family: var(--oops-font-sans);
     color: var(--oops-navy-900);
