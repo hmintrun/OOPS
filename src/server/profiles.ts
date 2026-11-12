@@ -11,6 +11,19 @@ export async function ensureProfile(client: PoolClient, actor: Actor) {
   );
 }
 
+/**
+ * Fuji integration point: decides `Me.confirmationEligible` from the caller's Fuji credential.
+ * Until the Fuji module can verify a wallet, a VERIFIED wallet is a 503 instead of an
+ * eligibility grant, and every other state stays ineligible. Replace the body, not the call site.
+ */
+export async function confirmationEligible(client: PoolClient, userId: string): Promise<boolean> {
+  const { rows: [wallet] } = await client.query<{
+    verification_state: NonNullable<Me["wallet"]>["verificationState"] | null;
+  }>("select verification_state from public.wallets where user_id = $1", [userId]);
+  if (wallet?.verification_state === "VERIFIED") throw unavailable();
+  return false;
+}
+
 export async function readMe(client: PoolClient, actor: Actor): Promise<Me> {
   const { rows: [row] } = await client.query<{
     group_id: string | null;
@@ -25,15 +38,14 @@ export async function readMe(client: PoolClient, actor: Actor): Promise<Me> {
      where p.id = $1`,
     [actor.userId],
   );
-  // The Fuji module will supply the credential check for verified wallets.
-  if (row.verification_state === "VERIFIED") throw unavailable();
+  // Eligibility (and the 503 for unverifiable VERIFIED wallets) lives in confirmationEligible.
   return {
     userId: actor.userId,
     ...(row.group_id !== null && { groupId: row.group_id }),
     ...(row.address !== null && row.verification_state !== null && {
       wallet: { address: row.address, verificationState: row.verification_state },
     }),
-    confirmationEligible: false,
+    confirmationEligible: await confirmationEligible(client, actor.userId),
     ...(row.contact_private !== null && { contactPrivate: row.contact_private }),
   };
 }
