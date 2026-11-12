@@ -9,8 +9,8 @@ import { transaction } from "./db";
 import { ApiFailure, conflict, forbidden, invalid, notFound, unavailable } from "./errors";
 import { ensureProfile } from "./profiles";
 
-type Context = { params: Promise<{ id?: string }> };
-type Call = { request: Request; actor: Actor; requestId: string; id?: string };
+type Context = { params: Promise<{ id?: string; version?: string }> };
+type Call = { request: Request; actor: Actor; requestId: string; id?: string; version?: string };
 
 export function objectId(call: Call): string {
   if (!call.id) throw notFound();
@@ -29,7 +29,7 @@ export function queryParams(request: Request): Record<string, string> {
   return Object.fromEntries(params);
 }
 
-function reply(data: unknown, status: number) {
+export function reply(data: unknown, status: number) {
   return Response.json(data, { status, headers: { "Cache-Control": "no-store" } });
 }
 
@@ -56,7 +56,7 @@ function failure(error: unknown, requestId: string) {
   return reply(errorBody(fallback, requestId), fallback.status);
 }
 
-function handle(run: (call: Call) => Promise<Response>) {
+export function handle(run: (call: Call) => Promise<Response>) {
   return async (request: Request, context: Context) => {
     const requestId = randomUUID();
     try {
@@ -67,13 +67,25 @@ function handle(run: (call: Call) => Promise<Response>) {
         }
       }
       const actor = await authenticatedActor();
-      const pathId = (await context.params)?.id;
+      const params = await context.params;
+      const pathId = params?.id;
       const id = pathId === undefined ? undefined : input(uuid, pathId);
-      return await run({ request, actor, requestId, id });
+      return await run({ request, actor, requestId, id, version: params?.version });
     } catch (error) {
       return failure(error, requestId);
     }
   };
+}
+
+export async function jsonInput<S extends z.ZodType>(request: Request, schema: S) {
+  return input(schema, await jsonBody(request));
+}
+
+async function jsonBody(request: Request): Promise<unknown> {
+  if (request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+    throw invalid("Yêu cầu cần có nội dung JSON.");
+  }
+  return request.json().catch(() => { throw invalid("Nội dung JSON không hợp lệ."); });
 }
 
 export function read<S extends z.ZodType>(
@@ -101,26 +113,51 @@ function canonicalJson(value: unknown): string {
 
 type StoredResult = { request_hash: string; status: number; response: unknown };
 
-export function write<I extends z.ZodType, R, O extends z.ZodType>(
+export function write<I extends z.ZodType, R, O extends z.ZodType, P = undefined>(
   bodySchema: I,
   outputSchema: O,
   status: 200 | 201,
-  run: (client: PoolClient, call: Call, body: z.output<I>) => Promise<R>,
+  run: (client: PoolClient, call: Call, body: z.output<I>, prepared?: P) => Promise<R | ApiFailure>,
   options: {
     serialize?: (value: R) => z.input<O>;
     authorize?: (client: PoolClient, call: Call) => Promise<unknown>;
+    prepare?: (call: Call, body: z.output<I>) => Promise<P | undefined>;
   } = {},
 ) {
   return handle(async call => {
-    if (call.request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
-      throw invalid("Yêu cầu cần có nội dung JSON.");
-    }
-    const raw = await call.request.json().catch(() => { throw invalid("Nội dung JSON không hợp lệ."); });
+    const raw = await jsonBody(call.request);
     const key = call.request.headers.get("idempotency-key");
     if (key !== null && (!key.trim() || key.length > 255)) throw invalid("Idempotency-Key không hợp lệ.");
     const operation = call.request.method + " " + new URL(call.request.url).pathname.replace(/\/$/, "");
     const requestHash = key && createHash("sha256").update(canonicalJson(raw)).digest("hex");
     const render = (value: R) => outputSchema.parse(options.serialize ? options.serialize(value) : value);
+    const findReplay = async (client: PoolClient) => {
+      if (!key || !requestHash) return;
+      const { rows: [previous] } = await client.query<StoredResult>(
+        `select request_hash, status, response from public.idempotency_keys
+         where actor_id = $1 and operation = $2 and key = $3 and expires_at > clock_timestamp()`,
+        [call.actor.userId, operation, key],
+      );
+      if (!previous) return;
+      if (previous.request_hash !== requestHash) throw conflict("Khóa idempotency đã được dùng cho dữ liệu khác.");
+      return { data: previous.status >= 400 ? previous.response : render(previous.response as R), status: previous.status };
+    };
+    let preparation: { value?: P } | { error: unknown } = {};
+    if (options.prepare) {
+      // Prepared routes use read-only authorization here and recheck it during the write.
+      if (requestHash) {
+        const replay = await transaction(async client => {
+          await options.authorize?.(client, call);
+          return findReplay(client);
+        }, true);
+        if (replay) return reply(replay.data, replay.status);
+      }
+      try {
+        preparation = { value: await options.prepare(call, input(bodySchema, raw)) };
+      } catch (error) {
+        preparation = { error };
+      }
+    }
 
     const result = await transaction(async client => {
       if (key && requestHash) {
@@ -130,7 +167,13 @@ export function write<I extends z.ZodType, R, O extends z.ZodType>(
       await options.authorize?.(client, call);
 
       const execute = async () => {
-        const value = await run(client, call, input(bodySchema, raw));
+        if ("error" in preparation) throw preparation.error;
+        const value = await run(client, call, input(bodySchema, raw), preparation.value);
+        // A returned failure describes a business transition that must be committed (for example STOCK_CONFLICT).
+        if (value instanceof ApiFailure) {
+          const data = errorBody(value, call.requestId);
+          return { data, stored: data, status: value.status };
+        }
         return { data: render(value), stored: value, status };
       };
       if (!key || !requestHash) {
@@ -138,15 +181,8 @@ export function write<I extends z.ZodType, R, O extends z.ZodType>(
         return execute();
       }
 
-      const { rows: [previous] } = await client.query<StoredResult>(
-        `select request_hash, status, response from public.idempotency_keys
-         where actor_id = $1 and operation = $2 and key = $3 and expires_at > clock_timestamp()`,
-        [call.actor.userId, operation, key],
-      );
-      if (previous) {
-        if (previous.request_hash !== requestHash) throw conflict("Khóa idempotency đã được dùng cho dữ liệu khác.");
-        return { data: previous.status >= 400 ? previous.response : render(previous.response as R), status: previous.status };
-      }
+      const replay = await findReplay(client);
+      if (replay) return replay;
 
       await ensureProfile(client, call.actor);
       await client.query("SAVEPOINT before_business_write");

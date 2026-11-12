@@ -152,6 +152,50 @@ Các quy tắc dưới đây là bất biến hệ thống. Mỗi quy tắc cầ
 - **BR-20** Chỉ đại diện duyệt được, chỉ sau khi người bán chấp thuận và mọi hộ có phần đã xác nhận đúng phiên bản.
 - **BR-21** Duyệt cuối tạo **đúng một** hợp đồng cho một cặp `proposal_id` + `source_version_id`, không tự phân lại phần.
 
+#### Chuẩn băm phiên bản
+
+Backend tạo `versionId` và lưu `versionHash = keccak256(abi.encode(...))` khi chụp bản gửi. ABI nhận các đối số dưới đây theo đúng thứ tự. Kết quả là `bytes32` trên Fuji và chuỗi hex chữ thường có tiền tố `0x` trong DB và JSON. [Đặc tả mã hóa ABI Solidity](https://docs.soliditylang.org/en/latest/abi-spec.html#formal-specification-of-the-encoding)
+
+| Vị trí | Kiểu ABI | Giá trị |
+| --- | --- | --- |
+| 1 | `string` | Chuỗi cố định `OOPS_NEGOTIATION_VERSION_V1` |
+| 2–3 | `bytes16, bytes16` | `proposalId`, `versionId` |
+| 4 | `uint32` | Số `version` trong nháp |
+| 5–6 | `bytes16, bytes16` | `demandItemId`, `sellerId` |
+| 7 | `uint64` | `unitPriceVnd` tính theo đồng |
+| 8–9 | `int64, int64` | `handoffStart`, `handoffBy` theo micro giây Unix UTC |
+| 10–11 | `bool, string` | `supportOffer`, `handoffPrivate` |
+| 12 | `(bytes16,uint32,string)[]` | Các dòng `(membershipId, qty, note)` có lượng dương |
+
+- UUID bỏ dấu gạch nối và đọc 32 ký tự hex thành 16 byte theo thứ tự từ trái sang phải. Sắp xếp dòng tăng dần theo 16 byte của `membershipId`.
+- Dùng thời điểm chính xác từ PostgreSQL. Đọc số micro giây dưới dạng số nguyên, giữ phần lẻ của giây qua quá trình mã hóa.
+- Chuỗi dùng UTF-8 của giá trị đã lưu. Ghi chú vắng mặt được mã hóa thành chuỗi rỗng. Lượng tổng và tiền hàng suy ra từ dòng và đơn giá. Trạng thái, phản hồi của người bán, hạn xử lý và thông tin vòng Fuji nằm ngoài dữ liệu băm.
+- Bản gửi lại có `versionId` mới và tăng `version`. Với nội dung bản, Fuji chỉ nhận mã băm. Điểm giao riêng, dòng hàng và ghi chú dùng để tính băm được giữ trong hệ thống app.
+
+**Vector kiểm thử 10→7.** Đơn giá 2.000đ. Khung giao 15h–16h ngày 18/11/2026 theo giờ Việt Nam. JSON dưới đây dùng UUID và số micro giây dạng chuỗi cho dễ đối chiếu trước khi chuyển sang kiểu ABI.
+
+```json
+{
+  "proposalId": "f00740b1-955c-4dac-9601-3aa75e430185",
+  "versionId": "bf05cd2b-5143-41f0-91d6-8332c6b8257f",
+  "version": 1,
+  "demandItemId": "b868dc0e-4dad-43b0-8a9d-ea2db18070c4",
+  "sellerId": "eced0276-59c8-4341-a214-91148a404112",
+  "unitPriceVnd": 2000,
+  "handoffStartUs": "1794988800000000",
+  "handoffByUs": "1794992400000000",
+  "supportOffer": false,
+  "handoffPrivate": "Sảnh A",
+  "lines": [
+    ["55ea173b-4141-44c7-afc6-f0113bd72bbd", 2, ""],
+    ["55ea173b-4141-44c7-afc6-f0113bd72bbe", 2, ""],
+    ["55ea173b-4141-44c7-afc6-f0113bd72bbf", 3, "Nhận buổi chiều"]
+  ]
+}
+```
+
+`versionHash` dự kiến là `0x93c0fedb2c764bfdea295f6815462007329bf9dd2fb33b72b1707749c028ce7b`.
+
 ### 6.4 Bàn giao và hủy
 
 - **BR-22** Chỉ ghi bằng chứng, lập hoặc duyệt biên nhận khi cọc đã nhận, tiền hàng đã thu đủ nếu có, và `stock_state = RESERVED`.
@@ -204,7 +248,13 @@ Các quy tắc dưới đây là bất biến hệ thống. Mỗi quy tắc cầ
 
 ## 8. Thời hạn
 
-Server tính hạn khi gửi bản. Khi người bán chấp thuận, server chụp `confirmBy < repApproveBy`, để đủ thời gian cho cọc, tiền hàng, báo sẵn sàng và giao đúng hạn.
+Khi hộ khởi tạo gửi bản, server lấy `submittedAt` từ đồng hồ PostgreSQL sau khi khóa nháp và tính `sellerResponseDueAt = submittedAt + 6 giờ`. Từ hạn phản hồi đến `handoffStart` phải còn ít nhất 24 giờ cho xác nhận, duyệt và thu tiền. Nhóm vì vậy cần gửi bản ít nhất 30 giờ trước lúc bắt đầu giao. Nếu lịch không đủ thời gian, API trả `409 STATE_CONFLICT` và giữ nháp mở. Mỗi phiên bản gửi mới được tính hạn riêng. Phát lại cùng yêu cầu với khóa idempotency còn hiệu lực trả lại bản và hạn đã lưu.
+
+Tạo đề nghị, mở nháp và sửa dòng nháp cũng yêu cầu còn ít nhất 30 giờ trước lúc bắt đầu giao. Bản đã gửi tiếp tục dùng các hạn đã lưu cho phiên bản đó.
+
+Ví dụ, lịch giao bắt đầu lúc 15h ngày 18/11. Nhóm gửi bản lúc 9h ngày 17/11 thì người bán có thể phản hồi trước 15h cùng ngày. Gửi lúc 9h01 ngày 17/11 bị từ chối vì còn 23 giờ 59 phút sau hạn phản hồi. Tại hoặc sau hạn phản hồi, API trả `409` dù worker chưa ghi `EXPIRED` với lý do `SELLER_TIMEOUT`.
+
+Khi người bán chấp thuận, `confirmBy` là lúc chấp thuận + 8 giờ và `repApproveBy` là `confirmBy` + 4 giờ. Sau khi đại diện duyệt, hạn cọc là lúc duyệt + 4 giờ. Nếu có tiền hàng, hạn thu là hạn cọc + 6 giờ. Hạn thu cuối phải cách giờ bắt đầu giao ít nhất 2 giờ để chuẩn bị. Hạn duyệt biên nhận là `handoffBy` + 24 giờ.
 
 | Mốc | Ý nghĩa | Ai kiểm |
 | --- | --- | --- |
@@ -218,7 +268,7 @@ Server tính hạn khi gửi bản. Khi người bán chấp thuận, server ch�
 | `approvalDueAt` | Hạn hai bên duyệt biên nhận. | Worker |
 | `scheduledHandoffBy` | Lịch giao đang áp dụng, chụp lúc lập biên nhận, dùng so `handedAt` để xét giao muộn. | Lập biên nhận |
 
-Giá trị cụ thể theo lịch giao và độ trễ Fuji đo được chốt tại D1; file này không cố định con số.
+API dùng các hạn đã lưu khi ghi nghiệp vụ. Worker đối chiếu hạn hiện hành để xử lý quá hạn và thông báo.
 
 ## 9. Dữ liệu
 
@@ -342,8 +392,7 @@ Các mục dưới đây **chưa** có quyết định trong tài liệu hiện 
 
 | # | Vấn đề | Ảnh hưởng |
 | --- | --- | --- |
-| G-05 | Giá trị cụ thể của các hạn (`sellerResponseDueAt`, `confirmBy`, `repApproveBy`, hạn cọc, hạn thanh toán, hạn duyệt) | Chốt D1 theo lịch giao và độ trễ Fuji đo được. |
-| G-06 | Chuẩn credential, cấp/thu hồi quyền xác nhận, chuẩn hash và test vector, cấu hình chain, chính sách block/cutoff/reorg | DEV 2 và DEV 3 chốt ở D1 trước phần triển khai phụ thuộc. |
+| G-06 | Deployment, ABI credential, cấp/thu hồi quyền xác nhận và chính sách block/cutoff/reorg | DEV 3 cấu hình contract và worker Fuji theo [interface backend](architecture.md#bàn-giao-backend-và-worker). Dùng [chuẩn băm và vector đã chốt](#chuẩn-băm-phiên-bản) cho `versionHash`. |
 | G-07 | Định mức nhu yếu phẩm có nguồn và bộ quy tắc gợi ý | MVP seed SKU đại diện và để hộ sửa tay. |
 | G-08 | Điều kiện, mức khấu trừ cọc, bên nhận khấu trừ, thẩm quyền xử lý ca mâu thuẫn | Demo dừng ở `NEEDS_REVIEW`/`DEPOSIT`. |
 | G-09 | Trạng thái và phạm vi khóa thao tác rời nhóm hoặc đổi ví | Demo khóa thao tác có ảnh hưởng khi còn bản đang chờ xác nhận hoặc hợp đồng đang chạy. |

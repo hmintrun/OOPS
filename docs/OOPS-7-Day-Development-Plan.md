@@ -279,7 +279,7 @@ Hồ sơ dự thi làm sau khi code ổn định. Dùng **23:59 ngày 21/11/2026
 - [ ] Xác nhận số giờ, người giữ PostgreSQL/Fuji, reviewer thay thế và phương án bù tải backend trước D4–D6.
 - [ ] Chốt fixture và dùng đặc tả đã đồng bộ theo luồng **chào 10 → hộ gửi 7 → seller chấp thuận → từng hộ xác nhận Fuji → đại diện duyệt → chờ cọc**.
 - [ ] Chốt fixture ba hộ 2+2+3, một bản bị yêu cầu sửa, một hộ chưa xác nhận và một ca chốt vượt lượng khả dụng.
-- [ ] Chốt các hạn phản hồi seller, xác nhận Fuji và đại diện duyệt theo lịch giao. Dùng bảng chuyển trạng thái trong kiến trúc để thống nhất quyền gửi lại bản, xử lý thiếu ví và lượng thay đổi.
+- [x] Chốt [hạn phản hồi, xác nhận Fuji, duyệt và thu](OOPS-Spec.md#8-thời-hạn). Dùng bảng chuyển trạng thái trong kiến trúc để thống nhất quyền gửi lại bản, xử lý thiếu ví và lượng thay đổi.
 - [ ] Chốt DTO, error envelope, chuẩn credential, ABI, hash/test vector, chính sách block/cutoff/reorg, interface BE–worker và quyền sở hữu file dùng chung.
 - [ ] Kiểm tra Supabase Auth/Postgres/Storage, Gemini quota, Core Wallet, AVAX Fuji, công cụ Solidity, host web và host worker. Ghi owner và giờ xử lý cho từng mục còn thiếu.
 - [ ] Tạo backlog từ các task ở mục 8 và đưa app nền, schema, fixture vào lần tích hợp đầu tiên.

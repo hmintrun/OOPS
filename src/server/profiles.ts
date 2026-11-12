@@ -2,7 +2,11 @@ import "server-only";
 import type { PoolClient } from "pg";
 import type { Me } from "@/contracts/foundation";
 import type { Actor } from "./auth";
-import { unavailable } from "./errors";
+import { transaction } from "./db";
+import { checkFujiEligibility } from "./fuji/eligibility";
+
+type Wallet = NonNullable<Me["wallet"]>;
+type WalletEligibility = { address: string; eligible: boolean };
 
 export async function ensureProfile(client: PoolClient, actor: Actor) {
   await client.query(
@@ -11,20 +15,20 @@ export async function ensureProfile(client: PoolClient, actor: Actor) {
   );
 }
 
-/**
- * Fuji integration point: decides `Me.confirmationEligible` from the caller's Fuji credential.
- * Until the Fuji module can verify a wallet, a VERIFIED wallet is a 503 instead of an
- * eligibility grant, and every other state stays ineligible. Replace the body, not the call site.
- */
-export async function confirmationEligible(client: PoolClient, userId: string): Promise<boolean> {
-  const { rows: [wallet] } = await client.query<{
-    verification_state: NonNullable<Me["wallet"]>["verificationState"] | null;
-  }>("select verification_state from public.wallets where user_id = $1", [userId]);
-  if (wallet?.verification_state === "VERIFIED") throw unavailable();
-  return false;
+export async function verifyProfileWallet(wallet?: Wallet): Promise<WalletEligibility | undefined> {
+  if (wallet?.verificationState !== "VERIFIED") return;
+  const { eligible: [eligible] } = await checkFujiEligibility([wallet.address]);
+  return { address: wallet.address, eligible };
 }
 
-export async function readMe(client: PoolClient, actor: Actor): Promise<Me> {
+export async function prepareProfileEligibility(userId: string) {
+  const { rows: [wallet] } = await transaction(db => db.query<Wallet>(
+    'select address, verification_state as "verificationState" from public.wallets where user_id = $1', [userId],
+  ), true);
+  return verifyProfileWallet(wallet);
+}
+
+export async function readMe(client: PoolClient, actor: Actor, eligibility?: WalletEligibility): Promise<Me> {
   const { rows: [row] } = await client.query<{
     group_id: string | null;
     contact_private: string | null;
@@ -38,19 +42,18 @@ export async function readMe(client: PoolClient, actor: Actor): Promise<Me> {
      where p.id = $1`,
     [actor.userId],
   );
-  // Eligibility (and the 503 for unverifiable VERIFIED wallets) lives in confirmationEligible.
   return {
     userId: actor.userId,
     ...(row.group_id !== null && { groupId: row.group_id }),
     ...(row.address !== null && row.verification_state !== null && {
       wallet: { address: row.address, verificationState: row.verification_state },
     }),
-    confirmationEligible: await confirmationEligible(client, actor.userId),
+    confirmationEligible: row.verification_state === "VERIFIED" && eligibility?.address === row.address && eligibility.eligible,
     ...(row.contact_private !== null && { contactPrivate: row.contact_private }),
   };
 }
 
-export async function updateContact(client: PoolClient, actor: Actor, contactPrivate: string): Promise<Me> {
+export async function updateContact(client: PoolClient, actor: Actor, contactPrivate: string, eligibility?: WalletEligibility): Promise<Me> {
   await client.query("update public.profiles set contact_private = $2 where id = $1", [actor.userId, contactPrivate]);
-  return readMe(client, actor);
+  return readMe(client, actor, eligibility);
 }

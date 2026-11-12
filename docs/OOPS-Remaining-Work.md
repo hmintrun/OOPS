@@ -4,6 +4,8 @@
 
 Luồng đăng nhập demo → tạo/tham gia nhóm → lập và xác nhận giỏ tay → đăng nhu cầu lên Feed đã có UI và API. Phần còn lại để demo giao dịch là nối Feed với thương lượng, xác nhận Fuji, duyệt hợp đồng, thu SIM và bàn giao.
 
+Trên nhánh DEV 2, API thương lượng, chốt đơn, thu SIM, bàn giao, ops, thông báo và Gemini đã có triển khai. API chấp thuận đọc credential qua RPC và lưu yêu cầu mở vòng. Staging cần contract, ABI và worker của DEV 3, cùng Auth, Storage riêng và Gemini. Các ca backend dùng RPC và fixture xác nhận trong PostgreSQL cục bộ. [Cấu hình backend demo](../README.md#cấu-hình-backend-demo) · [Interface backend và worker](architecture.md#bàn-giao-backend-và-worker)
+
 ## 1. Tính năng chưa triển khai hoặc mới có phần nền
 
 | Việc còn lại | Hiện trạng | Phụ trách | Điều kiện nghiệm thu |
@@ -31,7 +33,7 @@ Bằng chứng hiện có cho phần nền gồm 19 test mặc định và 5 tes
 
 ## 3. Checklist triển khai theo thứ tự phụ thuộc
 
-- [ ] Chốt chuẩn ví, credential, hash, ABI và chính sách xác nhận Fuji theo G-06 · DEV 3 + DEV 2, song song với B02.
+- [ ] Chốt chuẩn ví, credential, ABI vòng và chính sách xác nhận Fuji theo G-06 · DEV 3 + DEV 2, song song với B02. Dùng [chuẩn băm và vector đã chốt](OOPS-Spec.md#chuẩn-băm-phiên-bản) cho `versionHash`.
 - [ ] Nối đề nghị và thương lượng 10→7 từ Feed · B02/A04. DEV 1 có thể bắt đầu UI từ fixture của DEV 2.
 - [ ] Liên kết Core Wallet và đồng bộ xác nhận của từng hộ trên Fuji · C01–C04.
 - [ ] Nối đại diện duyệt cuối, tạo hợp đồng và giữ lượng `pending` · B03/A04.
