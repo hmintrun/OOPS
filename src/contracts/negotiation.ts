@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isoDateTime, uuid } from "./foundation";
+import { isoDateTime, roundState, uuid } from "./foundation";
 
 const uint = z.number().int().nonnegative();
 const quantity = uint.max(2_147_483_647);
@@ -31,6 +31,13 @@ export const editDraftLineInput = z.strictObject({
   note: z.string().optional(),
   editRevision: quantity,
 });
+export const submitDraftInput = z.strictObject({ editRevision: quantity });
+export const reviseDraftInput = z.strictObject({ version: positiveQuantity });
+export const versionParam = z.string().regex(/^[1-9][0-9]*$/).transform(Number).pipe(positiveQuantity);
+export const sellerResponseInput = z.strictObject({
+  action: z.enum(["APPROVE", "REJECT", "REQUEST_CHANGES"]),
+  note: z.string().optional(),
+});
 
 const lineAmount = z.strictObject({ qty: positiveQuantity, goodsVnd: uint });
 const myLine = lineAmount.extend({ note: z.string().optional() });
@@ -38,7 +45,7 @@ const myLine = lineAmount.extend({ note: z.string().optional() });
 export const draftVersion = z.strictObject({
   versionId: uuid,
   version: positiveQuantity,
-  versionHash: z.string().min(1),
+  versionHash: z.string().regex(/^0x[0-9a-f]{64}$/),
   state: z.enum([
     "SUBMITTED", "CHANGES_REQUESTED", "REJECTED", "AWAIT_CONFIRMATIONS",
     "AWAIT_REP_APPROVAL", "EXPIRED", "STOCK_CONFLICT", "FINALIZED",
@@ -73,6 +80,16 @@ export const draft = z.strictObject({
 export const sellerDraftView = draft.pick({ draftId: true, proposalId: true }).extend({
   latestVersion: draftVersion,
 });
+export const confirmationRound = z.strictObject({
+  roundId: uuid, versionId: uuid, versionHash: draftVersion.shape.versionHash, roundKey: z.string(),
+  chainId: positiveQuantity, contractAddress: z.string(), state: roundState, confirmBy: isoDateTime,
+  requiredCount: quantity, confirmedCount: quantity,
+  myConfirmation: z.strictObject({
+    walletAddress: z.string(), state: z.enum(["PENDING", "CONFIRMED"]),
+  }).optional(),
+});
 
 export type Offer = z.infer<typeof offer>;
 export type Draft = z.infer<typeof draft>;
+export type DraftVersion = z.infer<typeof draftVersion>;
+export type SellerDraftView = z.infer<typeof sellerDraftView>;

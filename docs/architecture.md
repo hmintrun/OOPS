@@ -53,7 +53,7 @@ flowchart LR
 
 ### Trạng thái thương lượng và thời hạn
 
-Tại D1, chốt cấu hình deadline theo lịch giao và độ trễ Fuji đo được. Server tính hạn phản hồi khi gửi bản. Khi seller chấp thuận, server chụp `confirmBy < repApproveBy` và để đủ thời gian cho cọc, tiền hàng nếu có, báo sẵn sàng và giao đúng hạn. Worker kiểm cutoff và phiên bản hiện hành. API ghi cũng kiểm hạn dưới khóa để không phụ thuộc thời điểm worker chạy.
+Khi gửi bản, server lưu hạn phản hồi và mã băm của bản bất biến. Khi người bán chấp thuận, server chụp `confirmBy < repApproveBy` và để đủ thời gian cho cọc, tiền hàng nếu có, báo sẵn sàng và giao đúng hạn. Worker kiểm cutoff và phiên bản hiện hành. API ghi cũng kiểm hạn dưới khóa để không phụ thuộc thời điểm worker chạy. [Quy tắc thời hạn](OOPS-Spec.md#8-thời-hạn) · [Chuẩn băm phiên bản](OOPS-Spec.md#chuẩn-băm-phiên-bản)
 
 | Trạng thái bản | Hành động hoặc mốc | Kết quả và thông báo |
 | --- | --- | --- |
@@ -67,6 +67,14 @@ Tại D1, chốt cấu hình deadline theo lịch giao và độ trễ Fuji đo 
 | `AWAIT_REP_APPROVAL` | Lượng không còn đủ khi duyệt | `STOCK_CONFLICT`. Ghi trạng thái và thông báo rồi trả `409`, không tạo hợp đồng hoặc thay phần đã ký. |
 
 Hộ khởi tạo được mở nháp kế tiếp sau `CHANGES_REQUESTED`, `EXPIRED` hoặc `STOCK_CONFLICT` nếu đề nghị còn mở và lịch còn đủ thời gian. Bản mới qua lại seller, xác nhận Fuji và đại diện. Không chuyển xác nhận của bản cũ sang bản mới. Mốc cọc chỉ bắt đầu sau khi đại diện duyệt. Nếu vòng on-chain chưa mở được, worker retry trong hạn và giữ trạng thái chờ. Worker chỉ tính sự kiện đúng ví, phiên bản và block timestamp trước `confirmBy`. API từ chối duyệt ở hoặc sau `repApproveBy`, kể cả khi job chưa ghi hết hạn.
+
+### Bàn giao backend và worker
+
+Khi lưu bản gửi, backend ghi outbox `NEGOTIATION_SELLER_RESPONSE_DUE` với `{draftId, versionId}` và `next_run_at = seller_response_due_at`. Worker gọi `expireSellerResponse(client, draftId, versionId)` trong transaction. Hàm chỉ đổi bản còn `SUBMITTED` đã tới hạn và trả `true` nếu đã chuyển trạng thái. Gọi lại sau khi hết hạn đã được ghi trả `false`. Backend ghi `NEGOTIATION_VERSION_STATE_CHANGED` cho bản gửi, yêu cầu sửa, từ chối và hết hạn. Payload gồm `draftId`, `proposalId`, `versionId`, `version`, `state`, `reasonCode?` và `recipientUserIds`. Worker dùng `event_key` để chống gửi thông báo lặp.
+
+- Khi người bán chấp thuận, API chụp ví verified, rồi gọi RPC Fuji ngoài transaction. Cấu hình DEV 3 chỉ định contract xác nhận và hàm credential `view(address)` trả `bool` hoặc `uint256`. Giá trị `true` hoặc số dư dương đủ quyền. Sau khi kiểm tất cả hộ ở cùng block, API gọi `approveWithFujiEligibility(db, sellerId, draftId, versionId, round, note?)` để kiểm lại bản, hạn và ví dưới khóa. `roundKey` là Keccak-256 của chuỗi UTF-8 `OOPS:fuji-round:v1:<versionId>`. Worker truyền nguyên khóa bytes32 đã lưu vào contract. Outbox `FUJI_ROUND_OPEN_REQUESTED`, `FUJI_CONFIRMATION_DUE` và `REP_APPROVAL_DUE` dùng `{draftId, versionId, roundId, versionHash}`.
+- Indexer ghi trạng thái OPEN và các xác nhận đã kiểm, sau đó gọi `advanceVerifiedRound(db, draftId, versionId)` sau khi commit việc ghi log hoặc lấy khóa theo thứ tự proposal, draft, version, round ngay trong cùng transaction. Chỉ gọi `expireFujiStage` với `CONFIRMATION_TIMEOUT` sau khi đã đồng bộ qua cutoff. `FINALIZE_TIMEOUT` chạy theo hạn đại diện.
+- `ORDER_DEADLINE_DUE` có `{contractId, stage}`. Worker gọi `expireOrderDeadline` trong transaction cho `DEPOSIT`, `PAYMENT`, `READY`, `HANDOFF` hoặc `RECEIPT`. `ORDER_STATE_CHANGED` có `contractId`, `action`, `state` và `recipientUserIds`. Worker có thể gọi `persistNotifications` với loại đối tượng, ID, `event_key` và danh sách người nhận để ghi thông báo một lần.
 
 ## Trạng thái theo dõi
 

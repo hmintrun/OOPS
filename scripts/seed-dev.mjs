@@ -53,7 +53,7 @@ async function seed() {
       );
       await db.query(
         `insert into public.campaigns (id, group_id, collect_until, need_by)
-         values ($1, $2, clock_timestamp() + interval '24 hours', clock_timestamp() + interval '48 hours')
+         values ($1, $2, clock_timestamp() + interval '24 hours', clock_timestamp() + interval '72 hours')
          on conflict (id) do nothing`,
         [campaignId, groupId],
       );

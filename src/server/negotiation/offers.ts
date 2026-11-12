@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import type { z } from "zod";
 import type { Offer, createOfferInput } from "@/contracts/negotiation";
 import { conflict, invalid, notFound } from "../errors";
+import { requiredLeadHours } from "./timing";
 
 type OfferInput = z.output<typeof createOfferInput>;
 type ProposalRow = {
@@ -62,11 +63,11 @@ export async function createOffer(client: PoolClient, sellerId: string, demandIt
     `insert into public.proposals
        (demand_item_id, seller_id, qty, unit_price_vnd, support_offer, handoff_start, handoff_by, handoff_private)
      select $1, $2, $3, $4, $5, $6, $7, $8
-     where clock_timestamp() < $7::timestamptz returning *`,
+     where $6::timestamptz >= clock_timestamp() + make_interval(hours => $9) returning *`,
     [demandItemId, sellerId, body.qty, body.unitPriceVnd, body.supportOffer,
-      body.handoffStart, body.handoffBy, body.handoffPrivate],
+      body.handoffStart, body.handoffBy, body.handoffPrivate, requiredLeadHours],
   );
-  if (!proposal) throw conflict("Đã quá hạn bàn giao của đề nghị.");
+  if (!proposal) throw conflict("Lịch giao cần cách hiện tại ít nhất 30 giờ để nhóm còn thời gian gửi bản.");
   return offerDto(proposal, true);
 }
 
@@ -80,15 +81,25 @@ export async function readOffers(client: PoolClient, userId: string, demandItemI
   );
   if (!demand) throw notFound();
 
-  const { rows } = await client.query<ProposalRow & { seller_id: string; draft_id: string | null }>(
-    `select p.*, n.id as draft_id from public.proposals p
+  const { rows } = await client.query<ProposalRow & { seller_id: string; draft_id: string | null; too_late: boolean }>(
+    `select p.*, n.id as draft_id,
+       p.state = 'SUBMITTED' and p.handoff_start < statement_timestamp() + make_interval(hours => $4)
+       and not exists (
+         select 1 from public.negotiation_versions v where v.negotiation_id = n.id and (
+           (v.state = 'SUBMITTED' and v.seller_response_due_at > statement_timestamp())
+           or (v.state in ('AWAIT_CONFIRMATIONS', 'AWAIT_REP_APPROVAL') and v.rep_approve_by > statement_timestamp())
+         )
+       ) as too_late from public.proposals p
      left join public.negotiations n on n.proposal_id = p.id
      where p.demand_item_id = $1 and ($3::boolean or p.seller_id = $2)
      order by p.id`,
-    [demandItemId, userId, demand.role !== null],
+    [demandItemId, userId, demand.role !== null, requiredLeadHours],
   );
   if (!demand.role && rows.length === 0) throw notFound();
   return {
-    items: rows.map(row => offerDto(row, demand.role === "REP" || row.seller_id === userId, row.draft_id ?? undefined)),
+    items: rows.map(row => offerDto(
+      row.too_late ? { ...row, state: "EXPIRED" } : row,
+      demand.role === "REP" || row.seller_id === userId, row.draft_id ?? undefined,
+    )),
   };
 }

@@ -31,6 +31,17 @@ export const putCartInput = z.strictObject({
   version: count,
 });
 export const confirmCartInput = z.strictObject({ version: count });
+export const cartAiInput = z.strictObject({ text: nonBlank.max(4_000), householdSize: positiveCount.optional() });
+export const cartAiResult = z.strictObject({
+  draft: z.strictObject({
+    householdSize: positiveCount.optional(),
+    lines: z.array(z.strictObject({
+      skuId: uuid, stockQty: count.optional(), needQty: count.optional(),
+    }).refine(line => line.stockQty !== undefined || line.needQty !== undefined)),
+  }),
+  unresolved: z.array(z.string()),
+  ruleRefs: z.array(z.string()),
+});
 export const publishInput = z.strictObject({});
 export const catalogQuery = z.strictObject({ category: category.optional() });
 export const feedQuery = z.strictObject({

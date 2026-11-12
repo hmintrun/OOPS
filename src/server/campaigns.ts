@@ -90,6 +90,11 @@ export async function readCart(client: PoolClient, userId: string, campaignId: s
   return cartDto(client, row);
 }
 
+export async function assertCartAiAvailable(client: PoolClient, userId: string, campaignId: string) {
+  const { row } = await getCampaign(client, userId, campaignId);
+  await requireOpenCart(client, row);
+}
+
 export async function putCart(client: PoolClient, userId: string, campaignId: string, body: z.output<typeof putCartInput>) {
   const { row, member } = await getCampaign(client, userId, campaignId, true);
   await requireOpenCart(client, row);
@@ -186,10 +191,19 @@ export async function readNeeds(client: PoolClient, userId: string, campaignId: 
      where d.campaign_id = $1 order by s.code, d.id`,
     [campaignId, member.id],
   );
+  const { rows: activeRounds } = await client.query<Extract<Needs, { campaignState: "PUBLISHED" }>["activeRounds"][number]>(
+    `select r.id as "roundId", d.id as "demandItemId", r.state from public.confirmation_rounds r
+     join public.negotiation_versions v on v.id = r.version_id join public.negotiations n on n.id = v.negotiation_id
+     join public.proposals p on p.id = n.proposal_id join public.demand_items d on d.id = p.demand_item_id
+     where d.campaign_id = $1 and v.state in ('AWAIT_CONFIRMATIONS', 'AWAIT_REP_APPROVAL')
+       and r.state <> 'CLOSED' and ($2::boolean or p.seller_id = $3 or exists (
+         select 1 from public.confirmation_participants cp where cp.round_id = r.id and cp.membership_id = $4
+       )) order by r.id`, [campaignId, member.role === "REP", userId, member.id],
+  );
   return {
     campaignState: "PUBLISHED",
     items: rows.map(({ myShare, ...demand }) => ({ ...demandDto(demand), ...(myShare && { myShare }) })),
-    activeRounds: [], // This milestone does not create Fuji confirmation rounds.
+    activeRounds,
   };
 }
 
