@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Card, CardTitle } from "@/components/ui";
 import type { Campaign, Group } from "@/contracts/foundation";
-import { ApiFailure, createCampaign, getGroup, getMe, messageOf } from "./_shared/api";
+import { ApiError, createCampaign, getGroup, getMe } from "@/lib/api-client";
 import {
   defaultCollectUntil,
   defaultNeedBy,
@@ -99,7 +99,7 @@ function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated
       });
       onCreated();
     } catch (submitError) {
-      setError(messageOf(submitError));
+      setError(submitError instanceof ApiError ? submitError.message : "Không tạo được đợt gom. Vui lòng thử lại.");
     } finally {
       setSaving(false);
     }
@@ -174,13 +174,13 @@ export function CampaignsView() {
         setState({ phase: "ready", group });
       } catch (error) {
         if (cancelled) return;
-        const status = error instanceof ApiFailure ? error.status : undefined;
+        const status = error instanceof ApiError ? error.status : undefined;
         if (status === 401) {
           setState({ phase: "redirect" });
           router.replace("/login");
           return;
         }
-        setState({ phase: "error", message: messageOf(error) });
+        setState({ phase: "error", message: error instanceof ApiError ? error.message : "Không tải được đợt gom. Vui lòng thử lại." });
       }
     }
     void load();
@@ -192,7 +192,7 @@ export function CampaignsView() {
   const refresh = useCallback(() => setReloadKey((key) => key + 1), []);
 
   return (
-    <div className="ui-screen-body grid gap-[16px]">
+    <div className="grid gap-4">
       {state.phase === "loading" && <LoadingState />}
       {state.phase === "redirect" && <LoadingState label="Đang chuyển tới trang đăng nhập…" />}
       {state.phase === "noGroup" && (

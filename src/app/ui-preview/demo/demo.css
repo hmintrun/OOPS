@@ -1,0 +1,88 @@
+.demo-stack { display: grid; gap: 16px; align-content: start; }
+.demo-stack p { margin: 0; }
+.demo-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: clamp(18px, 4vw, 36px);
+  border-radius: var(--oops-radius-card);
+  box-shadow: var(--oops-shadow-card);
+  background: linear-gradient(120deg, var(--oops-surface), var(--oops-green-100));
+}
+.demo-hero h1 {
+  margin: 8px 0 4px;
+  font-size: clamp(26px, 5vw, 40px);
+  font-weight: 850;
+  line-height: 1.15;
+}
+.demo-page .ui-family-background {
+  padding-inline: 6px;
+}
+.demo-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: var(--oops-radius-pill);
+  background: var(--oops-amber-tint);
+  font-size: 14px;
+  font-weight: 800;
+}
+.demo-heading { display: flex; align-items: center; gap: 12px; }
+.demo-heading .ui-card__title { margin: 0; }
+.demo-note, .demo-heading p { color: var(--oops-navy-600); }
+.demo-fields, .demo-actions { display: grid; gap: 12px; }
+.demo-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.demo-page label { display: grid; min-width: 0; gap: 6px; font-weight: 750; }
+.demo-fields label {
+  grid-template-columns: auto minmax(0, 1fr) minmax(58px, 28%);
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--oops-line);
+  border-radius: var(--oops-radius-input);
+  background: color-mix(in srgb, var(--oops-sky-tint) 30%, var(--oops-surface));
+}
+.demo-fields .ui-icon-tile { flex: none; }
+.demo-page :is(input[type=number], select) {
+  width: 100%;
+  min-height: var(--oops-control-h);
+  border: 1px solid var(--oops-line);
+  border-radius: var(--oops-radius-input);
+  padding: 8px 12px;
+  background: var(--oops-surface);
+  font-size: 16px;
+}
+.demo-page input:disabled { background: var(--oops-sky-tint); }
+.demo-page .demo-check { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.demo-check input { width: 20px; height: 20px; accent-color: var(--oops-green-700); }
+.demo-cost { display: grid; gap: 8px; margin: 0; }
+.demo-cost div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+.demo-cost dd { margin: 0; font-weight: 800; }
+.demo-page summary, .demo-link { cursor: pointer; color: var(--oops-green-700); font-weight: 750; }
+.demo-page details p { margin-top: 8px; }
+.demo-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.demo-steps li { display: flex; align-items: center; gap: 8px; border-radius: var(--oops-radius-input); padding: 8px; }
+.demo-steps li[aria-current] { background: var(--oops-green-100); color: var(--oops-green-700); font-weight: 800; }
+.demo-page .ui-nav button { cursor: pointer; }
+.demo-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 699px) {
+  .demo-page.ui-family-page { padding-top: 12px; }
+  .demo-page.ui-family-page > .demo-stack { gap: 8px; }
+  .demo-family-form { gap: 8px; padding: 14px; }
+  .demo-fields { gap: 6px; }
+  .demo-fields label { padding: 4px 6px; }
+  .demo-family-form .ui-icon-tile { width: 36px; height: 36px; }
+  .demo-family-form :is(input[type=number], .ui-btn) { min-height: 44px; height: 44px; }
+}
+@media (max-width: 359px) {
+  .demo-actions { grid-template-columns: 1fr; }
+  .demo-fields label { gap: 6px; }
+  .demo-fields .ui-icon-tile { width: 34px; height: 34px; }
+}
+@media (max-width: 699px) and (max-height: 599px) {
+  .demo-page.ui-family-page {
+    --oops-family-height: 156px;
+    background-size: auto, min(100%, 244px) auto, auto;
+  }
+  .demo-family-form { gap: 6px; padding: 12px; }
+}

@@ -17,9 +17,14 @@ const OFFLINE_MESSAGE = "Không kết nối được máy chủ. Vui lòng thử
 export async function serverGet<T>(path: string): Promise<ApiResult<T>> {
   const incoming = await headers();
   const cookie = incoming.get("cookie");
+  let origin: string;
+  try {
+    origin = appOrigin();
+  } catch {
+    return { ok: false, status: 503, message: "Dịch vụ nhóm chưa được cấu hình." };
+  }
   let response: Response;
   try {
-    const origin = appOrigin();
     const url = new URL(path, origin);
     if (url.origin !== origin || !url.pathname.startsWith("/api/v1/")) {
       return { ok: false, status: 0, message: OFFLINE_MESSAGE };

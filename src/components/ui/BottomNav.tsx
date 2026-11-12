@@ -9,6 +9,7 @@ export type NavItem = {
   label: string;
   icon: string; // ligature Material Symbols, vd "groups"
   href: string;
+  relatedPath?: string;
 };
 
 /**
@@ -26,7 +27,9 @@ export function BottomNav({ items }: { items: NavItem[] }) {
       style={{ "--nav-count": items.length } as React.CSSProperties}
     >
       {items.map((item) => {
-        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const active = [item.href, item.relatedPath].some(
+          (path) => path && (pathname === path || pathname.startsWith(`${path}/`)),
+        );
         return (
           <Link
             key={item.key}
