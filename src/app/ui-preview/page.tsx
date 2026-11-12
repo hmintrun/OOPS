@@ -1,34 +1,30 @@
 "use client";
 
+import Link from "next/link";
+import { SHELL_NAV_ITEMS } from "@/components/app-shell";
 import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
 import { IconTile } from "@/components/ui/IconTile";
-import { MaterialSymbol } from "@/components/ui/MaterialSymbol";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Select } from "@/components/ui/Select";
 import { BottomNav } from "@/components/ui/BottomNav";
 
 export default function Page() {
-  const navItems = [
-    { key: "groups", label: "Nhóm của tôi", icon: "groups", href: "/ui-preview" },
-    { key: "feed", label: "Feed", icon: "newspaper", href: "/feed" },
-    { key: "orders", label: "Đơn hàng", icon: "inventory_2", href: "/orders" },
-    { key: "account", label: "Tài khoản", icon: "person", href: "/me" },
-  ];
-
   return (
-    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
-      <main className="mx-auto w-full max-w-[430px] flex-1">
-        <ScreenHeader
-          title="Nhóm của tôi"
-          subtitle="Khu phố 3, quận Bình Thạnh · 7 hộ"
-          icon={{ icon: "groups", tone: "green" }}
-        />
+    <main className="ui-app-page">
+      <ScreenHeader
+        title="Bộ giao diện"
+        icon={{ icon: "dashboard", tone: "green" }}
+      />
 
-        <div className="ui-screen-body" style={{ display: "grid", gap: 16 }}>
+      <div className="ui-screen-body">
+        {process.env.NODE_ENV !== "production" && (
+          <Link href="/ui-preview/demo" className="ui-btn ui-btn--primary mb-4">Về trang thử</Link>
+        )}
+        <div className="ui-card-grid">
           <Card>
             <CardTitle>Chọn danh mục</CardTitle>
-            <div style={{ display: "grid", gap: 12 }}>
+            <div className="grid grid-cols-1 gap-3">
               <Select
                 label="Khu vực"
                 value="q-binh-thanh"
@@ -99,9 +95,8 @@ export default function Page() {
             </div>
           </Card>
         </div>
-      </main>
-
-      <BottomNav items={navItems} />
-    </div>
+      </div>
+      <BottomNav items={SHELL_NAV_ITEMS} />
+    </main>
   );
 }

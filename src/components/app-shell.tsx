@@ -6,8 +6,9 @@ import { ScreenHeader } from "@/components/ui";
 
 /** Các mục BottomNav theo design/STYLE.md mục 6. */
 export const SHELL_NAV_ITEMS: NavItem[] = [
-  { key: "groups", label: "Nhóm của tôi", icon: "groups", href: "/groups" },
-  { key: "feed", label: "Feed", icon: "newspaper", href: "/feed" },
+  { key: "groups", label: "Nhóm của tôi", icon: "groups", href: "/groups", relatedPath: "/campaigns" },
+  { key: "feed", label: "Nhu cầu", icon: "newspaper", href: "/feed" },
+  { key: "orders", label: "Đơn hàng", icon: "inventory_2", href: "/orders" },
   { key: "me", label: "Tài khoản", icon: "person", href: "/me" },
 ];
 
@@ -22,6 +23,7 @@ type AppShellProps = {
   children?: ReactNode;
   /** Bỏ thẻ trắng mặc định khi màn tự xếp thẻ của riêng nó. */
   bare?: boolean;
+  familyBackground?: boolean;
 };
 
 /**
@@ -29,11 +31,13 @@ type AppShellProps = {
  * trên nền trời, nội dung trong thẻ trắng nổi, đáy chừa chỗ cho BottomNav qua
  * class `.ui-screen-body` có sẵn trong src/components/ui/ui.css.
  */
-export function AppShell({ title, subtitle, icon, aside, children, bare = false }: AppShellProps) {
+export function AppShell({ title, subtitle, icon, aside, children, bare = false, familyBackground = false }: AppShellProps) {
   return (
-    <main className="ui-screen-body">
-      {title && <ScreenHeader title={title} subtitle={subtitle} icon={icon} aside={aside} />}
-      {bare ? children : <Card>{children}</Card>}
+    <main className={familyBackground ? "ui-app-page ui-family-page" : "ui-app-page"}>
+      {title && <ScreenHeader title={title} subtitle={subtitle} icon={icon} aside={aside} familyBackground={familyBackground} />}
+      <div className="ui-screen-body">
+        {bare ? children : <Card>{children}</Card>}
+      </div>
       <BottomNav items={SHELL_NAV_ITEMS} />
     </main>
   );

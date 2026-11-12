@@ -12,9 +12,9 @@ export default async function GroupsPage() {
   if (result.ok && result.data.groupId) redirect(`/groups/${result.data.groupId}`);
 
   return (
-    <AppShell title="Nhóm của tôi" icon={{ icon: "groups", tone: "green" }} bare>
+    <AppShell title="Nhóm của tôi" icon={{ icon: "groups", tone: "green" }} familyBackground bare>
       {result.ok ? (
-        <div className="grid gap-4">
+        <div className="ui-card-grid">
           <Card>
             <CardTitle>Đã có lời mời?</CardTitle>
             <p className="mb-3 text-body text-navy-600">Dán liên kết do đại diện gửi để vào nhóm.</p>
@@ -26,7 +26,13 @@ export default async function GroupsPage() {
           <CreateGroupForm />
         </div>
       ) : (
-        <Card><p role="alert">{result.message}</p><Link href="/groups">Thử lại</Link></Card>
+        <Card className="ui-empty">
+          <p role="alert">{result.message}</p>
+          <Link href="/groups" className="ui-btn ui-btn--secondary">Thử lại</Link>
+          {process.env.NODE_ENV === "development" && result.status === 503 && (
+            <Link href="/ui-preview/demo" className="ui-btn ui-btn--primary">Mở bản thử</Link>
+          )}
+        </Card>
       )}
     </AppShell>
   );

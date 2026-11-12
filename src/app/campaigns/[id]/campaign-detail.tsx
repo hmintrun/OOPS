@@ -84,14 +84,16 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     retry.current = undefined;
   }
 
-  async function action(success: string, run: () => Promise<unknown>) {
+  async function action(fingerprint: string, success: string, run: (key: string) => Promise<unknown>) {
     if (busy.current) return;
+    if (retry.current?.body !== fingerprint) retry.current = { body: fingerprint, key: newIdempotencyKey() };
+    const { key } = retry.current;
     busy.current = true;
     setSaving(true);
     setNotice("");
     setError("");
     try {
-      await run();
+      await run(key);
       retry.current = undefined;
       setNotice(success);
       setReload(value => value + 1);
@@ -126,9 +128,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         return { skuId: item.skuId, stockQty: parseQuantity(line.stockQty), needQty: parseQuantity(line.needQty) };
       }).filter(line => line.stockQty !== 0 || line.needQty !== 0),
     };
-    const fingerprint = JSON.stringify(body);
-    if (retry.current?.body !== fingerprint) retry.current = { body: fingerprint, key: newIdempotencyKey() };
-    void action("Đã lưu giỏ.", () => putCart(campaignId, body, retry.current?.key));
+    void action(`save:${JSON.stringify(body)}`, "Đã lưu giỏ.", key => putCart(campaignId, body, key));
   }
 
   return (
@@ -179,7 +179,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         </form>
         {editable && cart?.state === "DRAFT" && (
           <Button className="mt-2" disabled={dirty || saving}
-            onClick={() => void action("Đã xác nhận giỏ.", () => confirmCart(campaignId, cart.version))}>
+            onClick={() => void action(`confirm:${cart.version}`, "Đã xác nhận giỏ.", key => confirmCart(campaignId, cart.version, key))}>
             Xác nhận giỏ đã lưu
           </Button>
         )}
@@ -196,11 +196,11 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         </ul> : <p>Chưa có lượng cần mua từ giỏ đã xác nhận.</p>}
         {canPublish && (
           <Button className="mt-3" disabled={saving}
-            onClick={() => void action("Đã đăng nhu cầu lên Feed.", () => publishCampaign(campaignId))}>
+            onClick={() => void action("publish", "Đã đăng nhu cầu.", key => publishCampaign(campaignId, key))}>
             Đăng nhu cầu
           </Button>
         )}
-        {needs.campaignState === "PUBLISHED" && <LinkButton href="/feed">Xem Feed</LinkButton>}
+        {needs.campaignState === "PUBLISHED" && <LinkButton href="/feed">Xem nhu cầu đã đăng</LinkButton>}
       </Card>
     </div>
   );

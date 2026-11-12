@@ -232,11 +232,12 @@ export function putCart(campaignId: string, input: PutCartBody, idempotencyKey?:
 }
 
 /** `POST /api/v1/campaigns/{id}/cart/confirm` → 200 Cart ở CONFIRMED. */
-export function confirmCart(campaignId: string, version: number): Promise<Cart> {
+export function confirmCart(campaignId: string, version: number, idempotencyKey?: string): Promise<Cart> {
   const body = confirmCartInput.parse({ version });
   return apiFetch(`/api/v1/campaigns/${encodeURIComponent(campaignId)}/cart/confirm`, {
     method: "POST",
     body,
+    idempotencyKey,
     schema: cart,
   });
 }
@@ -247,11 +248,12 @@ export function getNeeds(campaignId: string): Promise<Needs> {
 }
 
 /** `POST /api/v1/campaigns/{id}/publish` với `{}` → 200 {campaignId, items}. */
-export function publishCampaign(campaignId: string): Promise<PublishResult> {
+export function publishCampaign(campaignId: string, idempotencyKey?: string): Promise<PublishResult> {
   const body = publishInput.parse({});
   return apiFetch(`/api/v1/campaigns/${encodeURIComponent(campaignId)}/publish`, {
     method: "POST",
     body,
+    idempotencyKey,
     schema: publishResult,
   });
 }

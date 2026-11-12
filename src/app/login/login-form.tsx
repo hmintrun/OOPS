@@ -1,9 +1,10 @@
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
+import { resolveLoginNext } from "@/lib/login-next";
 
 /**
  * Ô nhập dựng theo quy ước control của design/STYLE.md mục 6 (trắng, viền line,
@@ -20,9 +21,7 @@ const FIELD_INPUT = [
   "placeholder:text-navy-600 disabled:cursor-not-allowed",
 ].join(" ");
 
-const CONFIG_MESSAGE =
-  "Ứng dụng chưa được cấu hình Supabase. Vui lòng thêm NEXT_PUBLIC_SUPABASE_URL và " +
-  "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY vào .env.local rồi khởi động lại.";
+const CONFIG_MESSAGE = "Dịch vụ tài khoản chưa sẵn sàng. Vui lòng thử lại sau.";
 
 const FALLBACK_MESSAGE = "Không đăng nhập được. Vui lòng kiểm tra kết nối và thử lại.";
 
@@ -53,26 +52,14 @@ function supabaseBrowser(): BrowserClient | null {
   return cachedClient;
 }
 
-/** Chỉ cho phép điều hướng trong app; chặn link tuyệt đối và protocol-relative. */
-function resolveNext(raw: string | null): string {
-  const fallback = "/groups";
-  if (!raw) return fallback;
-  try {
-    const url = new URL(raw, "http://oops.invalid");
-    if (url.origin !== "http://oops.invalid") return fallback;
-    return url.pathname + url.search + url.hash;
-  } catch {
-    return fallback;
-  }
-}
-
-type FormState = { kind: "idle" } | { kind: "error"; message: string };
+type FormState = { kind: "idle" } | { kind: "error" | "notice"; message: string };
 
 /** Form đăng nhập bằng email/mật khẩu; phiên Supabase ghi cookie mà /api/v1 đọc. */
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const formRef = useRef<HTMLFormElement>(null);
+  const [register, setRegister] = useState(false);
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
@@ -86,7 +73,7 @@ export function LoginForm() {
       return;
     }
     const address = email.trim();
-    if (!address || !password) {
+    if (!address || !password || (register && !name.trim())) {
       setState({ kind: "error", message: "Vui lòng nhập email và mật khẩu." });
       return;
     }
@@ -95,8 +82,26 @@ export function LoginForm() {
     setState({ kind: "idle" });
     let message: string | null = null;
     try {
-      const { error } = await client.auth.signInWithPassword({ email: address, password });
-      message = error ? error.message : null;
+      const next = resolveLoginNext(searchParams.get("next"));
+      if (register) {
+        const callback = new URL("/login/confirm", window.location.origin);
+        callback.searchParams.set("next", next);
+        const { data, error } = await client.auth.signUp({
+          email: address,
+          password,
+          options: { data: { display_name: name.trim() }, emailRedirectTo: callback.toString() },
+        });
+        if (!error && !data.session) {
+          setPending(false);
+          setPassword("");
+          setState({ kind: "notice", message: "Kiểm tra email để xác nhận tài khoản trên trình duyệt này." });
+          return;
+        }
+        message = error ? "Không đăng ký được. Kiểm tra email và yêu cầu mật khẩu rồi thử lại." : null;
+      } else {
+        const { error } = await client.auth.signInWithPassword({ email: address, password });
+        message = error ? "Không đăng nhập được. Hãy kiểm tra email, mật khẩu và xác nhận email." : null;
+      }
     } catch {
       message = FALLBACK_MESSAGE;
     }
@@ -106,20 +111,26 @@ export function LoginForm() {
       return;
     }
     // Giữ trạng thái loading tới khi màn hình kế tiếp render.
-    router.replace(resolveNext(searchParams.get("next")));
+    router.replace(resolveLoginNext(searchParams.get("next")));
   }
 
   return (
     <Card>
-      <CardTitle>Đăng nhập</CardTitle>
+      <CardTitle as="h2">{register ? "Tạo tài khoản" : "Đăng nhập"}</CardTitle>
       <form
-        ref={formRef}
         className="grid gap-3"
         onSubmit={event => {
           event.preventDefault();
           void handleSubmit();
         }}
       >
+        {register && <label className="grid gap-2">
+          <span className="text-label">Tên hiển thị</span>
+          <span className={FIELD_ROW}>
+            <input className={FIELD_INPUT} autoComplete="name" maxLength={80} required
+              value={name} disabled={pending} onChange={event => setName(event.target.value)} />
+          </span>
+        </label>}
         <label className="grid gap-2">
           <span className="text-label">Email</span>
           <span className={FIELD_ROW}>
@@ -147,7 +158,8 @@ export function LoginForm() {
             <input
               className={FIELD_INPUT}
               type="password"
-              autoComplete="current-password"
+              autoComplete={register ? "new-password" : "current-password"}
+              minLength={register ? 6 : undefined}
               required
               placeholder="Mật khẩu của bạn"
               value={password}
@@ -166,15 +178,22 @@ export function LoginForm() {
             <span className="min-w-0 break-words">{state.message}</span>
           </p>
         )}
+        {state.kind === "notice" && <p role="status">{state.message}</p>}
+        {state.kind === "idle" && searchParams.get("confirmation") === "failed" && (
+          <p role="alert">Không xác nhận được email. Hãy mở lại liên kết trên trình duyệt đã đăng ký.</p>
+        )}
 
         <div className="mt-1">
-          {/* Nút submit ẩn để phím Enter/Go trên mobile kích hoạt form; CTA vẫn là Button của kit. */}
-          <button type="submit" className="hidden" tabIndex={-1} />
-          <Button loading={pending} disabled={pending} onClick={() => formRef.current?.requestSubmit()}>
+          <Button type="submit" loading={pending}>
             <MaterialSymbol name="login" className="ui-btn__icon" />
-            Đăng nhập
+            {register ? "Đăng ký" : "Đăng nhập"}
           </Button>
         </div>
+        <Button variant="ghost" disabled={pending} onClick={() => {
+          setRegister(!register);
+          setPassword("");
+          setState({ kind: "idle" });
+        }}>{register ? "Quay lại đăng nhập" : "Tạo tài khoản mới"}</Button>
       </form>
     </Card>
   );

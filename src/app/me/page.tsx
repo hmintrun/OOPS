@@ -49,21 +49,21 @@ export default function MePage() {
   }, [load]);
 
   return (
-    <main className="me-screen">
+    <main className="ui-app-page">
       <ScreenHeader
         title="Tài khoản"
-        subtitle="Thông tin hộ gia đình, ví Fuji và phiên đăng nhập."
+        subtitle="Quản lý thông tin của hộ gia đình."
         icon={{ icon: "person", tone: "green" }}
       />
 
-      <div className="ui-screen-body me-stack">
+      <div className="ui-screen-body ui-card-grid">
         {state.phase === "loading" && (
           <Card>
             <div className="me-card-head">
               <IconTile icon="hourglass_top" tone="sky" />
               <CardTitle>Đang tải</CardTitle>
             </div>
-            <p className="me-muted">Đang đọc thông tin tài khoản…</p>
+            <p className="me-muted" role="status">Đang đọc thông tin tài khoản…</p>
           </Card>
         )}
 
@@ -74,7 +74,7 @@ export default function MePage() {
               <CardTitle>Không tải được</CardTitle>
             </div>
             <div className="me-field-stack">
-              <p className="me-muted">{state.message}</p>
+              <p className="me-muted" role="alert">{state.message}</p>
               <Button variant="secondary" onClick={() => void load()}>
                 <MaterialSymbol name="refresh" className="ui-btn__icon" />
                 Thử lại
