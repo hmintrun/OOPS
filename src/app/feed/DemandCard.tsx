@@ -62,6 +62,12 @@ export function DemandCard({ item, category }: { item: DemandItem; category?: Ca
       <p className="text-label" style={{ margin: "12px 0 0" }}>
         Còn thiếu {item.missing} / Cần {item.target} {item.unit}
       </p>
+      <progress
+        className="feed-progress"
+        aria-label={`Đã nhận ${item.received} trên ${item.target} ${item.unit}`}
+        value={Math.min(item.received, item.target)}
+        max={item.target}
+      />
       <p className="text-small" style={{ margin: "4px 0 0", color: "var(--oops-navy-600)" }}>
         Có thể chốt thêm: {item.offerable} {item.unit}
       </p>

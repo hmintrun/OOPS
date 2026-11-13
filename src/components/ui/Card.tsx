@@ -21,6 +21,10 @@ export function Card({ className = "", padding = "default", children }: CardProp
   return <section className={classes}>{children}</section>;
 }
 
-export function CardTitle({ className = "", children }: { className?: string; children?: ReactNode }) {
-  return <h3 className={`ui-card__title ${className}`}>{children}</h3>;
+export function CardTitle({ as: Heading = "h3", className = "", children }: {
+  as?: "h2" | "h3";
+  className?: string;
+  children?: ReactNode;
+}) {
+  return <Heading className={`ui-card__title ${className}`}>{children}</Heading>;
 }

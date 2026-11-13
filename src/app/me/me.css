@@ -3,17 +3,6 @@
  * component dùng chung; mọi màu/kích thước lấy từ design/tokens.css.
  */
 
-.me-screen {
-  max-width: 430px;
-  margin: 0 auto;
-  min-height: 100dvh;
-}
-
-.me-stack {
-  display: grid;
-  gap: 16px;
-}
-
 .me-card-head {
   display: flex;
   align-items: center;

@@ -17,32 +17,22 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
   if ((!profile.ok && profile.status === 401) || (!group.ok && group.status === 401)) redirect("/login");
   if (!group.ok && group.status === 404) notFound();
   if (!group.ok || !profile.ok) {
-    return <AppShell title="Nhóm của tôi"><p role="alert">{!group.ok ? group.message : !profile.ok && profile.message}</p></AppShell>;
+    return <AppShell title="Nhóm của tôi" familyBackground><p role="alert">{!group.ok ? group.message : !profile.ok && profile.message}</p></AppShell>;
   }
   const data = group.data;
   const isRepresentative = data.repId === profile.data.userId;
   return (
-    <AppShell title="Nhóm của tôi" icon={{ icon: "groups", tone: "green" }} bare>
-      <div className="grid gap-4">
+    <AppShell title="Nhóm của tôi" subtitle={`${data.members.length} hộ gia đình`} icon={{ icon: "groups", tone: "green" }} familyBackground bare>
+      <div className="ui-card-grid">
         <Card>
-          <CardTitle>Thành viên</CardTitle>
-          <ul className="grid gap-2">
-            {data.members.map(member => (
-              <li key={member.membershipId}>
-                {member.displayName}{member.role === "REP" ? " · Đại diện" : ""}
-              </li>
-            ))}
-          </ul>
-        </Card>
-        {isRepresentative && <InviteForm groupId={data.groupId} members={data.members.filter(member => member.role !== "REP")} />}
-        <Card>
-          <CardTitle>Đợt gom</CardTitle>
+          <CardTitle as="h2">Đợt gom</CardTitle>
           {data.campaigns.length > 0 ? (
             <ul className="grid gap-2">
               {data.campaigns.map(campaign => (
                 <li key={campaign.campaignId}>
-                  <Link href={`/campaigns/${campaign.campaignId}`}>
-                    {campaign.state === "DRAFT" ? "Đang chuẩn bị" : "Đã đăng"} · Cần hàng trước {formatDateTime(campaign.needBy)}
+                  <Link href={`/campaigns/${campaign.campaignId}`} className="ui-group-campaign">
+                    <strong>{campaign.state === "DRAFT" ? "Đang chuẩn bị" : "Đã đăng"}</strong>
+                    <span>Cần hàng trước {formatDateTime(campaign.needBy)}</span>
                   </Link>
                 </li>
               ))}
@@ -52,6 +42,17 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
             {isRepresentative ? "Quản lý đợt gom" : "Xem các đợt gom"}
           </Link>
         </Card>
+        <Card>
+          <CardTitle as="h2">Thành viên</CardTitle>
+          <ul className="grid gap-2">
+            {data.members.map(member => (
+              <li key={member.membershipId}>
+                {member.displayName}{member.role === "REP" ? " · Đại diện" : ""}
+              </li>
+            ))}
+          </ul>
+        </Card>
+        {isRepresentative && <InviteForm groupId={data.groupId} members={data.members.filter(member => member.role !== "REP")} />}
       </div>
     </AppShell>
   );

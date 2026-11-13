@@ -19,12 +19,13 @@ import {
 import { SHELL_NAV_ITEMS } from "@/components/app-shell";
 // `SelectOption` chưa được re-export ở barrel index.ts; import thẳng từ component.
 import type { SelectOption } from "@/components/ui/Select";
-import type { CatalogItem, DemandItem, Feed } from "@/contracts/foundation";
+import type { CatalogItem, DemandItem } from "@/contracts/foundation";
+import { ApiError, getCatalog, getFeed, type FeedFilters } from "@/lib/api-client";
 import { DemandCard } from "./DemandCard";
 import "./feed.css";
 
 type Category = CatalogItem["category"];
-type AppliedFilters = { category: string; district: string; ward: string };
+type AppliedFilters = { category: Category | ""; district: string; ward: string };
 type LoadStatus = "loading" | "ready" | "empty" | "error";
 
 const FEED_LIMIT = 20;
@@ -36,33 +37,18 @@ const categoryOptions: SelectOption[] = [
   { value: "ESSENTIALS", label: "Nhu yếu phẩm" },
 ];
 
-/** Thân lỗi của `/api/v1` (src/contracts/foundation.ts → apiError). */
-type ApiFailureBody = { error?: { code?: string; message?: string } };
-
-/** Gọi `/api/v1` theo style dự án; 401 → `/login`, lỗi khác ném message tiếng Việt của server. */
-async function callApi<T>(path: string): Promise<T> {
-  const response = await fetch(path, { credentials: "same-origin" });
-  if (response.ok) return (await response.json()) as T;
-  if (response.status === 401) {
-    window.location.href = "/login";
-    throw new Error("Phiên đăng nhập đã hết, đang chuyển đến trang đăng nhập…");
-  }
-  let message = "Không thể tải dữ liệu.";
-  try {
-    const body = (await response.json()) as ApiFailureBody;
-    if (body?.error?.message) message = body.error.message;
-  } catch {
-    // Giữ message mặc định khi thân phản hồi không phải JSON.
-  }
-  throw new Error(message);
-}
-
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : "Không thể tải dữ liệu.";
 }
 
+function redirectExpiredSession(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 401) return false;
+  window.location.replace("/login?next=%2Ffeed");
+  return true;
+}
+
 export default function FeedPage() {
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState<Category | "">("");
   const [district, setDistrict] = useState("");
   const [ward, setWard] = useState("");
   const [applied, setApplied] = useState<AppliedFilters>({ category: "", district: "", ward: "" });
@@ -78,7 +64,7 @@ export default function FeedPage() {
   // Danh mục chỉ dùng để chọn icon; thiếu catalog thì Feed vẫn hiển thị bình thường.
   useEffect(() => {
     let active = true;
-    void callApi<{ items: CatalogItem[] }>("/api/v1/catalog")
+    void getCatalog()
       .then((data) => {
         if (active) setCategories(new Map(data.items.map((item) => [item.skuId, item.category])));
       })
@@ -90,17 +76,13 @@ export default function FeedPage() {
     };
   }, []);
 
-  const buildUrl = useCallback(
-    (filters: AppliedFilters, cursor?: string) => {
-      const params = new URLSearchParams({ limit: String(FEED_LIMIT) });
-      if (filters.category) params.set("category", filters.category);
-      if (filters.district.trim()) params.set("district", filters.district.trim());
-      if (filters.ward.trim()) params.set("ward", filters.ward.trim());
-      if (cursor) params.set("cursor", cursor);
-      return `/api/v1/feed?${params.toString()}`;
-    },
-    [],
-  );
+  const requestFilters = useCallback((filters: AppliedFilters, cursor?: string): FeedFilters => ({
+    category: filters.category || undefined,
+    district: filters.district.trim() || undefined,
+    ward: filters.ward.trim() || undefined,
+    limit: FEED_LIMIT,
+    cursor,
+  }), []);
 
   const loadFirstPage = useCallback(
     async (filters: AppliedFilters) => {
@@ -109,18 +91,19 @@ export default function FeedPage() {
       setLoadingMore(false);
       setMoreError("");
       try {
-        const data = await callApi<Feed>(buildUrl(filters));
+        const data = await getFeed(requestFilters(filters));
         if (run !== generation.current) return; // Bộ lọc đã đổi, bỏ kết quả cũ.
         setItems(data.items);
         setNextCursor(data.nextCursor);
         setStatus(data.items.length === 0 ? "empty" : "ready");
       } catch (error) {
         if (run !== generation.current) return;
+        if (redirectExpiredSession(error)) return;
         setErrorMessage(messageOf(error));
         setStatus("error");
       }
     },
-    [buildUrl],
+    [requestFilters],
   );
 
   const loadMore = useCallback(async () => {
@@ -129,17 +112,18 @@ export default function FeedPage() {
     setLoadingMore(true);
     setMoreError("");
     try {
-      const data = await callApi<Feed>(buildUrl(applied, nextCursor));
+      const data = await getFeed(requestFilters(applied, nextCursor));
       if (run !== generation.current) return; // Bộ lọc đã đổi, bỏ trang nối tiếp.
       setItems((current) => [...current, ...data.items]);
       setNextCursor(data.nextCursor);
     } catch (error) {
       if (run !== generation.current) return;
+      if (redirectExpiredSession(error)) return;
       setMoreError(messageOf(error));
     } finally {
       if (run === generation.current) setLoadingMore(false);
     }
-  }, [applied, buildUrl, loadingMore, nextCursor]);
+  }, [applied, requestFilters, loadingMore, nextCursor]);
 
   // Tải trang 1 khi bộ lọc được áp dụng (kể cả lần mount đầu).
   useEffect(() => {
@@ -154,22 +138,23 @@ export default function FeedPage() {
   };
 
   const changeCategory = (value: string) => {
+    if (value !== "" && value !== "WATER" && value !== "FOOD" && value !== "ESSENTIALS") return;
     setCategory(value);
     setApplied((current) => ({ ...current, category: value }));
   };
 
   return (
-    <main style={{ maxWidth: 430, margin: "0 auto", minHeight: "100dvh" }}>
+    <main className="ui-app-page">
       <ScreenHeader
-        title="Feed nhu cầu"
-        subtitle="Nhu cầu mua đã đăng của các nhóm, chốt theo lô có cọc."
+        title="Nhu cầu quanh bạn"
+        subtitle="Xem các nhóm đang cần mặt hàng gì."
         icon={{ icon: "dynamic_feed", tone: "green" }}
       />
 
       <div className="ui-screen-body" style={{ display: "grid", gap: 16 }}>
         <Card padding="tight">
           <CardTitle>Lọc nhu cầu</CardTitle>
-          <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
+          <form onSubmit={onSubmit} className="feed-filters">
             <Select
               label="Danh mục"
               value={category}
@@ -196,7 +181,7 @@ export default function FeedPage() {
                 aria-label="Phường"
               />
             </label>
-            <Button variant="secondary" onClick={submitFilters}>
+            <Button variant="secondary" type="submit">
               <span className="ui-btn__icon material-symbols-rounded">filter_list</span>
               Lọc
             </Button>
@@ -205,7 +190,7 @@ export default function FeedPage() {
 
         {status === "loading" && (
           <Card>
-            <p className="text-body" style={{ margin: 0, color: "var(--oops-navy-600)" }}>
+            <p role="status" className="text-body" style={{ margin: 0, color: "var(--oops-navy-600)" }}>
               Đang tải nhu cầu…
             </p>
           </Card>
@@ -228,7 +213,7 @@ export default function FeedPage() {
         {status === "error" && (
           <Card>
             <CardTitle>Không tải được nhu cầu</CardTitle>
-            <p className="text-body" style={{ margin: 0, color: "var(--oops-navy-600)" }}>{errorMessage}</p>
+            <p role="alert" className="text-body" style={{ margin: 0, color: "var(--oops-navy-600)" }}>{errorMessage}</p>
             <div style={{ marginTop: 16 }}>
               <Button variant="danger" onClick={() => void loadFirstPage(applied)}>
                 Thử lại
@@ -239,7 +224,7 @@ export default function FeedPage() {
 
         {status === "ready" && (
           <>
-            <div style={{ display: "grid", gap: 16 }}>
+            <div className="ui-card-grid">
               {items.map((item) => (
                 <DemandCard key={item.demandItemId} item={item} category={categories.get(item.skuId)} />
               ))}

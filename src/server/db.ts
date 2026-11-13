@@ -11,11 +11,15 @@ function databasePool() {
   const url = new URL(connectionString);
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   const caFile = process.env.DATABASE_CA_FILE;
+  const caPem = process.env.DATABASE_CA_PEM;
   // pg's connection-string SSL parameters take precedence over the ssl object.
   for (const option of ["ssl", "sslmode", "sslcert", "sslkey", "sslrootcert"]) url.searchParams.delete(option);
   pool = new Pool({
     connectionString: url.toString(),
-    ssl: local ? false : { rejectUnauthorized: true, ...(caFile ? { ca: readFileSync(caFile, "utf8") } : {}) },
+    ssl: local ? false : {
+      rejectUnauthorized: true,
+      ...(caPem ? { ca: caPem } : caFile ? { ca: readFileSync(caFile, "utf8") } : {}),
+    },
     max: 5,
     connectionTimeoutMillis: 5_000,
   });
