@@ -6,6 +6,32 @@
 @import "../components/ui/hero.css";
 @import "../components/ui/illustrations.css";
 
+.pwa-connection {
+  position: fixed;
+  inset: max(8px, env(safe-area-inset-top)) 12px auto;
+  z-index: 60;
+  display: grid;
+  justify-items: center;
+  pointer-events: none;
+}
+
+.pwa-connection p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--oops-sun, var(--oops-warn));
+  border-radius: var(--oops-radius-input);
+  background: var(--oops-sun-tint, var(--oops-amber-tint));
+  color: var(--oops-amber-ink, var(--oops-navy-900));
+  box-shadow: var(--oops-shadow-card);
+  font-weight: 750;
+}
+
+.ui-card.pwa-install-card {
+  background: linear-gradient(135deg, var(--oops-mint, var(--oops-green-100)), var(--oops-surface) 68%);
+}
+
 @layer base {
   html {
     /* Màu overscroll (iOS rubber-band) khớp đáy gradient, tránh lộ nền trắng. */

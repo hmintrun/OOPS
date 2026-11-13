@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import type { Me } from "@/contracts/foundation";
+import { PwaInstallCard } from "@/components/pwa";
 import { AccountSection } from "./AccountSection";
 import { ContactSection } from "./ContactSection";
 import { SignOutSection } from "./SignOutSection";
@@ -53,7 +54,7 @@ export default function MePage() {
       title="Tài khoản"
       subtitle="Quản lý thông tin của hộ gia đình."
       illustration="home"
-      bodyClassName={state.phase === "ready" ? "ui-card-grid" : undefined}
+      bodyClassName={state.phase === "ready" ? "ui-card-grid" : "ui-stack"}
       bare
     >
         {state.phase === "loading" && (
@@ -90,6 +91,7 @@ export default function MePage() {
             <SignOutSection />
           </>
         )}
+        <PwaInstallCard />
     </AppShell>
   );
 }

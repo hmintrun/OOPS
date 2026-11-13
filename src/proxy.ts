@@ -13,7 +13,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const PUBLIC_PREFIXES = ["/login", "/join", "/api", "/ui-preview"];
 
 function isPublic(pathname: string): boolean {
-  if (pathname === "/") return true;
+  if (pathname === "/" || pathname === "/manifest.webmanifest" || pathname === "/offline.html") return true;
   return PUBLIC_PREFIXES.some(prefix => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 

@@ -6,6 +6,7 @@ import { SHELL_NAV_ITEMS } from "@/components/app-shell";
 import { Button, Card, CardTitle, IconTile, MaterialSymbol, ScreenHeader } from "@/components/ui";
 import { NavigationFrame } from "@/components/ui/BottomNav";
 import { money, scenario } from "./scenario";
+import { PwaInstallCard } from "@/components/pwa";
 import { OrderDemo } from "./OrderDemo";
 
 type Tab = "groups" | "feed" | "orders" | "me";
@@ -181,6 +182,7 @@ export function OopsDemo() {
           <Button full={false} variant="secondary" onClick={reset}>Làm lại từ đầu</Button>
           <Link className="demo-link" href="/ui-preview">Xem bộ giao diện</Link>
         </Card>}
+        {tab === "me" && <PwaInstallCard />}
       </div>
     </main>
   );
