@@ -89,6 +89,9 @@ export default function OrdersPage() {
               <span className={`rounded-pill px-3 py-1 text-sm font-bold ${toneClasses[orderStateTones[order.state]]}`}>{orderStates[order.state]}</span>
             </div>
             <p className="font-bold tabular-nums">{order.qty} đơn vị · {vnd(order.goodsVnd)}</p>
+            {order.state === "AWAIT_COMMITMENTS" && order.confirmBy && (
+              <p className="text-navy-600">Hạn xác nhận Fuji · {dateTime(order.confirmBy)}</p>
+            )}
             <p className="text-navy-600">Hạn bàn giao · {dateTime(order.handoffBy)}</p>
             <Link className="ui-btn ui-btn--secondary mt-auto" href={`/orders/${order.contractId}`}>Xem đơn</Link>
           </Card>)}
