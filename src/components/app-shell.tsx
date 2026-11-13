@@ -3,12 +3,13 @@
 import type { ReactNode } from "react";
 import { BottomNav, Card, type NavItem } from "@/components/ui";
 import { ScreenHeader } from "@/components/ui";
+import type { PageScene } from "@/components/ui/PageArtwork";
 
 /** Các mục BottomNav theo design/STYLE.md mục 6. */
 export const SHELL_NAV_ITEMS: NavItem[] = [
-  { key: "groups", label: "Nhóm của tôi", icon: "groups", href: "/groups", relatedPath: "/campaigns" },
-  { key: "feed", label: "Nhu cầu", icon: "newspaper", href: "/feed" },
-  { key: "orders", label: "Đơn hàng", icon: "inventory_2", href: "/orders" },
+  { key: "groups", label: "Nhóm của tôi", icon: "groups", href: "/groups", relatedPaths: ["/campaigns"], prefetch: false },
+  { key: "feed", label: "Nhu cầu", icon: "newspaper", href: "/feed", relatedPaths: ["/trade/needs"] },
+  { key: "orders", label: "Đơn hàng", icon: "inventory_2", href: "/orders", relatedPaths: ["/trade/drafts", "/trade/rounds", "/notifications", "/ops"] },
   { key: "me", label: "Tài khoản", icon: "person", href: "/me" },
 ];
 
@@ -24,6 +25,8 @@ type AppShellProps = {
   /** Bỏ thẻ trắng mặc định khi màn tự xếp thẻ của riêng nó. */
   bare?: boolean;
   familyBackground?: boolean;
+  illustration?: PageScene;
+  bodyClassName?: string;
 };
 
 /**
@@ -31,14 +34,14 @@ type AppShellProps = {
  * trên nền trời, nội dung trong thẻ trắng nổi, đáy chừa chỗ cho BottomNav qua
  * class `.ui-screen-body` có sẵn trong src/components/ui/ui.css.
  */
-export function AppShell({ title, subtitle, icon, aside, children, bare = false, familyBackground = false }: AppShellProps) {
+export function AppShell({ title, subtitle, icon, aside, children, bare = false, familyBackground = false, bodyClassName, illustration }: AppShellProps) {
   return (
     <main className={familyBackground ? "ui-app-page ui-family-page" : "ui-app-page"}>
-      {title && <ScreenHeader title={title} subtitle={subtitle} icon={icon} aside={aside} familyBackground={familyBackground} />}
-      <div className="ui-screen-body">
+      <BottomNav items={SHELL_NAV_ITEMS} />
+      {title && <ScreenHeader title={title} subtitle={subtitle} icon={icon} aside={aside} familyBackground={familyBackground} illustration={illustration} />}
+      <div className={bodyClassName ? `ui-screen-body ${bodyClassName}` : "ui-screen-body"}>
         {bare ? children : <Card>{children}</Card>}
       </div>
-      <BottomNav items={SHELL_NAV_ITEMS} />
     </main>
   );
 }

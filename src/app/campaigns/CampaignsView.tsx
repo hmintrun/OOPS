@@ -16,18 +16,12 @@ import {
 } from "./_shared/dates";
 import {
   Banner,
-  CampaignNav,
   CheckboxField,
   CampaignStateChip,
   Field,
   INPUT_CLASS,
   LoadingState,
 } from "./_shared/ui";
-
-/** Dựng BottomNav tách bản ghi để trang không biến thành client component toàn phần. */
-function CampaignsNav() {
-  return <CampaignNav />;
-}
 
 type LoadState =
   | { phase: "loading" }
@@ -226,7 +220,6 @@ export function CampaignsView() {
           {isRep && <CreateCampaignForm groupId={state.group.groupId} onCreated={refresh} />}
         </>
       )}
-      <CampaignsNav />
     </div>
   );
 }

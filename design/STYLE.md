@@ -27,7 +27,7 @@ Mọi màn hình và component **bắt buộc** dùng tokens dưới đây, khô
 | `rose-tint` | `#FDE8EC` | Icon tile hồng (cảnh báo nhẹ, nhu cầu) |
 | `surface` | `#FFFFFF` | Thẻ, nút phụ, bottom nav |
 | `line` | `#E2EAF2` | Viền input, divider |
-| `danger` | `#E5484D` | Lỗi, hủy, NEEDS_REVIEW |
+| `danger` | `#B72D39` | Lỗi, hủy, NEEDS_REVIEW |
 | `warn` | `#F5A623` | Sắp hết hạn, chờ xử lý |
 
 Trạng thái nghiệp vụ map: thành công/đã nhận → `green-600`; chờ/chưa xử lý → `warn`; lỗi/cần xử lý → `danger`; thông tin/chờ xác nhận → `navy-600` trên `sky-tint`.
@@ -57,7 +57,7 @@ Chỉ dùng `green-600/700/100` từ preset; không dùng các shade green mặc
   - `nav`: `0 -4px 16px rgba(20,56,95,0.06)`
   - Nút không đổ bóng (chỉ đổi `green-700` khi pressed).
 - Spacing base 4px: padding trong thẻ `16–20px`; gap giữa các dòng control `12px`; giữa các thẻ `16px`; lề màn hình `16px`.
-- Chiều cao control: input/select/nút `52px` (`h-control`); bottom nav `64px` + safe-area.
+- Chiều cao control: `48px` (`h-control`); vùng chạm tối thiểu `44px`. Thanh dưới `64px` + safe-area.
 
 ## 5. Icon (đã chốt 11/11/2026)
 
@@ -68,11 +68,12 @@ Chỉ dùng `green-600/700/100` từ preset; không dùng các shade green mặc
 
 ## 6. Controls (quy ước vẽ)
 
-- **Select/Input:** hàng trắng viền `line`, radius 16, cao 52; label `text-label` navy bên trái, icon tile pastel đứng trước label; value bên phải kèm chevron `expand_more` màu `navy-600`.
-- **Nút chính:** pill, nền `green-600`, chữ trắng `text-button`, icon đặt trước chữ, full-width mặc định; pressed `green-700`.
+- **Select/Input:** hàng trắng viền `line`, radius 16px, cao 48px; label `text-label` navy bên trái, icon tile pastel trước label; value bên phải kèm chevron `expand_more` màu `navy-600`.
+- **Nút chính:** pill, nền `green-700`, chữ trắng, icon đặt trước chữ. Trong thẻ, nút có thể phủ hết chiều ngang trên mobile; từ 640px co theo nội dung, tối đa 320px.
 - **Nút phụ:** nền `green-100` chữ `green-700`, hoặc trắng viền `line` chữ navy.
 - **Nút phá vỡ (hủy/báo sự cố):** nền `danger` chữ trắng — `<Button variant="danger">`.
-- **BottomNav:** nền trắng, 4 mục (Nhóm của tôi, Feed, Đơn hàng, Tài khoản); mục active: pill nền `green-100`, icon fill + chữ `green-600`; mục khác `navy-600`. Trang nội dung chừa đáy `padding-bottom: calc(var(--nav-h) + 24px)` để không bị nav che.
+- **Điều hướng:** 4 mục (Nhóm của tôi, Nhu cầu, Đơn hàng, Tài khoản). Mục hiện tại có nền `green-100` và icon fill. Dưới 1024px dùng thanh dưới có safe-area; từ 1024px dùng thanh trên.
+- **Khung nội dung:** rộng tối đa 1120px, lề 16/24/32px trên mobile/tablet/desktop. Khoảng cách giữa các khối là 16px, tăng lên 24px trên desktop.
 - **ScreenHeader:** icon tile + tiêu đề `text-display` navy, subtitle `text-body` `navy-600`; nằm trực tiếp trên nền trời, thẻ nội dung trượt dưới nó.
 
 ## 7. Triển khai

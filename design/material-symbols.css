@@ -5,6 +5,10 @@
   font-style: normal;
   display: inline-block;
   line-height: 1;
+  inline-size: 1em;
+  block-size: 1em;
+  flex-shrink: 0;
+  overflow: hidden;
   letter-spacing: normal;
   text-transform: none;
   white-space: nowrap;

@@ -3,17 +3,25 @@
 @import "../../design/material-symbols.css";
 @import "../../design/tailwind.theme.css";
 @import "../components/ui/ui.css";
+@import "../components/ui/hero.css";
+@import "../components/ui/illustrations.css";
 
 @layer base {
   html {
     /* Màu overscroll (iOS rubber-band) khớp đáy gradient, tránh lộ nền trắng. */
     background-color: var(--oops-sky-300);
     color-scheme: light;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
   body {
     font-family: var(--oops-font-sans);
     color: var(--oops-navy-900);
     background: linear-gradient(180deg, var(--oops-sky-100), var(--oops-sky-300));
     min-height: 100dvh;
+    font-size: 15.5px;
+    line-height: 1.55;
+    letter-spacing: -0.01em;
   }
 }

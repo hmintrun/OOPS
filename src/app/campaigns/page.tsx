@@ -8,7 +8,7 @@ export default function CampaignsPage() {
     <AppShell
       title="Đợt gom của nhóm"
       subtitle="Chọn một đợt để đặt nhu yếu phẩm."
-      icon={{ icon: "inventory_2", tone: "green" }}
+      illustration="basket"
       bare
     >
       <CampaignsView />

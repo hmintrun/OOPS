@@ -1,0 +1,100 @@
+.ui-app-page .ui-illustrated-header {
+  --scene-tint: var(--oops-green-100);
+  --scene-accent: var(--oops-green-700);
+  display: flex;
+  position: relative;
+  isolation: isolate;
+  align-items: center;
+  justify-content: space-between;
+  min-block-size: 6.5rem;
+  gap: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--oops-surface);
+  border-radius: var(--oops-radius-card);
+  background:
+    radial-gradient(ellipse at 86% 85%, var(--scene-tint), transparent 63%),
+    linear-gradient(112deg, var(--oops-surface) 8%, var(--scene-tint) 100%);
+  box-shadow: var(--oops-shadow-card);
+  overflow: clip;
+}
+.ui-app-page .ui-illustrated-header--basket { --scene-tint: var(--oops-green-100); }
+.ui-app-page .ui-illustrated-header--parcel {
+  --scene-tint: var(--oops-amber-tint);
+  --scene-accent: var(--oops-navy-900);
+}
+.ui-app-page .ui-illustrated-header--home {
+  --scene-tint: var(--oops-sky-tint);
+  --scene-accent: var(--oops-navy-900);
+}
+.ui-app-page > .ui-illustrated-header {
+  width: min(calc(100% - 2 * var(--oops-space-screen)), calc(var(--oops-content-max) - 2 * var(--oops-space-screen)));
+  margin-block: var(--oops-space-page-top) var(--oops-space-section);
+}
+.ui-illustrated-header .ui-screen-header__text { padding: 0; }
+.ui-illustrated-header .ui-screen-header__heading { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.ui-illustrated-header .ui-screen-header__title { text-wrap: balance; }
+.ui-illustrated-header .ui-screen-header__subtitle { max-inline-size: 54ch; line-height: 1.45; }
+.ui-screen-header__badge {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: var(--oops-radius-pill);
+  color: var(--scene-accent, var(--oops-green-700));
+  background: color-mix(in srgb, var(--scene-tint, var(--oops-green-100)) 70%, var(--oops-surface));
+  font-size: 0.8125rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.ui-page-art {
+  position: relative;
+  align-self: stretch;
+  flex: 0 0 clamp(4.5rem, 24vw, 10rem);
+  min-block-size: 4.75rem;
+  pointer-events: none;
+}
+.ui-page-art::before {
+  content: "";
+  position: absolute;
+  inset: 4% 0;
+  background: radial-gradient(ellipse, var(--oops-surface) 0%, transparent 74%);
+}
+.ui-page-art__cloud {
+  position: absolute;
+  inset: 15% auto auto 0;
+  inline-size: 46%;
+  block-size: auto;
+}
+.ui-page-art__ground {
+  position: absolute;
+  inset: auto 0 0;
+  block-size: 32%;
+  background: url("/assets/hero/hill-strip.webp") center / auto 100% repeat-x;
+  mask-image: radial-gradient(ellipse, #000 22%, transparent 72%);
+  opacity: .55;
+}
+.ui-page-art__subject {
+  position: absolute;
+  inset: 50% auto auto 55%;
+  transform: translate(-50%, -50%);
+  inline-size: 100%;
+  block-size: 124%;
+  object-fit: contain;
+}
+.ui-illustrated-header--home .ui-page-art__subject {
+  block-size: 104%;
+  mask-image: linear-gradient(#000 89%, transparent);
+}
+@media (width >= 40rem) {
+  .ui-app-page .ui-illustrated-header { padding-inline: 24px; }
+}
+@media (width < 23.5rem) {
+  .ui-page-art { flex-basis: 4.25rem; }
+  .ui-illustrated-header .ui-screen-header__title { font-size: 1.375rem; }
+}
+@media (width >= 64rem) and (height <= 42rem) {
+  .demo-page .ui-illustrated-header { min-block-size: 5.5rem; padding-block: 8px; }
+  .demo-page .ui-page-art { min-block-size: 4.25rem; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ui-page-art__cloud { animation: ui-art-drift 8s ease-in-out 2 alternate; }
+  @keyframes ui-art-drift { to { transform: translateX(8px); } }
+}

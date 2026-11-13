@@ -432,6 +432,9 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     });
     const { latestVersion: version } = sellerDraftView.parse((await call(getDraft, seller, { id: draftId })).data);
     expect(version.qty).toBe(7);
+    expect(draft.parse((await call(getDraft, rep, { id: draftId })).data).permissions).toEqual({
+      editLine: false, manageDraft: false, finalize: false,
+    });
     const { rows: [responseWindow] } = await transaction(db => db.query<{ hours: number }>(
       `select (extract(epoch from seller_response_due_at - submitted_at) / 3600)::int as hours
        from public.negotiation_versions where id = $1`, [version.versionId],
@@ -453,9 +456,10 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect((await finalize(draftId, rep, "new-contract")).status).toBe(409);
     const sellerOrder = await orderFor(contractId, seller);
     const deposit = sellerOrder.charges[0];
-    expect(sellerOrder).toMatchObject({ state: "AWAIT_COMMITMENTS", qty: 7, roundId });
+    expect(sellerOrder).toMatchObject({ state: "AWAIT_COMMITMENTS", qty: 7, roundId, roundOpenBy: expect.any(String) });
     expect(sellerOrder.depositDueAt).toBeUndefined();
     expect(sellerOrder.confirmBy).toBeUndefined();
+    expect(deposit.canPay).toBe(false);
     expect((await pay(deposit.chargeId, seller)).status).toBe(409);
     const openedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
     const confirmBy = new Date(+openedAt + 12 * 3_600_000).toISOString();
@@ -468,10 +472,14 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       confirmBy, depositDueAt: new Date(+openedAt + 6 * 3_600_000).toISOString(),
       ...(price > 0 && { paymentDueAt: confirmBy }),
     });
+    expect((await orderFor(contractId, seller)).charges[0].canPay).toBe(true);
     const buyers = [rep, second, third];
     const buyerOrders = await Promise.all(buyers.map(buyer => orderFor(contractId, buyer)));
     expect(buyerOrders[0].charges).toHaveLength(price ? 1 : 0);
-    if (price) expect((await pay(buyerOrders[0].charges[0].chargeId, rep)).status).toBe(409);
+    if (price) {
+      expect(buyerOrders[0].charges[0].canPay).toBe(false);
+      expect((await pay(buyerOrders[0].charges[0].chargeId, rep)).status).toBe(409);
+    }
     async function sign(actor: string) {
       const index = participants.findIndex(row => row.user_id === actor);
       await transaction(db => db.query(
@@ -481,6 +489,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     }
     await sign(rep);
     if (price) {
+      expect((await orderFor(contractId, rep)).charges[0].canPay).toBe(true);
       const id = buyerOrders[0].charges[0].chargeId;
       expect((await Promise.all([pay(id, rep), pay(id, rep)])).map(result => result.status)).toEqual([200, 200]);
     }
@@ -634,27 +643,46 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     const created = await call(postOffer, seller, request);
     expect(created.status).toBe(201);
     const proposal = offer.parse(created.data);
-    expect(proposal).toMatchObject({ state: "SUBMITTED", goodsVnd: 20_000, depositVnd: 50_000 });
+    expect(proposal).toMatchObject({
+      state: "SUBMITTED", goodsVnd: 20_000, depositVnd: 50_000,
+      draftId: expect.any(String), voteDueAt: expect.any(String),
+    });
     expect(await call(postOffer, seller, request)).toEqual(created);
     expect((await call(postOffer, seller, { ...request, body: { ...terms, qty: 9 } })).status).toBe(409);
     const supported = offer.parse((await call(postOffer, otherSeller, {
       ...request, body: { ...terms, unitPriceVnd: 0, supportOffer: true },
     })).data);
-    expect(supported).toMatchObject({ goodsVnd: 0, depositVnd: 50_000 });
+    expect(supported).toMatchObject({
+      goodsVnd: 0, depositVnd: 50_000,
+      draftId: expect.any(String), voteDueAt: expect.any(String),
+    });
     expect((await call(getOffers, outsider, { id })).status).toBe(404);
     const sellerOffers = offers.parse((await call(getOffers, seller, { id })).data).items;
-    expect(sellerOffers).toEqual([proposal]);
+    expect(sellerOffers).toEqual([{ ...proposal, canOpenDraft: false }]);
     const memberOffers = offers.parse((await call(getOffers, second, { id })).data).items;
     expect(memberOffers).toHaveLength(2);
+    expect(memberOffers.every(entry => Boolean(entry.draftId && entry.voteDueAt) && entry.canOpenDraft === false)).toBe(true);
     expect(memberOffers.every(entry => !("handoffPrivate" in entry.terms))).toBe(true);
     expect(offers.parse((await call(getOffers, rep, { id })).data).items[0].terms.handoffPrivate)
       .toBe(terms.handoffPrivate);
+
+    expect(draft.parse((await call(getDraft, rep, { id: proposal.draftId })).data).permissions).toEqual({
+      editLine: false, manageDraft: false, finalize: false,
+    });
+    expect((await call(putDraftLine, rep, { id: proposal.draftId, method: "PUT", body: { qty: 1, editRevision: 0 } })).status).toBe(409);
 
     const open = { id: proposal.proposalId, method: "POST", body: {} };
     expect((await call(postDraft, seller, open)).status).toBe(403);
     expect((await call(postDraft, outsider, open)).status).toBe(404);
     expect((await call(postDraft, rep, open)).status).toBe(409);
     const legacy = { ...open, id: await legacyOffer(id, seller, 48, 2_000) };
+    const legacyMemberOffer = offers.parse((await call(getOffers, second, { id })).data).items
+      .find(entry => entry.proposalId === legacy.id);
+    expect(legacyMemberOffer).toMatchObject({ canOpenDraft: true });
+    expect(legacyMemberOffer?.draftId).toBeUndefined();
+    expect(legacyMemberOffer?.voteDueAt).toBeUndefined();
+    expect(offers.parse((await call(getOffers, seller, { id })).data).items
+      .find(entry => entry.proposalId === legacy.id)?.canOpenDraft).toBe(false);
     const attempts = await Promise.all([call(postDraft, rep, legacy), call(postDraft, second, legacy)]);
     expect(attempts.map(result => result.status).sort()).toEqual([201, 409]);
     const initial = draft.parse(attempts.find(result => result.status === 201)!.data);
@@ -679,6 +707,8 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       qty: 7, totalVnd: 14_000, editRevision: 3, myLine: { qty: 2, goodsVnd: 4_000, note: "Ghi chú riêng" },
     });
     const thirdDraft = draft.parse((await call(getDraft, third, { id: draftId })).data);
+    expect(thirdDraft.permissions).toEqual({ editLine: true, manageDraft: false, finalize: false });
+    expect(repDraft.permissions).toMatchObject({ editLine: true, finalize: true });
     expect(thirdDraft.myLine).toEqual({ qty: 3, goodsVnd: 6_000 });
     expect(draft.parse((await edit(third, 0, 3)).data)).toMatchObject({ qty: 4, totalVnd: 8_000 });
     expect(draft.parse((await call(getDraft, third, { id: draftId })).data).myLine).toBeUndefined();
@@ -1249,7 +1279,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
   it("denies direct table access to the authenticated browser role", async () => {
     for (const table of [
       "carts", "proposals", "negotiations", "negotiation_draft_lines", "negotiation_versions", "negotiation_version_lines",
-      "confirmation_rounds", "contracts", "charges", "fund_events", "disbursements", "notifications", "evidence", "receipts", "ops_accounts",
+      "offer_votes", "confirmation_rounds", "contracts", "charges", "fund_events", "disbursements", "notifications", "evidence", "receipts", "ops_accounts",
     ]) {
       await expect(transaction(async client => {
         await client.query("set local role authenticated");

@@ -61,6 +61,15 @@ export async function createGroup(client: PoolClient, userId: string, body: Grou
 
 export async function readGroup(client: PoolClient, userId: string, groupId: string): Promise<Group> {
   await requireMember(client, userId, groupId);
+  return readGroupDetails(client, groupId);
+}
+
+export async function readMyGroup(client: PoolClient, userId: string): Promise<Group | null> {
+  const member = await activeMembership(client, userId);
+  return member ? readGroupDetails(client, member.group_id) : null;
+}
+
+async function readGroupDetails(client: PoolClient, groupId: string): Promise<Group> {
   const { rows: members } = await client.query<Group["members"][number]>(
     `select m.id as "membershipId", m.user_id as "userId", p.display_name as "displayName", m.role
      from public.memberships m join public.profiles p on p.id = m.user_id

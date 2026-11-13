@@ -163,7 +163,14 @@ export async function readDraft(client: PoolClient, userId: string, draftId: str
   }
   const { member, share } = await buyerAccess(client, userId, proposal);
   if (!share && member.role !== "REP") throw notFound();
-  return draftDto(client, row, proposal, member);
+  return {
+    ...await draftDto(client, row, proposal, member),
+    permissions: {
+      editLine: Boolean(share) && !proposal.vote_due_at,
+      manageDraft: Boolean(share && member.id === row.initiated_by_membership_id),
+      finalize: member.role === "REP" && !proposal.vote_due_at,
+    },
+  };
 }
 
 export async function editDraftLine(

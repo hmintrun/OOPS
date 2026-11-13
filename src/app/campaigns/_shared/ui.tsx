@@ -6,12 +6,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { BottomNav, IconTile, MaterialSymbol } from "@/components/ui";
-import { SHELL_NAV_ITEMS } from "@/components/app-shell";
-
-export function CampaignNav() {
-  return <BottomNav items={SHELL_NAV_ITEMS} />;
-}
+import { IconTile, MaterialSymbol } from "@/components/ui";
 
 /** Liên kết mang hình thức nút (Button của kit chỉ nhận onClick, không nhận href). */
 export function LinkButton({
