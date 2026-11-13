@@ -85,8 +85,10 @@ export async function createOffer(client: PoolClient, sellerId: string, demandIt
 }
 
 export async function readOffers(client: PoolClient, userId: string, demandItemId: string) {
-  const { rows: [demand] } = await client.query<{ role: "REP" | "MEMBER" | null }>(
-    `select m.role from public.demand_items d
+  const { rows: [demand] } = await client.query<{ role: "REP" | "MEMBER" | null; has_share: boolean }>(
+    `select m.role, exists (
+       select 1 from public.demand_shares s where s.demand_item_id = d.id and s.membership_id = m.id
+     ) as has_share from public.demand_items d
      join public.campaigns c on c.id = d.campaign_id
      left join public.memberships m on m.group_id = c.group_id and m.user_id = $2 and m.left_at is null
      where d.id = $1 and c.status = 'PUBLISHED'`,
@@ -110,9 +112,13 @@ export async function readOffers(client: PoolClient, userId: string, demandItemI
   );
   if (!demand.role && rows.length === 0) throw notFound();
   return {
-    items: rows.map(row => offerDto(
-      row.too_late ? { ...row, state: "EXPIRED" } : row,
-      demand.role === "REP" || row.seller_id === userId, row.draft_id ?? undefined,
-    )),
+    items: rows.map(row => ({
+      ...offerDto(
+        row.too_late ? { ...row, state: "EXPIRED" } : row,
+        demand.role === "REP" || row.seller_id === userId, row.draft_id ?? undefined,
+      ),
+      canOpenDraft: demand.has_share && row.seller_id !== userId && !row.draft_id &&
+        row.state === "SUBMITTED" && !row.too_late,
+    })),
   };
 }

@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { SHELL_NAV_ITEMS } from "@/components/app-shell";
-import { BottomNav, Button, Card, CardTitle, IconTile, MaterialSymbol, ScreenHeader } from "@/components/ui";
+import { AppShell } from "@/components/app-shell";
+import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import type { Me } from "@/contracts/foundation";
 import { AccountSection } from "./AccountSection";
 import { ContactSection } from "./ContactSection";
@@ -49,16 +49,15 @@ export default function MePage() {
   }, [load]);
 
   return (
-    <main className="ui-app-page">
-      <ScreenHeader
-        title="Tài khoản"
-        subtitle="Quản lý thông tin của hộ gia đình."
-        icon={{ icon: "person", tone: "green" }}
-      />
-
-      <div className="ui-screen-body ui-card-grid">
+    <AppShell
+      title="Tài khoản"
+      subtitle="Quản lý thông tin của hộ gia đình."
+      illustration="home"
+      bodyClassName={state.phase === "ready" ? "ui-card-grid" : undefined}
+      bare
+    >
         {state.phase === "loading" && (
-          <Card>
+          <Card className="ui-status-card">
             <div className="me-card-head">
               <IconTile icon="hourglass_top" tone="sky" />
               <CardTitle>Đang tải</CardTitle>
@@ -68,7 +67,7 @@ export default function MePage() {
         )}
 
         {state.phase === "error" && (
-          <Card>
+          <Card className="ui-status-card">
             <div className="me-card-head">
               <IconTile icon="error" tone="rose" />
               <CardTitle>Không tải được</CardTitle>
@@ -91,9 +90,6 @@ export default function MePage() {
             <SignOutSection />
           </>
         )}
-      </div>
-
-      <BottomNav items={SHELL_NAV_ITEMS} />
-    </main>
+    </AppShell>
   );
 }

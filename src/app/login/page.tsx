@@ -1,24 +1,21 @@
 import { Suspense } from "react";
-import { ScreenHeader } from "@/components/ui";
+import { LoginHero } from "./LoginHero";
 import { LoginForm } from "./login-form";
+import "./login.css";
 
 /**
- * Màn hình đăng nhập. Nền trời lấy từ globals.css của body (STYLE.md mục 1);
- * thẻ trắng nổi là nội dung chính, không đặt control trực tiếp lên nền.
+ * Màn hình đăng nhập sinh động, thân thiện với gia đình và cư dân.
  */
 export default function LoginPage() {
   return (
-    <main className="mx-auto flex min-h-[100dvh] w-full max-w-[430px] flex-col justify-center">
-      <ScreenHeader
-        title="OOPS"
-        subtitle="Đăng nhập để xem nhóm, ghi nhu cầu và theo dõi đợt gom hàng của khu phố."
-        icon={{ icon: "groups", tone: "green" }}
-      />
-      <div className="grid gap-4 px-[var(--oops-space-screen)] pb-[calc(24px+env(safe-area-inset-bottom))]">
-        {/* useSearchParams cần Suspense khi prerender trang tĩnh (Next.js CSR bailout). */}
-        <Suspense fallback={null}>
-          <LoginForm />
-        </Suspense>
+    <main className="login-page">
+      <div className="login-layout">
+        <LoginHero />
+        <div className="login-panel">
+          <Suspense fallback={null}>
+            <LoginForm />
+          </Suspense>
+        </div>
       </div>
     </main>
   );

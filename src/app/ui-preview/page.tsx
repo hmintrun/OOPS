@@ -8,19 +8,22 @@ import { IconTile } from "@/components/ui/IconTile";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Select } from "@/components/ui/Select";
 import { BottomNav } from "@/components/ui/BottomNav";
+import { MaterialSymbol } from "@/components/ui/MaterialSymbol";
 
 export default function Page() {
   return (
     <main className="ui-app-page">
+      <BottomNav items={SHELL_NAV_ITEMS} />
       <ScreenHeader
         title="Bộ giao diện"
         icon={{ icon: "dashboard", tone: "green" }}
       />
 
       <div className="ui-screen-body">
-        {process.env.NODE_ENV !== "production" && (
-          <Link href="/ui-preview/demo" className="ui-btn ui-btn--primary mb-4">Về trang thử</Link>
-        )}
+        <Link href="/ui-preview/demo" className="ui-btn ui-btn--primary mb-4">
+          <MaterialSymbol name="play_arrow" className="ui-btn__icon" />
+          Mở bản thử tương tác (Demo)
+        </Link>
         <div className="ui-card-grid">
           <Card>
             <CardTitle>Chọn danh mục</CardTitle>
@@ -96,7 +99,6 @@ export default function Page() {
           </Card>
         </div>
       </div>
-      <BottomNav items={SHELL_NAV_ITEMS} />
     </main>
   );
 }

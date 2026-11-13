@@ -6,14 +6,15 @@
  * mà Tailwind v4 tự sinh trong @theme (design/tailwind.theme.css map sang).
  */
 :root {
+  --oops-hero-sky: #a8e0f6;
   /* Màu nền */
   --oops-sky-100: #eaf7fe;
   --oops-sky-300: #bfe3f7;
   --oops-sky-tint: #e3f2fd;
 
-  /* Chữ */
-  --oops-navy-900: #14385f;
-  --oops-navy-600: #3e6b99;
+  /* Chữ (Độ tương phản cao, sắc nét, dễ đọc cho mọi lứa tuổi) */
+  --oops-navy-900: #0e2744;
+  --oops-navy-600: #275482;
 
   /* Primary */
   --oops-green-600: #2fa84f;
@@ -30,7 +31,7 @@
   --oops-line: #e2eaf2;
 
   /* Ngữ nghĩa */
-  --oops-danger: #e5484d;
+  --oops-danger: #b72d39;
   --oops-warn: #f5a623;
 
   /* Radius */
@@ -50,8 +51,13 @@
   --oops-space-screen: 16px;
   --oops-space-card: 20px;
   --oops-space-gap: 12px;
+  --oops-space-section: 16px;
+  --oops-space-page-top: 16px;
+  --oops-content-max: 70rem;
+  --oops-title-page: clamp(1.5rem, 1.2rem + 1.5vw, 2.25rem);
+  --oops-title-card: clamp(1.125rem, 1rem + 0.4vw, 1.25rem);
 
   /* Control height */
-  --oops-control-h: 52px;
+  --oops-control-h: 48px;
   --oops-nav-h: 64px;
 }

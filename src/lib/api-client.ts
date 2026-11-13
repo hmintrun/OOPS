@@ -89,7 +89,7 @@ export function newIdempotencyKey(): string {
 
 type ApiFetchOptions<S extends z.ZodType> = {
   method?: "GET" | "POST" | "PUT" | "PATCH";
-  /** Thân request; luôn được JSON hoá và gắn Content-Type: application/json. */
+  /** JSON, hoặc FormData khi tải bằng chứng. */
   body?: unknown;
   /** Khóa idempotency cho thao tác ghi. Mặc định sinh mới cho mỗi lời gọi. */
   idempotencyKey?: string;
@@ -116,7 +116,8 @@ export async function apiFetch<S extends z.ZodType>(
   const idempotencyKey = isWrite ? (options.idempotencyKey ?? newIdempotencyKey()) : undefined;
 
   const headers: Record<string, string> = { Accept: "application/json" };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  const multipart = typeof FormData !== "undefined" && body instanceof FormData;
+  if (body !== undefined && !multipart) headers["Content-Type"] = "application/json";
   if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
 
   let response: Response;
@@ -126,7 +127,7 @@ export async function apiFetch<S extends z.ZodType>(
       headers,
       credentials: "same-origin",
       cache: "no-store",
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      ...(body !== undefined ? { body: multipart ? body : JSON.stringify(body) } : {}),
     });
   } catch {
     throw networkError();

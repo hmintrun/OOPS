@@ -8,6 +8,7 @@ import {
   newIdempotencyKey, publishCampaign, putCart, type PutCartBody,
 } from "@/lib/api-client";
 import { Button, Card, CardTitle } from "@/components/ui";
+import { CartSuggestion } from "./CartSuggestion";
 import { formatDateTime, isPast } from "../_shared/dates";
 import { Banner, CampaignStateChip, CartStateChip, INPUT_CLASS, LinkButton, LoadingState } from "../_shared/ui";
 
@@ -177,6 +178,19 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
           ))}
           {editable && <Button type="submit" loading={saving}>Lưu giỏ</Button>}
         </form>
+        {editable && <CartSuggestion campaignId={campaignId} householdSize={parseQuantity(draft.householdSize)}
+          catalog={catalog} disabled={saving} onApply={suggestion => edit(current => {
+            const lines = { ...current.lines };
+            for (const line of suggestion.lines) {
+              const previous = lines[line.skuId] ?? blankLine;
+              lines[line.skuId] = {
+                stockQty: line.stockQty === undefined ? previous.stockQty : String(line.stockQty),
+                needQty: line.needQty === undefined ? previous.needQty : String(line.needQty),
+              };
+            }
+            return { ...current, lines, householdSize: suggestion.householdSize === undefined
+              ? current.householdSize : String(suggestion.householdSize) };
+          })} />}
         {editable && cart?.state === "DRAFT" && (
           <Button className="mt-2" disabled={dirty || saving}
             onClick={() => void action(`confirm:${cart.version}`, "Đã xác nhận giỏ.", key => confirmCart(campaignId, cart.version, key))}>
@@ -191,6 +205,9 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
             <li key={item.skuId}>
               {item.name}: {item.target} {item.unit}
               {"missing" in item && ` · Còn thiếu ${item.missing}`}
+              {"demandItemId" in item && <div className="mt-2">
+                <LinkButton href={`/trade/needs/${item.demandItemId}`}>Xem đề nghị</LinkButton>
+              </div>}
             </li>
           ))}
         </ul> : <p>Chưa có lượng cần mua từ giỏ đã xác nhận.</p>}

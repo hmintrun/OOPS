@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { feed } from "@/contracts/foundation";
+import { evidenceResult } from "@/contracts/orders";
 import {
   ApiError,
   apiFetch,
@@ -48,6 +49,22 @@ function headerOf(call: FetchCall, name: string): string | null {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+it("gửi ảnh bàn giao bằng multipart và giữ khóa khi gửi lại", async () => {
+  const evidenceId = representative.userId;
+  const calls = installFetchMock(() => jsonResponse({ evidenceId }, 201));
+  const body = new FormData();
+  body.set("file", new File(["image"], "proof.png", { type: "image/png" }));
+  const path = `/api/v1/contracts/${evidenceId}/evidence`;
+  const options = { method: "POST" as const, body, schema: evidenceResult, idempotencyKey: "upload-proof" };
+  await expect(apiFetch(path, options)).resolves.toEqual({ evidenceId });
+  await apiFetch(path, options);
+  for (const call of calls) {
+    expect(call.init.body).toBe(body);
+    expect(headerOf(call, "Content-Type")).toBeNull();
+    expect(headerOf(call, "Idempotency-Key")).toBe("upload-proof");
+  }
 });
 
 describe("apiFetch — envelope lỗi", () => {

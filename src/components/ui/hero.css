@@ -1,0 +1,167 @@
+.ui-app-page.ui-family-page {
+  width: 100%;
+  padding-top: 0;
+  background: var(--oops-surface);
+}
+
+.ui-family-header {
+  /* Mobile geometry. The next two blocks adjust only the layer variables. */
+  --hero-height: clamp(11.25rem, 53vw, 13rem);
+  --hero-copy-top: 1rem;
+  --hero-copy-width: 100%;
+  --hero-ground: 0.875rem;
+  --hero-hills-height: clamp(1.75rem, 8vw, 2.75rem);
+  --hero-scene-width: 60%;
+  --hero-scene-end: var(--oops-space-screen);
+  --hero-family-height: clamp(6rem, 30vw, 7rem);
+  --hero-family-end: 6%;
+  --hero-school-height: 0rem;
+  --hero-school-end: 0%;
+  --hero-bush-left: clamp(4.5rem, 25vw, 9rem);
+  --hero-bush-right: clamp(5rem, 25vw, 9rem);
+  --hero-cloud-a-width: clamp(3.5rem, 19vw, 6rem);
+  --hero-cloud-a-start: 9%;
+  --hero-cloud-a-top: 57%;
+  --hero-cloud-b-width: 0rem;
+  --hero-cloud-b-start: 53%;
+  --hero-cloud-b-top: 12%;
+  --hero-cloud-c-width: 0rem;
+  --hero-cloud-c-start: 84%;
+  --hero-cloud-c-top: 20%;
+  position: relative;
+  isolation: isolate;
+  min-block-size: var(--hero-height);
+  background: linear-gradient(180deg, var(--oops-hero-sky), var(--oops-sky-100) 74%, var(--oops-surface));
+}
+
+.ui-family-header > .ui-family-header__content {
+  position: relative;
+  z-index: 1;
+  width: min(100%, var(--oops-content-max));
+  margin-inline: auto;
+  padding-block-start: var(--hero-copy-top);
+}
+
+.ui-family-header__content .ui-screen-header__text { max-inline-size: var(--hero-copy-width); }
+.ui-family-header__content > .ui-icon-tile {
+  flex: none;
+  color: var(--oops-green-700);
+  background: var(--oops-surface);
+  border: 2px solid var(--oops-green-600);
+}
+
+.ui-hero__art {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, #000 72%, #000c 88%, transparent 100%);
+}
+
+.ui-hero__container {
+  position: relative;
+  width: min(100%, var(--oops-content-max));
+  height: 100%;
+  margin-inline: auto;
+}
+
+.ui-hero__hills {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: var(--hero-hills-height);
+  background: url("/assets/hero/hill-strip.webp") center bottom / auto 100% repeat-x;
+}
+
+.ui-hero__layer { position: absolute; max-inline-size: none; }
+.ui-hero__bush-single, .ui-hero__bush-double {
+  bottom: var(--hero-ground);
+  height: auto;
+}
+.ui-hero__bush-single { inset-inline-start: 0; width: var(--hero-bush-left); }
+.ui-hero__bush-double { inset-inline-end: 0; width: var(--hero-bush-right); }
+
+.ui-hero__scene {
+  position: absolute;
+  inset-inline-end: var(--hero-scene-end);
+  bottom: var(--hero-ground);
+  width: var(--hero-scene-width);
+}
+.ui-hero__family, .ui-hero__school-flag { bottom: 0; width: auto; }
+.ui-hero__family {
+  inset-inline-end: var(--hero-family-end);
+  height: var(--hero-family-height);
+  mask-image: linear-gradient(to bottom, #000 92%, transparent);
+}
+.ui-hero__school-flag { inset-inline-end: var(--hero-school-end); height: var(--hero-school-height); }
+
+.ui-hero__cloud-a, .ui-hero__cloud-b, .ui-hero__cloud-c { height: auto; }
+.ui-hero__cloud-a { inset-inline-start: var(--hero-cloud-a-start); top: var(--hero-cloud-a-top); width: var(--hero-cloud-a-width); }
+.ui-hero__cloud-b { inset-inline-start: var(--hero-cloud-b-start); top: var(--hero-cloud-b-top); width: var(--hero-cloud-b-width); }
+.ui-hero__cloud-c { inset-inline-start: var(--hero-cloud-c-start); top: var(--hero-cloud-c-top); width: var(--hero-cloud-c-width); }
+
+@media (width < 40rem) {
+  .ui-family-header > .ui-family-header__content {
+    padding-block-end: calc(var(--hero-family-height) + var(--hero-ground) + 0.5rem);
+  }
+  .ui-hero__school-flag, .ui-hero__cloud-b, .ui-hero__cloud-c { display: none; }
+}
+
+@media (width < 40rem) and (height <= 37.5rem) {
+  .ui-family-header {
+    --hero-height: 11.25rem;
+    --hero-family-height: clamp(5rem, 23vw, 6rem);
+  }
+}
+
+@media (width >= 40rem) {
+  .ui-family-header {
+    --hero-height: 13.75rem;
+    --hero-copy-top: 2.5rem;
+    --hero-copy-width: 42%;
+    --hero-ground: 1.375rem;
+    --hero-hills-height: clamp(2.5rem, 5.8vw, 3.5rem);
+    --hero-scene-width: 52%;
+    --hero-family-height: clamp(8rem, 20vw, 10rem);
+    --hero-family-end: 39%;
+    --hero-school-height: clamp(6rem, 15vw, 8rem);
+    --hero-school-end: 0%;
+    --hero-bush-left: clamp(8rem, 23vw, 16rem);
+    --hero-bush-right: clamp(9rem, 25vw, 17rem);
+    --hero-cloud-a-width: clamp(4rem, 13vw, 8rem);
+    --hero-cloud-a-start: 16%;
+    --hero-cloud-a-top: 52%;
+    --hero-cloud-b-width: clamp(4rem, 12vw, 8rem);
+    --hero-cloud-c-width: clamp(3rem, 10vw, 7rem);
+  }
+}
+
+@media (width >= 64rem) {
+  .ui-family-header {
+    --hero-height: clamp(15rem, 17.5vw, 17.5rem);
+    --hero-copy-top: 3rem;
+    --hero-ground: 1.75rem;
+    --hero-hills-height: clamp(3rem, 5vw, 4.5rem);
+    --hero-scene-end: 6%;
+    --hero-family-height: clamp(10rem, 14vw, 12.5rem);
+    --hero-family-end: 33%;
+    --hero-school-height: clamp(8rem, 11vw, 10rem);
+    --hero-school-end: 2%;
+    --hero-bush-left: clamp(13rem, 24vw, 23rem);
+    --hero-bush-right: clamp(14rem, 24vw, 24rem);
+    --hero-cloud-a-top: 54%;
+  }
+}
+
+@keyframes ui-hero-cloud-drift {
+  from { transform: translateX(-0.25rem); }
+  to { transform: translateX(0.5rem); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ui-hero__cloud-a, .ui-hero__cloud-b, .ui-hero__cloud-c {
+    animation: ui-hero-cloud-drift 18s ease-in-out infinite alternate;
+  }
+  .ui-hero__cloud-b { animation-delay: -6s; }
+  .ui-hero__cloud-c { animation-delay: -12s; }
+}

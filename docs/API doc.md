@@ -133,6 +133,7 @@ type ConfirmationRound = {
 ```
 
 - `Draft.qty` và `Draft.totalVnd` là tổng của bản nháp đang sửa. `Draft.myLine` chỉ chứa dòng nháp của hộ gọi API. Seller chỉ nhận `SellerDraftView` và nhận `404` nếu chưa có bản gửi.
+- GET đề nghị trả `canOpenDraft` theo người gọi. GET bản thương lượng trả `permissions` cho phía mua gồm `editLine`, `manageDraft` và `finalize`. Giao diện dùng các trường này cùng trạng thái hiện tại để hiển thị thao tác. API ghi vẫn kiểm quyền khi nhận yêu cầu.
 - `DraftVersion` chứa dữ liệu đã chụp khi gửi. `version` bắt đầu từ 1 và là số dùng trong route `/versions/{version}`. Hộ có phần nhận `myLine` của mình. Seller của đề nghị và đại diện có quyền duyệt nhận `lines` gồm lượng và tiền theo từng phần. Các dòng trả cho người duyệt không chứa ghi chú riêng, định danh hộ hoặc địa chỉ ví. Nếu đại diện cũng có phần, `myLine` vẫn chỉ chứa phần của đại diện.
 - `roundId` và `confirmBy` xuất hiện khi đã tạo vòng. `contractId` xuất hiện khi đã chốt. `repApproveBy` chỉ áp dụng cho bản theo luồng cũ. `versionHash` và `roundKey` là hai chuỗi `0x` theo sau bởi 64 ký tự hex chữ thường. [Chuẩn băm và vector kiểm thử](OOPS-Spec.md#chuẩn-băm-phiên-bản) · [Cách sinh roundKey](architecture.md#bàn-giao-backend-và-worker)
 - `myConfirmation` chỉ trả trạng thái và ví của chính hộ gọi. `myConfirmation.state = CONFIRMED` sau khi worker lưu xác nhận hợp lệ của hộ. Backend dùng tập xác nhận của từng hộ để xét điều kiện bàn giao.

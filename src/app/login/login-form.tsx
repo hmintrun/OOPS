@@ -2,6 +2,7 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import { resolveLoginNext } from "@/lib/login-next";
@@ -17,7 +18,7 @@ const FIELD_ROW = [
 ].join(" ");
 
 const FIELD_INPUT = [
-  "min-w-0 flex-1 bg-transparent text-body text-navy-900 outline-none",
+  "min-w-0 flex-1 bg-transparent text-base text-navy-900 outline-none",
   "placeholder:text-navy-600 disabled:cursor-not-allowed",
 ].join(" ");
 
@@ -115,8 +116,15 @@ export function LoginForm() {
   }
 
   return (
-    <Card>
-      <CardTitle as="h2">{register ? "Tạo tài khoản" : "Đăng nhập"}</CardTitle>
+    <Card className="login-form-card" padding="flush">
+      <div className="login-form-heading">
+        <IconTile icon={register ? "person_add" : "lock_open"} tone="green" />
+        <div>
+        <CardTitle as="h2" className="ui-card__title--flush">{register ? "Tạo tài khoản" : "Đăng nhập"}</CardTitle>
+          <p>{register ? "Nhập thông tin để tạo tài khoản OOPS." : "Nhập email và mật khẩu để tiếp tục."}</p>
+        </div>
+      </div>
+
       <form
         className="grid gap-3"
         onSubmit={event => {
@@ -170,13 +178,15 @@ export function LoginForm() {
         </label>
 
         {state.kind === "error" && (
-          <p
+          <div
             role="alert"
-            className="flex items-start gap-2 rounded-input bg-rose-tint p-3 text-small text-navy-900"
+            className="flex flex-col gap-2 rounded-input bg-rose-tint p-3 text-base text-navy-900"
           >
-            <MaterialSymbol name="error" size={20} className="mt-px shrink-0 text-danger" />
-            <span className="min-w-0 break-words">{state.message}</span>
-          </p>
+            <div className="flex items-start gap-2">
+              <MaterialSymbol name="error" size={20} className="mt-px shrink-0 text-danger" />
+              <span className="min-w-0 break-words">{state.message}</span>
+            </div>
+          </div>
         )}
         {state.kind === "notice" && <p role="status">{state.message}</p>}
         {state.kind === "idle" && searchParams.get("confirmation") === "failed" && (
@@ -194,7 +204,56 @@ export function LoginForm() {
           setPassword("");
           setState({ kind: "idle" });
         }}>{register ? "Quay lại đăng nhập" : "Tạo tài khoản mới"}</Button>
+
+        <div className="login-demo">
+          <Link
+            href="/ui-preview/demo"
+            className="login-demo__link"
+          >
+            <MaterialSymbol name="play_circle" size={22} />
+            Thử OOPS với dữ liệu mẫu
+          </Link>
+        </div>
+
       </form>
+
+      {process.env.NODE_ENV === "development" && !register && (
+        <details className="login-sample">
+          <summary>Tài khoản mẫu (local)</summary>
+          <div className="login-sample__actions">
+            <button
+              type="button"
+              className="login-sample__button"
+              onClick={() => {
+                setEmail("oops-dev-household-1@example.test");
+                setPassword("DemoPassword123!");
+              }}
+            >
+              Hộ dân 1
+            </button>
+            <button
+              type="button"
+              className="login-sample__button"
+              onClick={() => {
+                setEmail("oops-dev-rep@example.test");
+                setPassword("DemoPassword123!");
+              }}
+            >
+              Đại diện tầng
+            </button>
+            <button
+              type="button"
+              className="login-sample__button"
+              onClick={() => {
+                setEmail("oops-dev-seller@example.test");
+                setPassword("DemoPassword123!");
+              }}
+            >
+              Tiệm cung cấp
+            </button>
+          </div>
+        </details>
+      )}
     </Card>
   );
 }

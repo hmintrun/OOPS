@@ -34,6 +34,7 @@ export const offer = z.strictObject({
   depositVnd: uint,
   draftId: uuid.optional(),
   voteDueAt: isoDateTime.optional(),
+  canOpenDraft: z.boolean().optional(),
 });
 export const offers = z.strictObject({ items: z.array(offer) });
 export const openDraftInput = z.strictObject({});
@@ -86,6 +87,7 @@ export const draft = z.strictObject({
   totalVnd: uint,
   myLine: myLine.optional(),
   latestVersion: draftVersion.optional(),
+  permissions: z.strictObject({ editLine: z.boolean(), manageDraft: z.boolean(), finalize: z.boolean() }).optional(),
 });
 
 export const sellerDraftView = draft.pick({ draftId: true, proposalId: true }).extend({

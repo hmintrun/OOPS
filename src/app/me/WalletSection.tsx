@@ -21,9 +21,18 @@ export function WalletSection({ data }: { data: Me }) {
 
   return (
     <Card>
-      <div className="me-card-head">
-        <IconTile icon="account_balance_wallet" tone={wallet ? "green" : "amber"} />
-        <CardTitle>Ví Fuji</CardTitle>
+      <div className="me-card-head flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <img
+            src="/assets/fuji-shield.jpg"
+            alt="Fuji Shield"
+            className="h-10 w-10 rounded-xl object-contain mix-blend-multiply flex-none"
+          />
+          <div>
+            <CardTitle className="ui-card__title--flush">Ví Avalanche Fuji</CardTitle>
+            <p className="text-small text-navy-600">Xác thực on-chain (Chain ID: 43113)</p>
+          </div>
+        </div>
       </div>
 
       <div className="me-rows me-rows--divided">
