@@ -146,7 +146,8 @@ export async function expireOrderDeadline(
   if (stage === "ROUND_OPEN" || stage === "DEPOSIT" || stage === "PAYMENT") {
     if (order.state !== "AWAIT_COMMITMENTS" &&
         order.state !== (stage === "DEPOSIT" ? "AWAIT_DEPOSIT" : stage === "PAYMENT" ? "AWAIT_PAYMENT" : "")) return false;
-    return expireCollectionUnderLock(db, order, allocations);
+    // ROUND_OPEN is dispatched after the indexer has synchronized through openBy.
+    return expireCollectionUnderLock(db, order, allocations, stage === "ROUND_OPEN");
   }
   const stages = {
     READY: ["AWAIT_HANDOFF", "ready_by"], HANDOFF: ["AWAIT_HANDOFF", "handoff_by"], RECEIPT: ["AWAIT_APPROVAL", "approval_due_at"],

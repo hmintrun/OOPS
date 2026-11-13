@@ -44,19 +44,22 @@ export async function addDisbursement(
   }
 }
 
-export async function expireCollectionUnderLock(db: PoolClient, order: OrderRow, allocations: AllocationRow[]) {
+export async function expireCollectionUnderLock(db: PoolClient, order: OrderRow, allocations: AllocationRow[], roundOpeningChecked = false) {
   if (order.state === "AWAIT_COMMITMENTS") {
     const { rows: [deadline] } = await db.query<{ reason: "ROUND_OPEN_TIMEOUT" | "DEPOSIT_TIMEOUT" | "PAYMENT_TIMEOUT" }>(
       `select reason from (
          select 'ROUND_OPEN_TIMEOUT' as reason, open_by as due_at from public.confirmation_rounds
          where version_id = $2 and (state = 'OPENING' or opens_at is null or opens_at >= open_by)
+           and (signing_hours is null or $3::boolean)
          union all
          select case kind when 'DEPOSIT' then 'DEPOSIT_TIMEOUT' else 'PAYMENT_TIMEOUT' end,
            least(ch.due_at, case ch.kind when 'DEPOSIT' then c.deposit_due_at else c.payment_due_at end)
          from public.charges ch join public.contracts c on c.id = ch.contract_id
          where ch.contract_id = $1 and ch.state <> 'RECEIVED'
+           and not exists (select 1 from public.confirmation_rounds r
+             where r.version_id = $2 and r.signing_hours is not null and r.opens_at is null)
        ) deadlines where due_at <= clock_timestamp() order by due_at, reason limit 1`,
-      [order.id, order.source_version_id],
+      [order.id, order.source_version_id, roundOpeningChecked],
     );
     if (!deadline) return false;
     await cancelUnderLock(db, order, allocations, deadline.reason, null);

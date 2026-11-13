@@ -2,16 +2,15 @@ import "server-only";
 import type { PoolClient } from "pg";
 import { conflict, unavailable } from "../errors";
 import type { Proposal } from "../negotiation/drafts";
-import { parallelTiming } from "../negotiation/timing";
+import type { parallelTiming } from "../negotiation/timing";
 import type { VersionRow } from "../negotiation/version-records";
 import { enqueueOrderDeadlines, recordOrderEvent } from "./events";
 import type { AllocationRow, OrderRow } from "./records";
 
 export async function createCommittedOrder(
-  db: PoolClient, proposal: Proposal, version: VersionRow, repId: string,
+  db: PoolClient, proposal: Proposal, version: VersionRow, repId: string, timing: ReturnType<typeof parallelTiming>,
 ) {
   if (process.env.OOPS_PAYMENT_MODE !== "SIM") throw unavailable();
-  const timing = parallelTiming();
   const tenth = (BigInt(version.goods_vnd) + 9n) / 10n;
   const deposit = tenth < 50_000n ? 50_000n : tenth;
   const { rows: [order] } = await db.query<{ id: string }>(
@@ -19,16 +18,13 @@ export async function createCommittedOrder(
        deposit_vnd, deposit_policy_version, deposit_due_at, payment_due_at, ready_by,
        handoff_start, handoff_by, approval_due_at, state, stock_state)
      select $2, v.id, $3, v.qty, v.unit_price_vnd, v.goods_vnd, $4, 'SIM_V1',
-       v.seller_approved_at + make_interval(hours => $5),
-       case when v.goods_vnd > 0 then v.seller_approved_at + make_interval(hours => $6) end,
-       v.handoff_start, v.handoff_start, v.handoff_by, v.handoff_by + make_interval(hours => $7),
+       r.open_by + make_interval(hours => r.deposit_hours),
+       case when v.goods_vnd > 0 then r.confirm_by end,
+       v.handoff_start, v.handoff_start, v.handoff_by, v.handoff_by + make_interval(hours => $5),
        'AWAIT_COMMITMENTS', 'PENDING'
-     from public.negotiation_versions v where v.id = $1
-       and greatest(v.confirm_by, v.seller_approved_at + make_interval(hours => $5),
-         case when v.goods_vnd > 0 then v.seller_approved_at + make_interval(hours => $6) end)
-         <= v.handoff_start - make_interval(hours => $8) returning id`,
-    [version.id, proposal.id, repId, deposit.toString(), timing.deposit, Math.max(timing.goods, timing.deposit),
-      timing.receipt, timing.preparation],
+     from public.negotiation_versions v join public.confirmation_rounds r on r.version_id = v.id
+     where v.id = $1 and v.seller_approved_at < r.open_by returning id`,
+    [version.id, proposal.id, repId, deposit.toString(), timing.receipt],
   );
   if (!order) throw conflict("Lịch giao không còn đủ thời gian ký và thu tiền.");
   await db.query(

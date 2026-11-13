@@ -39,8 +39,9 @@ export async function versionDto(
     [row.id, viewer.canReview, viewer.membershipId ?? null],
   );
   const own = rows.find(line => line.membership_id === viewer.membershipId);
-  const { rows: [related] } = await client.query<{ round_id: string | null; contract_id: string | null }>(
-    `select r.id as round_id, c.id as contract_id from public.negotiation_versions v
+  const { rows: [related] } = await client.query<{ round_id: string | null; contract_id: string | null; awaiting_open: boolean }>(
+    `select r.id as round_id, c.id as contract_id, r.signing_hours is not null and r.opens_at is null as awaiting_open
+     from public.negotiation_versions v
      left join public.confirmation_rounds r on r.version_id = v.id
      left join public.contracts c on c.source_version_id = v.id where v.id = $1`, [row.id],
   );
@@ -57,7 +58,7 @@ export async function versionDto(
     sellerResponseDueAt: row.seller_response_due_at.toISOString(),
     ...(row.reason_code && { reasonCode: row.reason_code }),
     ...(row.seller_note !== null && { sellerNote: row.seller_note }),
-    ...(row.confirm_by && { confirmBy: row.confirm_by.toISOString() }),
+    ...(row.confirm_by && !related?.awaiting_open && { confirmBy: row.confirm_by.toISOString() }),
     ...(row.rep_approve_by && { repApproveBy: row.rep_approve_by.toISOString() }),
     ...(related?.round_id && { roundId: related.round_id }),
     ...(related?.contract_id && { contractId: related.contract_id }),

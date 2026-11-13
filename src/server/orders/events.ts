@@ -30,7 +30,7 @@ export async function recordOrderEvent(
   return true;
 }
 
-export async function enqueueOrderDeadlines(db: PoolClient, contractId: string) {
+export async function enqueueOrderDeadlines(db: PoolClient, contractId: string, roundOpened = false) {
   await db.query(
     `insert into public.outbox (kind, event_key, payload, next_run_at)
      select 'ORDER_DEADLINE_DUE', concat('contract:', c.id, ':deadline:', d.stage),
@@ -39,7 +39,9 @@ export async function enqueueOrderDeadlines(db: PoolClient, contractId: string) 
      cross join lateral (values ('ROUND_OPEN', r.open_by),
        ('DEPOSIT', c.deposit_due_at), ('PAYMENT', c.payment_due_at), ('READY', c.ready_by),
        ('HANDOFF', c.handoff_by), ('RECEIPT', c.approval_due_at)
-     ) d(stage, due_at) where c.id = $1 and d.due_at is not null`,
-    [contractId],
+     ) d(stage, due_at) where c.id = $1 and d.due_at is not null
+       and case when $2::boolean then d.stage in ('DEPOSIT', 'PAYMENT')
+         else r.signing_hours is null or d.stage not in ('DEPOSIT', 'PAYMENT') end`,
+    [contractId, roundOpened],
   );
 }

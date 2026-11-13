@@ -125,8 +125,9 @@ export async function orderDto(db: PoolClient, order: OrderRow, actorId: string)
      left join public.confirmations x on x.round_id = r.id and x.membership_id = a.membership_id
      where c.contract_id = $1 and c.payer_id = $2 order by c.id`, [order.id, actorId],
   );
-  const { rows: [round] } = await db.query<{ id: string; open_by: Date; confirm_by: Date }>(
-    "select id, open_by, confirm_by from public.confirmation_rounds where version_id = $1 and open_by is not null",
+  const { rows: [round] } = await db.query<{ id: string; open_by: Date; confirm_by: Date; awaiting_open: boolean }>(
+    `select id, open_by, confirm_by, signing_hours is not null and opens_at is null as awaiting_open
+     from public.confirmation_rounds where version_id = $1 and open_by is not null`,
     [order.source_version_id],
   );
   const { rows: disbursements } = await db.query<{
@@ -145,15 +146,20 @@ export async function orderDto(db: PoolClient, order: OrderRow, actorId: string)
     contractId: order.id, demandItemId: order.demand_item_id, sourceVersionId: order.source_version_id,
     sellerId: order.seller_id, repId: order.rep_id, version: order.version, state: order.state,
     qty: order.qty, unitPriceVnd: Number(order.unit_price_vnd), goodsVnd: Number(order.goods_vnd), depositVnd: Number(order.deposit_vnd),
-    depositDueAt: order.deposit_due_at.toISOString(), handoffStart: order.handoff_start.toISOString(),
+    handoffStart: order.handoff_start.toISOString(),
     handoffBy: order.handoff_by.toISOString(), approvalDueAt: order.approval_due_at.toISOString(),
     ...(order.review_scope && { reviewScope: order.review_scope }),
-    ...(order.payment_due_at && { paymentDueAt: order.payment_due_at.toISOString() }),
-    ...(round && { roundId: round.id, roundOpenBy: round.open_by.toISOString(), confirmBy: round.confirm_by.toISOString() }),
+    ...(!round?.awaiting_open && {
+      depositDueAt: order.deposit_due_at.toISOString(),
+      ...(order.payment_due_at && { paymentDueAt: order.payment_due_at.toISOString() }),
+      ...(round && { confirmBy: round.confirm_by.toISOString() }),
+    }),
+    ...(round && { roundId: round.id, roundOpenBy: round.open_by.toISOString() }),
     ...(order.ready_at && { readyAt: order.ready_at.toISOString() }),
     allocations: allocations.map(row => ({ allocationId: row.id, qty: row.qty, goodsVnd: Number(row.goods_vnd) })),
     charges: charges.map(row => ({
-      chargeId: row.id, kind: row.kind, state: row.state, amountVnd: Number(row.amount_vnd), dueAt: row.due_at.toISOString(),
+      chargeId: row.id, kind: row.kind, state: row.state, amountVnd: Number(row.amount_vnd),
+      ...(!round?.awaiting_open && { dueAt: row.due_at.toISOString() }),
       ...(round && { canPay: row.can_pay }),
     })),
     disbursements: disbursements.map(row => ({

@@ -9,7 +9,7 @@ import { requireMember } from "../groups";
 import { lockDraft } from "./drafts";
 import { latestVersion, versionDto, type VersionRow } from "./version-records";
 import { recordVersionState } from "./versions";
-import { demoTiming } from "../orders/events";
+import { demoTiming, enqueueOrderDeadlines } from "../orders/events";
 import { advanceCommittedOrder, createCommittedOrder } from "../orders/commitments";
 import { cancelUnderLock } from "../orders/ledger";
 import { lockOrderStock, lockStock } from "../orders/records";
@@ -122,18 +122,20 @@ export async function approveWithFujiEligibility(
   const { rows: [approved] } = await db.query<VersionRow>(
     `with ts as materialized (select clock_timestamp() as at)
      update public.negotiation_versions v set state = $5, seller_approved_at = ts.at,
-       seller_note = $2, confirm_by = ts.at + make_interval(hours => $3),
+       seller_note = $2, confirm_by = case when $4::int is null then handoff_start - make_interval(hours => $6)
+         else ts.at + make_interval(hours => $3) end,
        rep_approve_by = case when $4::int is not null then ts.at + make_interval(hours => $4) end
      from ts where v.id = $1 and ts.at < v.seller_response_due_at returning v.*`,
-    [versionId, note ?? null, timing?.confirm ?? demoTiming.confirm,
-      timing ? null : demoTiming.confirm + demoTiming.representative, timing ? "FINALIZED" : "AWAIT_CONFIRMATIONS"],
+    [versionId, note ?? null, demoTiming.confirm, timing ? null : demoTiming.confirm + demoTiming.representative,
+      timing ? "FINALIZED" : "AWAIT_CONFIRMATIONS", timing?.preparation ?? demoTiming.preparation],
   );
   if (!approved) throw conflict("Đã hết hạn người bán phản hồi.");
   const { rows: [created] } = await db.query<{ id: string; open_by: Date | null }>(
-    `insert into public.confirmation_rounds (version_id, chain_id, contract_address, onchain_key, confirm_by, open_by, state)
-     select id, $2, $3, $4, confirm_by, seller_approved_at + make_interval(hours => $5), 'OPENING'
+    `insert into public.confirmation_rounds (version_id, chain_id, contract_address, onchain_key,
+       confirm_by, open_by, state, signing_hours, deposit_hours)
+     select id, $2, $3, $4, confirm_by, confirm_by - make_interval(hours => $5), 'OPENING', $5, $6
      from public.negotiation_versions where id = $1 returning id, open_by`,
-    [versionId, round.chainId, round.contractAddress, round.roundKey, timing?.open ?? null],
+    [versionId, round.chainId, round.contractAddress, round.roundKey, timing?.confirm ?? null, timing?.deposit ?? null],
   );
   for (const entry of expected) {
     await db.query("insert into public.confirmation_participants (round_id, membership_id, wallet) values ($1, $2, $3)",
@@ -142,19 +144,61 @@ export async function approveWithFujiEligibility(
   const payload = {
     draftId, versionId, roundId: created.id, versionHash: approved.version_hash,
     ...(created.open_by && { openBy: created.open_by.toISOString() }),
+    ...(timing && { signingHours: timing.confirm }),
   };
   await db.query(
     `insert into public.outbox (kind, event_key, payload, next_run_at)
      select d.kind, concat('negotiation-round:', $1::uuid, ':', d.kind), $2::jsonb, d.due
      from public.negotiation_versions v cross join lateral (values
-       ('FUJI_ROUND_OPEN_REQUESTED', clock_timestamp()), ('FUJI_CONFIRMATION_DUE', v.confirm_by),
+       ('FUJI_ROUND_OPEN_REQUESTED', clock_timestamp()),
+       ('FUJI_CONFIRMATION_DUE', case when $4::boolean then null else v.confirm_by end),
        ('REP_APPROVAL_DUE', v.rep_approve_by)
      ) d(kind, due) where v.id = $3 and d.due is not null`,
-    [created.id, JSON.stringify(payload), versionId],
+    [created.id, JSON.stringify(payload), versionId, Boolean(timing)],
   );
-  if (timing && rep) await createCommittedOrder(db, proposal, approved, rep.user_id);
+  if (timing && rep) await createCommittedOrder(db, proposal, approved, rep.user_id, timing);
   await recordVersionState(db, proposal, approved, sellerId);
   return versionDto(db, approved, { canReview: true });
+}
+
+// The indexer supplies the verified opening block timestamp and the deadline emitted by the contract.
+export async function recordVerifiedRoundOpening(
+  db: PoolClient, draftId: string, versionId: string, roundId: string, openedAt: string, confirmBy: string,
+) {
+  const contractId = await committedContractId(db, draftId, versionId);
+  if (!contractId) return false;
+  const { order } = await lockOrderStock(db, contractId);
+  if (order.state !== "AWAIT_COMMITMENTS") return false;
+  const { rows: [opened] } = await db.query<{ confirm_by: Date; deposit_due_at: Date }>(
+    `update public.confirmation_rounds set state = 'OPEN', opens_at = $3::timestamptz, confirm_by = $4::timestamptz
+     where id = $1 and version_id = $2 and state = 'OPENING' and signing_hours is not null
+       and $3::timestamptz < open_by and $3::timestamptz <= clock_timestamp()
+       and $3::timestamptz >= date_trunc('second', (select seller_approved_at from public.negotiation_versions where id = $2))
+       and $4::timestamptz = $3::timestamptz + make_interval(hours => signing_hours)
+     returning confirm_by, opens_at + make_interval(hours => deposit_hours) as deposit_due_at`,
+    [roundId, versionId, openedAt, confirmBy],
+  );
+  if (!opened) return false;
+  const { rows: [version] } = await db.query<{ version_hash: string }>(
+    "update public.negotiation_versions set confirm_by = $2 where id = $1 returning version_hash", [versionId, opened.confirm_by],
+  );
+  await db.query(
+    `update public.contracts set deposit_due_at = $2,
+       payment_due_at = case when goods_vnd > 0 then $3::timestamptz end, version = version + 1 where id = $1`,
+    [contractId, opened.deposit_due_at, opened.confirm_by],
+  );
+  await db.query(
+    `update public.charges set due_at = case when kind = 'DEPOSIT' then $2::timestamptz else $3::timestamptz end
+     where contract_id = $1`, [contractId, opened.deposit_due_at, opened.confirm_by],
+  );
+  await enqueueOrderDeadlines(db, contractId, true);
+  await db.query(
+    `insert into public.outbox (kind, event_key, payload, next_run_at)
+     values ('FUJI_CONFIRMATION_DUE', $1, $2, $3)`,
+    [`negotiation-round:${roundId}:FUJI_CONFIRMATION_DUE`,
+      JSON.stringify({ draftId, versionId, roundId, versionHash: version.version_hash }), opened.confirm_by],
+  );
+  return true;
 }
 
 export async function lockRound(db: PoolClient, versionId: string) {
@@ -219,7 +263,8 @@ export async function expireFujiStage(
     if (order.state !== "AWAIT_COMMITMENTS") return false;
     const round = await lockRound(db, versionId);
     const due = round && await db.query(
-      "select 1 from public.confirmation_rounds where id = $1 and confirm_by <= clock_timestamp()", [round.id],
+      `select 1 from public.confirmation_rounds where id = $1 and confirm_by <= clock_timestamp()
+       and (signing_hours is null or opens_at is not null)`, [round.id],
     );
     if (!round || !due || !due.rowCount || await hasAllConfirmations(db, versionId, round.id)) return false;
     await cancelUnderLock(db, order, allocations, "CONFIRMATION_TIMEOUT", null);
@@ -257,6 +302,7 @@ export async function readRound(db: PoolClient, userId: string, id: string) {
   const { rows: [round] } = await db.query<{
     id: string; version_id: string; version_hash: string; onchain_key: string; chain_id: number;
     contract_address: string; state: "OPENING" | "OPEN" | "CONFIRMED" | "CLOSED"; confirm_by: Date;
+    opens_at: Date | null; signing_hours: number | null;
     seller_id: string; group_id: string; rep_id: string | null;
   }>(
     `select r.*, v.version_hash, p.seller_id, c.group_id, o.rep_id from public.confirmation_rounds r
@@ -277,7 +323,8 @@ export async function readRound(db: PoolClient, userId: string, id: string) {
   return {
     roundId: id, versionId: round.version_id, versionHash: round.version_hash, roundKey: round.onchain_key,
     chainId: round.chain_id, contractAddress: round.contract_address, state: round.state,
-    confirmBy: round.confirm_by.toISOString(), requiredCount: participants.length,
+    ...(round.signing_hours === null || round.opens_at ? { confirmBy: round.confirm_by.toISOString() } : {}),
+    requiredCount: participants.length,
     confirmedCount: participants.filter(row => row.confirmed).length,
     ...(own && { myConfirmation: { walletAddress: own.wallet, state: own.confirmed ? "CONFIRMED" as const : "PENDING" as const } }),
   };

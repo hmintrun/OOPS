@@ -65,7 +65,7 @@ export async function createOffer(client: PoolClient, sellerId: string, demandIt
   if (!demand.ordered || !demand.withinNeed) throw invalid("Khung giờ bàn giao không hợp lệ.");
   if (demand.sellerIsRep) throw conflict("Cần đại diện khác người bán để bàn giao.");
   const timing = parallelTiming();
-  const lead = timing.vote + parallelLeadHours(BigInt(body.unitPriceVnd), timing);
+  const lead = timing.vote + parallelLeadHours(timing);
 
   const { rows: [proposal] } = await client.query<ProposalRow>(
     `with timing as materialized (select clock_timestamp() as at)

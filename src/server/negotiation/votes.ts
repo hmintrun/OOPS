@@ -6,7 +6,7 @@ import { conflict, forbidden, notFound } from "../errors";
 import { buyerAccess, findProposal, lockDraft, type Proposal } from "./drafts";
 import { latestVersion } from "./version-records";
 import { snapshotVersion } from "./versions";
-import { parallelLeadHours } from "./timing";
+import { parallelLeadHours, parallelTiming } from "./timing";
 
 async function voting(db: PoolClient, proposal: Proposal, draftId: string, membershipId?: string): Promise<OfferVoting> {
   if (!proposal.vote_due_at) throw notFound();
@@ -68,7 +68,8 @@ async function closeVoting(db: PoolClient, proposal: Proposal, draftId: string, 
     );
     return;
   }
-  await snapshotVersion(db, proposal, draftId, lines, actorId, parallelLeadHours(BigInt(proposal.unit_price_vnd)));
+  const timing = parallelTiming();
+  await snapshotVersion(db, proposal, draftId, lines, actorId, parallelLeadHours(timing), timing.sellerResponse);
 }
 
 export async function castOfferVote(db: PoolClient, actorId: string, proposalId: string, body: z.output<typeof voteInput>) {

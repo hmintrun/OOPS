@@ -75,7 +75,7 @@ export async function submitDraft(client: PoolClient, userId: string, draftId: s
 export async function snapshotVersion(
   client: PoolClient, proposal: Proposal, draftId: string,
   rows: { membership_id: string; qty: number; note: string | null }[],
-  actorId: string | null, leadHours: number,
+  actorId: string | null, leadHours: number, responseHours = sellerResponseHours,
 ) {
   const qty = rows.reduce((sum, line) => sum + line.qty, 0);
   if (qty <= 0 || qty > proposal.qty) throw invalid("Tổng lượng gửi phải dương và không vượt lượng chào.");
@@ -117,7 +117,7 @@ export async function snapshotVersion(
      from public.proposals p cross join submitted s
      where p.id = $7 and p.handoff_start >= s.at + make_interval(hours => $9)
      returning *`,
-    [versionId, draftId, version, qty, totalVnd.toString(), hash, proposal.id, sellerResponseHours, leadHours],
+    [versionId, draftId, version, qty, totalVnd.toString(), hash, proposal.id, responseHours, leadHours],
   );
   if (!saved) throw conflict("Lịch giao không còn đủ thời gian để phản hồi, ký và thu.");
   await client.query(
@@ -203,7 +203,7 @@ export async function respondToVersion(
   }
   if (state === "CHANGES_REQUESTED" && proposal.vote_due_at) {
     const timing = parallelTiming();
-    const lead = parallelLeadHours(BigInt(current.unit_price_vnd), timing);
+    const lead = parallelLeadHours(timing);
     const opened = await client.query(
       `update public.proposals set vote_due_at = clock_timestamp() + make_interval(hours => $2)
        where id = $1 and handoff_start >= clock_timestamp() + make_interval(hours => $3)`,

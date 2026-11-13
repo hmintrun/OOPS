@@ -93,7 +93,7 @@ export const sellerDraftView = draft.pick({ draftId: true, proposalId: true }).e
 });
 export const confirmationRound = z.strictObject({
   roundId: uuid, versionId: uuid, versionHash: draftVersion.shape.versionHash, roundKey: z.string(),
-  chainId: positiveQuantity, contractAddress: z.string(), state: roundState, confirmBy: isoDateTime,
+  chainId: positiveQuantity, contractAddress: z.string(), state: roundState, confirmBy: isoDateTime.optional(),
   requiredCount: quantity, confirmedCount: quantity,
   myConfirmation: z.strictObject({
     walletAddress: z.string(), state: z.enum(["PENDING", "CONFIRMED"]),
