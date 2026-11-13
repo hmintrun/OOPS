@@ -478,9 +478,10 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(supported).toMatchObject({ goodsVnd: 0, depositVnd: 50_000 });
     expect((await call(getOffers, outsider, { id })).status).toBe(404);
     const sellerOffers = offers.parse((await call(getOffers, seller, { id })).data).items;
-    expect(sellerOffers).toEqual([proposal]);
+    expect(sellerOffers).toEqual([{ ...proposal, canOpenDraft: false }]);
     const memberOffers = offers.parse((await call(getOffers, second, { id })).data).items;
     expect(memberOffers).toHaveLength(2);
+    expect(memberOffers.every(entry => entry.canOpenDraft)).toBe(true);
     expect(memberOffers.every(entry => !("handoffPrivate" in entry.terms))).toBe(true);
     expect(offers.parse((await call(getOffers, rep, { id })).data).items[0].terms.handoffPrivate)
       .toBe(terms.handoffPrivate);
@@ -512,6 +513,8 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       qty: 7, totalVnd: 14_000, editRevision: 3, myLine: { qty: 2, goodsVnd: 4_000, note: "Ghi chú riêng" },
     });
     const thirdDraft = draft.parse((await call(getDraft, third, { id: draftId })).data);
+    expect(thirdDraft.permissions).toEqual({ editLine: true, manageDraft: false, finalize: false });
+    expect(repDraft.permissions).toMatchObject({ editLine: true, finalize: true });
     expect(thirdDraft.myLine).toEqual({ qty: 3, goodsVnd: 6_000 });
     expect(draft.parse((await edit(third, 0, 3)).data)).toMatchObject({ qty: 4, totalVnd: 8_000 });
     expect(draft.parse((await call(getDraft, third, { id: draftId })).data).myLine).toBeUndefined();

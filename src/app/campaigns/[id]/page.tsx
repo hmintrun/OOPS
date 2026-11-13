@@ -7,7 +7,7 @@ export default async function CampaignDetailPage({ params }: { params: Promise<{
   const id = uuid.safeParse((await params).id);
   if (!id.success) notFound();
   return (
-    <AppShell title="Chi tiết đợt gom" icon={{ icon: "inventory_2", tone: "green" }} bare>
+    <AppShell title="Chi tiết đợt gom" illustration="basket" bare>
       <CampaignDetail campaignId={id.data} />
     </AppShell>
   );

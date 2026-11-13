@@ -26,12 +26,14 @@ export default async function GroupsPage() {
           <CreateGroupForm />
         </div>
       ) : (
-        <Card className="ui-empty">
+        <Card className="ui-empty ui-status-card">
           <p role="alert">{result.message}</p>
-          <Link href="/groups" className="ui-btn ui-btn--secondary">Thử lại</Link>
-          {process.env.NODE_ENV === "development" && result.status === 503 && (
-            <Link href="/ui-preview/demo" className="ui-btn ui-btn--primary">Mở bản thử</Link>
-          )}
+          <div className="ui-actions">
+            <Link href="/groups" className="ui-btn ui-btn--secondary">Thử lại</Link>
+            {process.env.NODE_ENV === "development" && result.status === 503 && (
+              <Link href="/ui-preview/demo" className="ui-btn ui-btn--primary">Mở bản thử</Link>
+            )}
+          </div>
         </Card>
       )}
     </AppShell>

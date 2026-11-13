@@ -1,0 +1,138 @@
+.demo-order-presentation {
+  min-width: 0;
+}
+
+.demo-role-switcher {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  padding: 12px 16px 16px;
+  border: 1px solid var(--oops-line);
+  border-radius: var(--oops-radius-card);
+  background: var(--oops-surface);
+  box-shadow: var(--oops-shadow-card);
+}
+
+.demo-role-switcher fieldset {
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+
+.demo-role-switcher fieldset:only-child { flex-grow: 0; flex-basis: 34rem; }
+
+.demo-role-switcher legend {
+  margin-bottom: 6px;
+  color: var(--oops-navy-600);
+  font-size: .9375rem;
+  font-weight: 750;
+}
+
+.demo-role-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.demo-role-buttons button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--oops-line);
+  border-radius: 12px;
+  background: var(--oops-sky-100);
+  color: var(--oops-navy-900);
+  font-size: .9375rem;
+  line-height: 1.25;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.demo-role-buttons button:hover { border-color: var(--oops-green-700); }
+.demo-role-buttons button[aria-pressed="true"] {
+  border-color: var(--oops-green-700);
+  background: var(--oops-green-700);
+  color: var(--oops-surface);
+}
+
+.demo-role-buttons--households button { flex-wrap: wrap; gap: 1px 6px; }
+.demo-role-qty { font-size: .875rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.demo-order-quantity-flow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--oops-green-800);
+}
+
+.demo-order-quantity-flow dl {
+  padding: 9px 5px;
+  border-radius: 12px;
+  background: var(--oops-sky-100);
+  color: var(--oops-navy-900);
+}
+
+.demo-order-quantity-flow dl:last-child {
+  background: var(--oops-green-100);
+  color: var(--oops-green-800);
+}
+
+.demo-order-quantity-flow dt { font-size: .875rem; font-weight: 750; line-height: 1.2; }
+.demo-order-quantity-flow dd { font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 850; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.demo-order-quantity-flow dd span { font-size: .875rem; font-weight: 750; }
+
+.demo-next-action {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--oops-sky-100);
+  color: var(--oops-navy-900);
+  line-height: 1.4;
+}
+
+.demo-order-presentation .demo-order-meta {
+  color: var(--oops-navy-600);
+  font-size: .9375rem;
+  font-weight: 750;
+}
+
+.demo-order-presentation .demo-order-title { padding: 10px 12px; }
+.demo-order-presentation .demo-milestones { gap: 4px 6px; padding-block: 0; }
+.demo-order-presentation .demo-milestone { padding: 4px 7px; font-size: .875rem; }
+.demo-order-presentation .demo-settlement { padding-block-start: 7px; line-height: 1.35; }
+.demo-order-presentation .demo-settlement strong { font-size: 1.125rem; }
+.demo-order-presentation .demo-result {
+  border: 1px solid var(--oops-green-100);
+  background: linear-gradient(115deg, var(--oops-green-100), var(--oops-sky-100));
+}
+.demo-order-presentation .demo-result img { width: clamp(58px, 8vw, 92px); }
+
+.demo-order-notifications__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--oops-green-800);
+}
+
+.demo-order-presentation .demo-order-log li { padding-inline: 8px; }
+.demo-order-presentation .demo-order-log .demo-order-log__latest {
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--oops-green-100);
+  color: var(--oops-green-800);
+  font-weight: 800;
+}
+
+@media (width >= 48rem) {
+  .demo-role-buttons { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .demo-role-buttons--households { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

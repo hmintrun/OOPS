@@ -4,6 +4,7 @@
  * Màu/size lấy từ token (`--oops-*`) theo design/STYLE.md, không viết hex.
  */
 import type { CSSProperties } from "react";
+import Link from "next/link";
 import type { CatalogItem, DemandItem } from "@/contracts/foundation";
 import { Card, IconTile, MaterialSymbol } from "@/components/ui";
 import type { TileTone } from "@/components/ui";
@@ -47,29 +48,73 @@ const needByFormat = new Intl.DateTimeFormat("vi-VN", { dateStyle: "medium", tim
 export function DemandCard({ item, category }: { item: DemandItem; category?: Category }) {
   const visual = (category && categoryVisual[category]) || { icon: "inventory_2", tone: "sky" as TileTone };
   const chip = stateChip[item.state];
+  const fulfilled = Math.max(0, item.target - item.missing);
+  const pct = item.target > 0 ? Math.min(100, Math.round((fulfilled / item.target) * 100)) : 0;
 
   return (
     <Card>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <IconTile icon={visual.icon} tone={visual.tone} />
-        <div style={{ minWidth: 0, flex: 1 }}>
+      <div className="feed-card__header">
+        <div className="relative flex-none">
+          {category === "WATER" ? (
+            <img
+              src="/assets/water-bottles.jpg"
+              alt=""
+              className="h-11 w-11 rounded-2xl object-cover shadow-xs border border-line"
+            />
+          ) : category === "FOOD" || category === "ESSENTIALS" ? (
+            <img
+              src="/assets/groceries-box.jpg"
+              alt=""
+              className="h-11 w-11 rounded-2xl object-cover shadow-xs border border-line"
+            />
+          ) : (
+            <IconTile icon={visual.icon} tone={visual.tone} />
+          )}
+        </div>
+        <div className="feed-card__name">
           <h3 className="text-title" style={{ margin: 0 }}>{item.name}</h3>
           <p className="text-small" style={{ margin: 0, color: "var(--oops-navy-600)" }}>Đơn vị: {item.unit}</p>
         </div>
         <span style={{ ...chipStyle, background: chip.background, color: chip.color }}>{chip.label}</span>
       </div>
 
-      <p className="text-label" style={{ margin: "12px 0 0" }}>
-        Còn thiếu {item.missing} / Cần {item.target} {item.unit}
-      </p>
-      <progress
-        className="feed-progress"
-        aria-label={`Đã nhận ${item.received} trên ${item.target} ${item.unit}`}
-        value={Math.min(item.received, item.target)}
-        max={item.target}
-      />
-      <p className="text-small" style={{ margin: "4px 0 0", color: "var(--oops-navy-600)" }}>
-        Có thể chốt thêm: {item.offerable} {item.unit}
+      <div style={{ margin: "14px 0 0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+          <span className="text-label" style={{ color: "var(--oops-navy-900)" }}>
+            Còn thiếu {item.missing} / Cần {item.target} {item.unit}
+          </span>
+          <span className="text-small" style={{ fontWeight: 800, color: "var(--oops-green-700)" }}>
+            {pct}%
+          </span>
+        </div>
+        <div
+          role="progressbar"
+          aria-valuenow={fulfilled}
+          aria-valuemin={0}
+          aria-valuemax={item.target}
+          aria-label={`Đã gom ${fulfilled} trên ${item.target} ${item.unit}`}
+          style={{
+            height: 10,
+            width: "100%",
+            borderRadius: "var(--oops-radius-pill)",
+            background: "var(--oops-sky-tint)",
+            overflow: "hidden",
+            border: "1px solid var(--oops-line)",
+          }}
+        >
+          <div
+            style={{
+              height: "100%",
+              width: `${pct}%`,
+              borderRadius: "var(--oops-radius-pill)",
+              background: "linear-gradient(90deg, var(--oops-green-600), var(--oops-green-700))",
+              transition: "width 300ms ease",
+            }}
+          />
+        </div>
+      </div>
+      <p className="text-small" style={{ margin: "6px 0 0", color: "var(--oops-navy-600)" }}>
+        Có thể chốt thêm: <strong>{item.offerable}</strong> {item.unit}
       </p>
       <p
         className="text-small"
@@ -91,6 +136,7 @@ export function DemandCard({ item, category }: { item: DemandItem; category?: Ca
           </span>
         )}
       </div>
+      <Link href={`/trade/needs/${item.demandItemId}`} className="ui-btn ui-btn--secondary mt-3">Chào hàng hoặc xem đề nghị</Link>
     </Card>
   );
 }

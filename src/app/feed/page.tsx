@@ -8,15 +8,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
-  BottomNav,
   Button,
   Card,
   CardTitle,
   IconTile,
-  ScreenHeader,
+  MaterialSymbol,
   Select,
 } from "@/components/ui";
-import { SHELL_NAV_ITEMS } from "@/components/app-shell";
+import { AppShell } from "@/components/app-shell";
 // `SelectOption` chưa được re-export ở barrel index.ts; import thẳng từ component.
 import type { SelectOption } from "@/components/ui/Select";
 import type { CatalogItem, DemandItem } from "@/contracts/foundation";
@@ -144,15 +143,47 @@ export default function FeedPage() {
   };
 
   return (
-    <main className="ui-app-page">
-      <ScreenHeader
-        title="Nhu cầu quanh bạn"
-        subtitle="Xem các nhóm đang cần mặt hàng gì."
-        icon={{ icon: "dynamic_feed", tone: "green" }}
-      />
+    <AppShell
+      title="Nhu cầu quanh bạn"
+      subtitle="Xem các nhóm đang cần mặt hàng gì."
+      illustration="basket"
+      bodyClassName="ui-stack"
+      bare
+    >
+      <Card className="overflow-hidden border border-green-200 bg-gradient-to-r from-emerald-50 via-white to-sky-50 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          <div className="relative flex-none">
+            <div className="flex -space-x-3 items-center">
+              <img
+                src="/assets/groceries-box.jpg"
+                alt="Thùng nhu yếu phẩm"
+                className="h-16 w-16 rounded-2xl object-cover border-2 border-white shadow-md"
+              />
+              <img
+                src="/assets/water-bottles.jpg"
+                alt="Nước uống cứu trợ"
+                className="h-16 w-16 rounded-2xl object-cover border-2 border-white shadow-md"
+              />
+            </div>
+            <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-green-600 text-[10px] font-bold text-white shadow-xs">
+              ✓
+            </span>
+          </div>
+          <div className="flex-1 text-center sm:text-left">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-bold text-green-800 mb-1">
+              <span>Đợt gom khẩn cấp · Tương trợ cư dân</span>
+            </div>
+            <h2 className="text-title font-extrabold text-navy-900 leading-tight">
+              Gom nhu yếu phẩm quanh khu phố
+            </h2>
+            <p className="text-small text-navy-600 mt-0.5">
+              Các hộ gom chung số lượng lớn để nhận giá sỉ tốt nhất từ các tiệm uy tín. Cọc 10% giữ cam kết.
+            </p>
+          </div>
+        </div>
+      </Card>
 
-      <div className="ui-screen-body" style={{ display: "grid", gap: 16 }}>
-        <Card padding="tight">
+      <Card padding="tight">
           <CardTitle>Lọc nhu cầu</CardTitle>
           <form onSubmit={onSubmit} className="feed-filters">
             <Select
@@ -182,14 +213,14 @@ export default function FeedPage() {
               />
             </label>
             <Button variant="secondary" type="submit">
-              <span className="ui-btn__icon material-symbols-rounded">filter_list</span>
+              <MaterialSymbol className="ui-btn__icon" name="filter_list" />
               Lọc
             </Button>
           </form>
         </Card>
 
         {status === "loading" && (
-          <Card>
+          <Card className="ui-status-card">
             <p role="status" className="text-body" style={{ margin: 0, color: "var(--oops-navy-600)" }}>
               Đang tải nhu cầu…
             </p>
@@ -197,7 +228,7 @@ export default function FeedPage() {
         )}
 
         {status === "empty" && (
-          <Card>
+          <Card className="ui-status-card">
             <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
               <IconTile icon="inbox" tone="sky" />
               <div style={{ minWidth: 0 }}>
@@ -211,11 +242,11 @@ export default function FeedPage() {
         )}
 
         {status === "error" && (
-          <Card>
+          <Card className="ui-status-card">
             <CardTitle>Không tải được nhu cầu</CardTitle>
             <p role="alert" className="text-body" style={{ margin: 0, color: "var(--oops-navy-600)" }}>{errorMessage}</p>
             <div style={{ marginTop: 16 }}>
-              <Button variant="danger" onClick={() => void loadFirstPage(applied)}>
+              <Button variant="secondary" onClick={() => void loadFirstPage(applied)}>
                 Thử lại
               </Button>
             </div>
@@ -242,15 +273,14 @@ export default function FeedPage() {
             )}
 
             {nextCursor && !moreError && (
-              <Button variant="secondary" loading={loadingMore} disabled={loadingMore} onClick={() => void loadMore()}>
-                Tải thêm
-              </Button>
+              <div className="ui-actions">
+                <Button full={false} variant="secondary" loading={loadingMore} disabled={loadingMore} onClick={() => void loadMore()}>
+                  Tải thêm
+                </Button>
+              </div>
             )}
           </>
         )}
-      </div>
-
-      <BottomNav items={SHELL_NAV_ITEMS} />
-    </main>
+    </AppShell>
   );
 }
