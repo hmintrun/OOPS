@@ -10,12 +10,6 @@ import { ApiError, apiFetch } from "@/lib/api-client";
 import { INPUT_CLASS } from "@/app/campaigns/_shared/ui";
 import { dateTime, useTrade, vnd } from "../../trade-client";
 import { TradeStatus } from "../../TradeStatus";
-import { requiredLeadHours } from "@/server/negotiation/timing";
-
-function earliestHandoff() {
-  const minute = 60_000;
-  return new Date(Math.ceil((Date.now() + requiredLeadHours * 60 * minute) / minute) * minute);
-}
 
 export default function OffersPage() {
   const { id } = useParams<{ id: string }>();
@@ -50,10 +44,6 @@ export default function OffersPage() {
               setFormError("Chọn giờ giao hợp lệ. Giờ kết thúc phải từ giờ bắt đầu trở đi.");
               return;
             }
-            if (start < earliestHandoff()) {
-              setFormError(`Chọn giờ bắt đầu giao cách hiện tại ít nhất ${requiredLeadHours} giờ.`);
-              return;
-            }
             const parsed = createOfferInput.safeParse({
               qty: Number(fields.get("qty")), unitPriceVnd: Number(fields.get("price")),
               supportOffer: fields.has("support"), handoffStart: start.toISOString(),
@@ -66,7 +56,7 @@ export default function OffersPage() {
           }}>
             <label className="grid gap-1">Số lượng chào tối đa<input className={INPUT_CLASS} name="qty" type="number" min="1" max="2147483647" required /></label>
             <label className="grid gap-1">Đơn giá (đồng)<input className={INPUT_CLASS} name="price" type="number" min="0" required /></label>
-            <p className="text-small">Nhập 0 đồng nếu tặng hàng. Giờ bắt đầu giao cách hiện tại ít nhất {requiredLeadHours} giờ.</p>
+            <p className="text-small">Nhập 0 đồng nếu tặng hàng.</p>
             <label className="grid gap-1">Bắt đầu giao<input className={INPUT_CLASS} name="start" type="datetime-local" required /></label>
             <label className="grid gap-1">Giao muộn nhất<input className={INPUT_CLASS} name="end" type="datetime-local" required /></label>
             <label className="grid gap-1">Địa điểm giao<input className={INPUT_CLASS} name="place" required /></label>
