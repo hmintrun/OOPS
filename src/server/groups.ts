@@ -4,7 +4,7 @@ import type { PoolClient } from "pg";
 import type { z } from "zod";
 import type { Campaign, Group, Invite, Membership, createGroupInput, createInviteInput } from "@/contracts/foundation";
 import { appOrigin, requiredEnv } from "./config";
-import { conflict, forbidden, invalid, notFound, unavailable } from "./errors";
+import { ApiFailure, conflict, forbidden, invalid, notFound, unavailable } from "./errors";
 
 type GroupInput = z.output<typeof createGroupInput>;
 type InviteInput = z.output<typeof createInviteInput>;
@@ -74,6 +74,40 @@ export async function readGroup(client: PoolClient, userId: string, groupId: str
     [groupId],
   );
   return { groupId, repId: rep.userId, members, campaigns: rows.map(campaignDto) };
+}
+
+export async function leaveGroup(client: PoolClient, userId: string, groupId: string) {
+  await requireMember(client, userId, groupId);
+  await lockGroup(client, groupId);
+  const { rows: [member] } = await client.query<MembershipRow>(
+    `select id, group_id, role from public.memberships
+     where user_id = $1 and group_id = $2 and left_at is null for update`, [userId, groupId],
+  );
+  if (!member) throw notFound();
+  if (member.role === "REP") {
+    throw new ApiFailure(409, "REP_TRANSFER_REQUIRED", "Cần có người nhận vai trò đại diện trước khi rời nhóm.");
+  }
+  const { rows: [blockers] } = await client.query<{ commitment: boolean; published: boolean }>(
+    `select public.has_active_commitment($1, $2) as commitment, exists (
+       select 1 from public.demand_shares s join public.demand_items d on d.id = s.demand_item_id
+       join public.campaigns c on c.id = d.campaign_id
+       where s.membership_id = $2 and c.status = 'PUBLISHED' and c.need_by > clock_timestamp()
+     ) as published`, [userId, member.id],
+  );
+  if (blockers.commitment) {
+    throw new ApiFailure(409, "ACTIVE_COMMITMENT", "Bạn còn vòng ký, hợp đồng hoặc khoản chi/hoàn chưa xử lý xong trong nhóm.");
+  }
+  if (blockers.published) {
+    throw new ApiFailure(409, "PUBLISHED_NEED_ACTIVE", "Cần chờ hết hạn của đợt có nhu cầu đã đăng của bạn.");
+  }
+  const { rows: [left] } = await client.query<{ left_at: Date }>(
+    "update public.memberships set left_at = clock_timestamp() where id = $1 returning left_at", [member.id],
+  );
+  await client.query(
+    `insert into public.audit_events (actor_id, entity_type, entity_id, action) values ($1, 'GROUP', $2, 'MEMBER_LEFT')`,
+    [userId, groupId],
+  );
+  return { groupId, membershipId: member.id, leftAt: left.left_at.toISOString() };
 }
 
 function inviteToken(inviteId: string) {

@@ -103,9 +103,15 @@ export async function approveWithFujiEligibility(
     return new ApiFailure(409, "STOCK_CONFLICT", "Lượng còn có thể chốt không đủ cho bản đã gửi.");
   }
   await db.query(
-    `select w.user_id from public.negotiation_version_lines l join public.memberships m on m.id = l.membership_id
-     join public.wallets w on w.user_id = m.user_id where l.version_id = $1
-     order by w.user_id for share of m, w`, [versionId],
+    `select m.id from public.negotiation_version_lines l join public.memberships m on m.id = l.membership_id
+     where l.version_id = $1 order by m.id for share of m`, [versionId],
+  );
+  await db.query(
+    `select w.user_id from public.wallets w where w.user_id in (
+       select m.user_id from public.negotiation_version_lines l
+       join public.memberships m on m.id = l.membership_id where l.version_id = $1
+       union select unnest($2::uuid[])
+     ) order by w.user_id for share`, [versionId, rep ? [sellerId, rep.user_id] : []],
   );
   const expected = await versionWallets(db, versionId);
   const eligible = new Map(round.eligibleWallets.map(entry => [entry.membershipId, entry.wallet]));
