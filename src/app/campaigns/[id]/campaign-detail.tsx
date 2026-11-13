@@ -58,12 +58,14 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
   const [reload, setReload] = useState(0);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [walletNotReady, setWalletNotReady] = useState(false);
   const busy = useRef(false);
   const retry = useRef<{ body: string; key: string } | undefined>(undefined);
 
   useEffect(() => {
     let active = true;
     setError("");
+    setWalletNotReady(false);
     setData(undefined);
     void loadCampaign(campaignId).then(value => {
       if (!active) return;
@@ -82,6 +84,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     setDraft(update);
     setDirty(true);
     setNotice("");
+    setWalletNotReady(false);
     retry.current = undefined;
   }
 
@@ -93,14 +96,21 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     setSaving(true);
     setNotice("");
     setError("");
+    setWalletNotReady(false);
     try {
       await run(key);
       retry.current = undefined;
       setNotice(success);
       setReload(value => value + 1);
     } catch (error) {
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+        retry.current = undefined;
+      }
       if (error instanceof ApiError && error.status === 401) router.replace("/login");
-      else setError(error instanceof Error ? error.message : "Không thực hiện được thao tác.");
+      else {
+        setWalletNotReady(error instanceof ApiError && error.code === "WALLET_NOT_READY");
+        setError(error instanceof Error ? error.message : "Không thực hiện được thao tác.");
+      }
     } finally {
       busy.current = false;
       setSaving(false);
@@ -140,7 +150,19 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         <p>Gom đến {formatDateTime(campaign.collectUntil)}</p>
         <p>Cần hàng trước {formatDateTime(campaign.needBy)}</p>
       </Card>
-      {error && <Banner tone="error">{error}</Banner>}
+      {error && (
+        <div className="grid gap-2">
+          <Banner tone="error">{error}</Banner>
+          {walletNotReady && (
+            <Card className="grid gap-2" padding="tight">
+              <p className="text-small text-navy-600">
+                Hộ cần liên kết và xác minh ví Avalanche Fuji đủ điều kiện trước khi xác nhận giỏ. Hãy kiểm tra ví ở trang Tài khoản rồi quay lại xác nhận.
+              </p>
+              <LinkButton href="/me">Kiểm tra ví Avalanche Fuji</LinkButton>
+            </Card>
+          )}
+        </div>
+      )}
       {notice && <p role="status">{notice}</p>}
       <Card>
         <CardTitle>Giỏ của hộ</CardTitle>

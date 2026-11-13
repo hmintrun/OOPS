@@ -10,6 +10,7 @@ import { ApiError, apiFetch } from "@/lib/api-client";
 import { INPUT_CLASS } from "@/app/campaigns/_shared/ui";
 import { dateTime, useTrade, vnd } from "../../trade-client";
 import { TradeStatus } from "../../TradeStatus";
+import { VotePanel } from "../../VotePanel";
 
 export default function OffersPage() {
   const { id } = useParams<{ id: string }>();
@@ -75,7 +76,23 @@ export default function OffersPage() {
             {item.terms.supportOffer && <p>Giá hỗ trợ</p>}
             {item.terms.handoffPrivate && <p>Địa điểm giao: {item.terms.handoffPrivate}</p>}
             <p>Giao {dateTime(item.terms.handoffStart)} đến {dateTime(item.terms.handoffBy)}</p>
-            {item.draftId ? <Link className="ui-btn ui-btn--secondary" href={`/trade/drafts/${item.draftId}`}>Xem thương lượng</Link> :
+            {item.voteDueAt && <>
+              <p>Hạn bỏ phiếu {dateTime(item.voteDueAt)}</p>
+              <VotePanel
+                proposalId={item.proposalId}
+                offerState={item.state}
+                refreshSignal={`${item.state}:${item.voteDueAt}`}
+                onUpdated={() => void trade.refresh()}
+              />
+            </>}
+            {item.draftId ? <>
+              {item.state !== "SUBMITTED" && (
+                <p className="text-small text-navy-600">
+                  {item.state === "SELECTED" ? "Đề nghị đã chốt đơn." : item.state === "REJECTED" ? "Đề nghị đã từ chối." : "Đề nghị đã hết hạn."}
+                </p>
+              )}
+              <Link className="ui-btn ui-btn--secondary" href={`/trade/drafts/${item.draftId}`}>Xem thương lượng</Link>
+            </> :
               item.canOpenDraft ? <Button variant="secondary" disabled={trade.busy} onClick={() => void trade.run(
                 `draft:${item.proposalId}`, key => apiFetch(`/api/v1/offers/${item.proposalId}/draft`, {
                   method: "POST", body: {}, schema: draftSchema, idempotencyKey: key,
