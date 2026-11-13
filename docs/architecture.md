@@ -53,7 +53,7 @@ flowchart LR
 
 ### Trạng thái thương lượng và thời hạn
 
-Backend lưu hạn phản hồi bằng thời điểm đóng phiếu cộng 6 giờ. Khi worker đóng vòng trễ, mốc tính vẫn là hạn phiếu đã lưu. Hạn ký và thu cuối cùng cách giờ bắt đầu giao ít nhất 2 giờ. Hạn duyệt biên nhận là `handoffBy + 24 giờ`. [Quy tắc thời hạn](OOPS-Spec.md#8-thời-hạn) · [Chuẩn băm phiên bản](OOPS-Spec.md#chuẩn-băm-phiên-bản)
+Backend lưu hạn phản hồi bằng thời điểm đóng phiếu cộng 3 giờ theo cấu hình MVP. Khi worker đóng vòng trễ, mốc tính vẫn là hạn phiếu đã lưu. Hạn ký và thu cuối cùng cách giờ bắt đầu giao ít nhất 2 giờ. Hạn duyệt biên nhận là `handoffBy + 24 giờ`. [Quy tắc thời hạn](OOPS-Spec.md#8-thời-hạn) · [Chuẩn băm phiên bản](OOPS-Spec.md#chuẩn-băm-phiên-bản)
 
 | Trạng thái bản | Hành động hoặc mốc | Kết quả và thông báo |
 | --- | --- | --- |
@@ -62,15 +62,14 @@ Backend lưu hạn phản hồi bằng thời điểm đóng phiếu cộng 6 gi
 | `SUBMITTED` | Hết hạn người bán phản hồi | `EXPIRED` với lý do `SELLER_TIMEOUT`. Đề nghị cũng hết hạn. |
 | `SUBMITTED` | Lượng không đủ khi người bán chốt | `STOCK_CONFLICT`. Ghi trạng thái và sự kiện rồi trả `409`. |
 
-Thiết lập các biến sau trên server trước khi tạo đề nghị mới. Mỗi biến nhận số giờ nguyên dương từ 1 đến 8760. Backend yêu cầu giá trị tường minh cho cả năm biến.
+Thiết lập bốn biến sau trên server trước khi tạo đề nghị mới. Mỗi biến nhận số giờ nguyên từ 1 đến 8760. Hạn cọc không vượt quá hạn chung.
 
 | Biến | Mốc tính |
 | --- | --- |
-| `OOPS_VOTE_HOURS` | Thời lượng vòng phiếu, tính từ lúc mở vòng. |
-| `OOPS_FUJI_OPEN_HOURS` | Từ lúc người bán chấp thuận đến `roundOpenBy`. |
-| `OOPS_FUJI_SIGN_HOURS` | Từ `roundOpenBy` đến `confirmBy`. |
-| `OOPS_DEPOSIT_HOURS` | Từ `roundOpenBy` đến `depositDueAt`. |
-| `OOPS_GOODS_HOURS` | Từ `confirmBy` đến hạn tiền hàng dự kiến. `paymentDueAt` của đơn có giá lấy mốc muộn hơn giữa hạn này và hạn cọc. |
+| `OOPS_VOTE_HOURS=3` | Từ lúc mở vòng phiếu. |
+| `OOPS_SELLER_RESPONSE_HOURS=3` | Từ lúc đóng vòng phiếu. |
+| `OOPS_FUJI_SIGN_HOURS=12` | Từ timestamp block mở vòng đến hạn chung `confirmBy` và `paymentDueAt` của đơn có giá. |
+| `OOPS_DEPOSIT_HOURS=6` | Từ timestamp block mở vòng đến hạn cọc của người bán. |
 
 Đề nghị và hợp đồng tạo theo luồng cũ tiếp tục dùng các bước `AWAIT_CONFIRMATIONS → AWAIT_REP_APPROVAL → FINALIZED` và `AWAIT_DEPOSIT → AWAIT_PAYMENT` tương ứng. Các job hạn đại diện và route finalize vẫn phục vụ dữ liệu đó.
 
@@ -80,12 +79,12 @@ Khi lưu bản gửi, backend ghi outbox `NEGOTIATION_SELLER_RESPONSE_DUE` với
 
 - `OFFER_VOTE_DUE` có `{draftId, round}` và chạy tại `vote_due_at`. Worker gọi `expireOfferVoting(db, draftId, round)` trong transaction. Hàm chỉ đóng vòng hiện hành đã đến hạn. Nếu không còn phiếu Có hợp lệ, backend ghi `OFFER_VOTE_CLOSED` với `{draftId, round, proposalId, recipientUserIds}` để báo người bán.
 - Khi người bán chấp thuận, API đọc ví đã xác minh, gọi RPC Fuji ngoài transaction và kiểm credential của các hộ ở cùng block. Hàm credential `view(address)` trả `bool` hoặc `uint256`. Giá trị `true` hoặc số dư dương đủ quyền. `approveWithFujiEligibility(db, sellerId, draftId, versionId, round, note?)` kiểm lại bản, hạn và ví dưới khóa trước khi tạo đơn. `roundKey` là Keccak-256 của chuỗi UTF-8 `OOPS:fuji-round:v1:<versionId>`. Worker truyền nguyên khóa bytes32 đã lưu vào contract.
-- `FUJI_ROUND_OPEN_REQUESTED` và `FUJI_CONFIRMATION_DUE` có `{draftId, versionId, roundId, versionHash, openBy?}`. Với đơn mới, `openBy` là hạn mở vòng. Sau khi xác minh vòng mở trên chain, worker lưu `state = OPEN` và `opens_at` từ sự kiện mở hợp lệ, trước `open_by`. Worker kiểm chain, contract, vòng, hash, ví và block timestamp trước `confirmBy` khi ghi xác nhận. `REP_APPROVAL_DUE` chỉ phát cho dữ liệu cũ.
+- `FUJI_ROUND_OPEN_REQUESTED` chạy ngay khi giao dịch seller chốt commit. Payload có `{draftId, versionId, roundId, versionHash, openBy?, signingHours?}`. Với đơn mới có `signingHours`, contract Fuji phải tính hạn từ timestamp block mở vòng. Sau khi xác minh sự kiện mở vòng, worker gọi `recordVerifiedRoundOpening(db, draftId, versionId, roundId, openedAt, confirmBy)` trong transaction. Hàm ghi hạn cọc, hạn chung và các job tương ứng. Worker phải đồng bộ chain qua `openBy` trước khi chạy job `ROUND_OPEN` để phân biệt giao dịch mở đúng hạn với giao dịch chưa mở. Worker kiểm chain, contract, vòng, hash, ví và block timestamp trước `confirmBy` khi ghi xác nhận. Payload mở vòng cũ thiếu `signingHours` tiếp tục dùng hạn đã lưu. `REP_APPROVAL_DUE` chỉ phát cho dữ liệu cũ.
 - Sau khi commit việc ghi xác nhận, indexer gọi `advanceVerifiedRound(db, draftId, versionId)` trong transaction mới. Với đơn mới, hàm đánh dấu vòng `CONFIRMED` khi đủ chữ ký và thử mở bàn giao. Giao dịch thu SIM cũng thử mở bàn giao sau khi áp dụng tiền, dưới khóa lượng và hợp đồng. Chỉ gọi `expireFujiStage(db, draftId, versionId, "CONFIRMATION_TIMEOUT")` sau khi đồng bộ qua cutoff. Hàm hủy và lập hoàn cho đơn mới nếu còn thiếu chữ ký. `FINALIZE_TIMEOUT` dành cho luồng cũ.
 - `ORDER_DEADLINE_DUE` có `{contractId, stage}`. Worker gọi `expireOrderDeadline(db, contractId, stage)` trong transaction cho `ROUND_OPEN`, `DEPOSIT`, `PAYMENT`, `READY`, `HANDOFF` hoặc `RECEIPT`. Với đơn mới, các job mở vòng và thu kiểm những hạn đã đến mà điều kiện vẫn còn thiếu. API nhận tiền SIM và các thao tác hủy dùng chung quy tắc quá hạn dưới khóa. API có thể trả `409` sau khi ghi hủy và lập hoàn. Worker chạy lại thấy đơn đã được xử lý.
 - `ORDER_STATE_CHANGED` có `contractId`, `action`, `state` và `recipientUserIds`. Đơn mới ghi `FINALIZED` khi tạo hợp đồng và `HANDOFF_ELIGIBLE` khi đủ điều kiện bàn giao. Khi ops ghi chi hoặc hoàn, sự kiện `DISBURSEMENT_POSTED` có thêm `disbursementId` và chỉ gửi cho người nhận khoản chuyển. Worker có thể gọi `persistNotifications` với loại đối tượng, ID, `event_key` và danh sách người nhận để ghi thông báo một lần.
 
-Backend cung cấp các hàm xử lý và outbox trên. Việc mở vòng, đọc log, chạy job theo hạn và phát thông báo cần worker tích hợp. Migration `20261113000100_parallel_collections_and_voting.sql` cần được áp dụng trước khi chạy luồng mới.
+Backend cung cấp các hàm xử lý và outbox trên. Việc mở vòng, đọc log, chạy job theo hạn và phát thông báo cần worker tích hợp. Áp dụng các migration đến `20261113000400_fix_fuji_round_deadline_constraint.sql` trước khi chạy luồng mới.
 
 ## Trạng thái theo dõi
 
@@ -112,6 +111,8 @@ Giao dịch lấy các khóa cần dùng theo thứ tự chung sau. Khi có nhi�
 4. Các bản ghi thuộc hợp đồng cần cập nhật, gồm khoản thu, giao dịch thu, khoản chi, bằng chứng, biên nhận và các yêu cầu thay đổi. Nếu chạm nhiều loại, dùng cùng thứ tự liệt kê.
 
 Khi chốt đề nghị, vòng mới được tạo trước hợp đồng. Với đơn mới đã tồn tại, các hàm xử lý thu, hủy và tiến độ Fuji khóa lượng và hợp đồng trước khi cập nhật vòng. Worker gọi hàm tiến độ trong giao dịch mới sau khi commit log Fuji để tránh giữ khóa vòng khi chờ khóa lượng. Với luồng cũ, vòng được khóa sau phiên bản trong giao dịch đại diện chốt.
+
+API rời nhóm khóa nhóm rồi khóa dòng thành viên trước khi kiểm nghĩa vụ. Đăng nhu cầu dùng cùng khóa nhóm, còn tạo vòng ký giữ khóa chia sẻ trên các dòng thành viên và ví trước khi chụp. Khi tạo hợp đồng, giao dịch giữ khóa chia sẻ trên ví hiện có của người bán và đại diện. Trigger ví kiểm lại nghĩa vụ trong giao dịch ghi ví sau khi lấy khóa dòng. Áp dụng migration `20261113000200_guard_membership_and_wallet_changes.sql` trước khi dùng API rời nhóm hoặc luồng cập nhật ví theo G-09.
 
 Sau khi lấy khóa, đọc lại trạng thái, phiên bản, thời hạn và lượng trước khi ghi. Ghi outbox cùng giao dịch với các thay đổi nghiệp vụ. Job nhắc lịch hoặc xử lý quá hạn đối chiếu mốc hiện hành và bỏ qua lịch đã bị thay thế. Khi cần gọi dịch vụ bên ngoài, commit thay đổi cần thiết trước rồi xử lý kết quả trong một giao dịch mới.
 

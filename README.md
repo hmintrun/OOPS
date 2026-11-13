@@ -36,7 +36,7 @@ Các bảng nghiệp vụ không mở trực tiếp cho browser. Giữ thông ti
 
 Từ `demandItemId` trên Feed, người bán gửi đề nghị qua `POST /api/v1/needs/{id}/offers`. Hộ có nhu cầu dùng `proposalId` để mở nháp bằng `POST /api/v1/offers/{id}/draft`, rồi mỗi hộ cập nhật dòng của mình tại `PUT /api/v1/drafts/{id}/my-line` bằng `editRevision` hiện hành. [Fixture thương lượng](tests/fixtures/negotiation.ts) mô tả ca chào 10, các hộ góp 2+2+3.
 
-Hộ khởi tạo gửi bản qua `POST /api/v1/drafts/{id}/submit`. Giờ bắt đầu giao phải cách hiện tại ít nhất 30 giờ khi tạo đề nghị, mở hoặc sửa nháp và gửi bản. Sau khi người bán chấp thuận, API kiểm credential trên Fuji và đưa yêu cầu mở vòng vào outbox. [Hạn phản hồi](docs/OOPS-Spec.md#8-thời-hạn) · [Chuẩn băm phiên bản](docs/OOPS-Spec.md#chuẩn-băm-phiên-bản)
+Đề nghị mới dùng vòng phiếu và cần ít nhất 20 giờ trước giờ giao với cấu hình mẫu. Luồng nháp cũ dùng `POST /api/v1/drafts/{id}/submit` và mốc 30 giờ. Khi người bán chấp thuận, API kiểm credential và đưa yêu cầu mở vòng Fuji vào outbox để worker xử lý ngay. [Thời hạn](docs/OOPS-Spec.md#8-thời-hạn) · [Chuẩn băm phiên bản](docs/OOPS-Spec.md#chuẩn-băm-phiên-bản)
 
 ## Cấu hình backend demo
 

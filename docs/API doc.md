@@ -48,7 +48,7 @@ Hợp đồng API cho web và worker của [OOPS MVP](requirements.md). Xem [Sch
 
 Contract còn có sourceVersionId, version, sellerId, repId, depositDueAt, paymentDueAt?, handoffStart, handoffBy, approvalDueAt, readyAt?, allocations, charges, disbursements, evidenceIds?, receipt?, termination?, reviewScope?, handoffPrivate? và repContact?. `reviewScope` là `HANDOFF` hoặc `DEPOSIT` khi `NEEDS_REVIEW`. Allocation có allocationId, qty, goodsVnd. Người bán và đại diện của hợp đồng thấy evidenceIds ngay khi đã lưu bằng chứng, kể cả trước khi lập biên nhận. Khoản thu hoặc chi có ID, kind, amountVnd, state và dueAt hoặc postedAt?.
 
-Đơn theo luồng mới có thêm `roundId`, `roundOpenBy` và `confirmBy`. Khoản thu của người gọi có `canPay` cho biết khoản đang chờ, còn hạn và đã đủ điều kiện ký tương ứng. Dùng `canPay` để hiển thị nút thu SIM, sau đó tải lại Contract để lấy tiến độ mới. Server kiểm lại điều kiện khi ghi thu.
+Đơn theo luồng mới có `roundId` và `roundOpenBy`. Sau khi xác minh vòng đã mở trên Fuji, API trả `confirmBy`, `depositDueAt`, `dueAt` của khoản thu và `paymentDueAt` nếu đơn có giá. Khoản thu của người gọi có `canPay` cho biết khoản đang chờ, còn hạn và đã đủ điều kiện ký tương ứng. Dùng `canPay` để hiển thị nút thu SIM, sau đó tải lại Contract để lấy tiến độ mới. Server kiểm lại điều kiện khi ghi thu.
 
 ### Campaign, DemandItem và Cart
 
@@ -122,7 +122,7 @@ type ConfirmationRound = {
   chainId: UInt;
   contractAddress: string;
   state: "OPENING" | "OPEN" | "CONFIRMED" | "CLOSED";
-  confirmBy: IsoDateTime;
+  confirmBy?: IsoDateTime;
   requiredCount: UInt;
   confirmedCount: UInt;
   myConfirmation?: {
@@ -134,7 +134,7 @@ type ConfirmationRound = {
 
 - `Draft.qty` và `Draft.totalVnd` là tổng của bản nháp đang sửa. `Draft.myLine` chỉ chứa dòng nháp của hộ gọi API. Seller chỉ nhận `SellerDraftView` và nhận `404` nếu chưa có bản gửi.
 - `DraftVersion` chứa dữ liệu đã chụp khi gửi. `version` bắt đầu từ 1 và là số dùng trong route `/versions/{version}`. Hộ có phần nhận `myLine` của mình. Seller của đề nghị và đại diện có quyền duyệt nhận `lines` gồm lượng và tiền theo từng phần. Các dòng trả cho người duyệt không chứa ghi chú riêng, định danh hộ hoặc địa chỉ ví. Nếu đại diện cũng có phần, `myLine` vẫn chỉ chứa phần của đại diện.
-- `roundId` và `confirmBy` xuất hiện khi đã tạo vòng. `contractId` xuất hiện khi đã chốt. `repApproveBy` chỉ áp dụng cho bản theo luồng cũ. `versionHash` và `roundKey` là hai chuỗi `0x` theo sau bởi 64 ký tự hex chữ thường. [Chuẩn băm và vector kiểm thử](OOPS-Spec.md#chuẩn-băm-phiên-bản) · [Cách sinh roundKey](architecture.md#bàn-giao-backend-và-worker)
+- `roundId` xuất hiện khi đã tạo vòng. Với vòng mới, `confirmBy` xuất hiện sau khi xác minh vòng đã mở trên Fuji. `contractId` xuất hiện khi đã chốt. `repApproveBy` chỉ áp dụng cho bản theo luồng cũ. `versionHash` và `roundKey` là hai chuỗi `0x` theo sau bởi 64 ký tự hex chữ thường. [Chuẩn băm và vector kiểm thử](OOPS-Spec.md#chuẩn-băm-phiên-bản) · [Cách sinh roundKey](architecture.md#bàn-giao-backend-và-worker)
 - `myConfirmation` chỉ trả trạng thái và ví của chính hộ gọi. `myConfirmation.state = CONFIRMED` sau khi worker lưu xác nhận hợp lệ của hộ. Backend dùng tập xác nhận của từng hộ để xét điều kiện bàn giao.
 - `Contract.termination` chỉ trả yêu cầu đang chờ cho người gọi có quyền xem. Dữ liệu gồm terminationId, baseVersion, proposedBy, reason, state và note?.
 
@@ -149,9 +149,10 @@ type ConfirmationRound = {
 | Endpoint và quyền | Dữ liệu vào | Phản hồi |
 | --- | --- | --- |
 | `GET /me` và `PATCH /me`<br>Đã đăng nhập | Supabase Auth quản lý phiên. PATCH {contactPrivate}. | 200 {userId, groupId?, wallet?: {address, verificationState}, confirmationEligible, contactPrivate?}. verificationState là PENDING, VERIFIED hoặc FAILED. confirmationEligible còn phụ thuộc chính sách Fuji. |
-| `POST /wallet/link`<br>Chủ phiên | {address, proofTx, nonce}. GET /wallet/challenge cấp nonce một lần và expiresAt. Fuji ghi hash thử thách gắn với ví. | 202 {verificationState}. GET /me cho biết kết quả. 422 nếu bằng chứng sai. |
+| `POST /wallet/link`<br>Chủ phiên | {address, proofTx, nonce}. GET /wallet/challenge cấp nonce một lần và expiresAt. Fuji ghi hash thử thách gắn với ví. | 202 {verificationState}. GET /me cho biết kết quả. 422 nếu bằng chứng sai. Khi lưu thay đổi ví, 409 `ACTIVE_COMMITMENT` nếu còn nghĩa vụ theo [G-09](OOPS-Spec.md#66-rời-nhóm-và-đổi-ví-g-09). |
 | `POST /groups`<br>Người chưa có nhóm | {name, districtCode, wardCode, pickupPrivate?}. Người tạo xác nhận nhận vai trò đại diện khi gửi. | 201 {groupId, membershipId, role}. 409 nếu đã có nhóm. |
 | `GET /groups/{id}`<br>Thành viên | id là groupId. | 200 {groupId, repId, members, campaigns: Campaign[]}. Ẩn điểm nhận cụ thể với hộ chưa chốt. |
+| `POST /groups/{id}/leave`<br>Thành viên tự rời | {}. Xem [G-09](OOPS-Spec.md#66-rời-nhóm-và-đổi-ví-g-09). | 200 {groupId, membershipId, leftAt}. 409 `REP_TRANSFER_REQUIRED`, `ACTIVE_COMMITMENT` hoặc `PUBLISHED_NEED_ACTIVE`. 404 nếu người gọi không còn là thành viên. |
 | `POST /groups/{id}/invites`<br>Đại diện | {kind: JOIN hoặc REP, targetUserId?}. REP bắt buộc có targetUserId đang trong nhóm. | 201 {inviteId, inviteUrl, expiresAt}. |
 | `POST /invites/accept`<br>Người được mời | {token}. JOIN cần chưa có nhóm. REP kiểm tra đúng tài khoản đích. | 200 {groupId, membershipId, role}. 409 nếu link hết hạn, đã dùng hoặc không còn hợp lệ. |
 | `POST /groups/{id}/campaigns`<br>Đại diện | {collectUntil, needBy, supportRequested?}. Kiểm tra thời điểm hiện tại < collectUntil < needBy. | 201 Campaign ở DRAFT. |

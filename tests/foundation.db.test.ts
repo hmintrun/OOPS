@@ -1,12 +1,13 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { apiError, campaign, cart, cartAiResult, feed, group, invite, me, membership, needs, publishResult } from "@/contracts/foundation";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { apiError, campaign, cart, cartAiResult, feed, group, invite, leftGroup, me, membership, needs, publishResult } from "@/contracts/foundation";
 import { GET as getMe, PATCH as patchMe } from "@/app/api/v1/me/route";
 import { POST as postGroup } from "@/app/api/v1/groups/route";
 import { GET as getGroup } from "@/app/api/v1/groups/[id]/route";
 import { POST as postInvite } from "@/app/api/v1/groups/[id]/invites/route";
+import { POST as postLeave } from "@/app/api/v1/groups/[id]/leave/route";
 import { POST as takeInvite } from "@/app/api/v1/invites/accept/route";
 import { POST as postCampaign } from "@/app/api/v1/groups/[id]/campaigns/route";
 import { GET as getCart, PUT as saveCart } from "@/app/api/v1/campaigns/[id]/cart/route";
@@ -44,7 +45,7 @@ import { confirmationRound, draft, draftVersion, offer, offers, offerVoting, sel
 import { contract, evidenceResult, notificationList, opsList, postTransferResult, receipt, signedEvidence, terminationResult } from "@/contracts/orders";
 import { closeDatabase, transaction } from "@/server/db";
 import { expireSellerResponse } from "@/server/negotiation/versions";
-import { advanceVerifiedRound, approveWithFujiEligibility, expireFujiStage, fujiRoundKey } from "@/server/negotiation/rounds";
+import { advanceVerifiedRound, approveWithFujiEligibility, expireFujiStage, fujiRoundKey, recordVerifiedRoundOpening } from "@/server/negotiation/rounds";
 import { expireOfferVoting } from "@/server/negotiation/votes";
 import * as profiles from "@/server/profiles";
 import { applySimFundEvent, expireOrderDeadline } from "@/server/orders/collections";
@@ -64,6 +65,7 @@ vi.mock("@/server/auth", async () => {
 });
 
 const session = new AsyncLocalStorage<string | undefined>();
+const authFetch = globalThis.fetch.bind(globalThis);
 const users: string[] = [];
 const district = "OOPS_TEST_" + randomUUID();
 const dateIn = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
@@ -87,10 +89,13 @@ async function call(handler: Handler, userId?: string, options: {
 }
 
 const local = () => ["localhost", "127.0.0.1", "[::1]"].includes(new URL(process.env.DATABASE_URL!).hostname);
+const authUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const authKey = process.env.SUPABASE_SECRET_KEY;
 
 function authAdmin() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, {
+  return createClient(authUrl!, authKey!, {
     auth: { autoRefreshToken: false, persistSession: false },
+    global: { fetch: authFetch },
   }).auth.admin;
 }
 
@@ -193,7 +198,7 @@ async function negotiationWithDraft(hoursUntilHandoff: number, unitPriceVnd = 2_
     });
   const revise = (actor: string, version: number) =>
     call(postRevise, actor, { id, method: "POST", body: { version }, path: `/api/v1/drafts/${id}/revise` });
-  return { rep, second, third, spare, seller, item, campaignId, id, edit, submit, respond, revise };
+  return { rep, second, third, spare, seller, groupId, item, campaignId, id, edit, submit, respond, revise };
 }
 
 const walletOf = (userId: string) => "0x" + userId.replaceAll("-", "").padStart(40, "0");
@@ -259,13 +264,18 @@ async function databaseTime() {
 describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", () => {
   const previousPaymentMode = process.env.OOPS_PAYMENT_MODE;
   const timing = {
-    OOPS_VOTE_HOURS: "2", OOPS_FUJI_OPEN_HOURS: "1", OOPS_FUJI_SIGN_HOURS: "8",
-    OOPS_DEPOSIT_HOURS: "4", OOPS_GOODS_HOURS: "12",
+    OOPS_VOTE_HOURS: "3", OOPS_SELLER_RESPONSE_HOURS: "3",
+    OOPS_FUJI_SIGN_HOURS: "12", OOPS_DEPOSIT_HOURS: "6",
   };
   const previousTiming = Object.fromEntries(Object.keys(timing).map(key => [key, process.env[key]]));
   beforeAll(() => {
     process.env.OOPS_PAYMENT_MODE = "SIM";
     Object.assign(process.env, timing);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
   });
   afterAll(async () => {
     try {
@@ -341,7 +351,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       }
       await closeDatabase();
     }
-  }, 60_000);
+  }, 180_000);
 
   it("publishes 12 confirmed units, protects private data, and paginates Feed", async () => {
     const [rep, ...others] = await Promise.all(Array.from({ length: 6 }, newUser));
@@ -398,7 +408,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       missing: 12, offerable: 4,
     });
     expect((await call(getFeed, outsider, { path: basePath + "&cursor=invalid" })).status).toBe(422);
-  }, 60_000);
+  });
 
   it.each(["paid", "free", "expired"])("processes parallel commitments for a %s order", async mode => {
     const { rep, second, third, seller, item } = await negotiationWithDraft(48);
@@ -422,6 +432,11 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     });
     const { latestVersion: version } = sellerDraftView.parse((await call(getDraft, seller, { id: draftId })).data);
     expect(version.qty).toBe(7);
+    const { rows: [responseWindow] } = await transaction(db => db.query<{ hours: number }>(
+      `select (extract(epoch from seller_response_due_at - submitted_at) / 3600)::int as hours
+       from public.negotiation_versions where id = $1`, [version.versionId],
+    ));
+    expect(responseWindow.hours).toBe(3);
     const { approved, participants } = await transaction(async db => {
       const { rows: participants } = await db.query<{ membership_id: string; user_id: string }>(
         `select l.membership_id, m.user_id from public.negotiation_version_lines l
@@ -439,8 +454,20 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     const sellerOrder = await orderFor(contractId, seller);
     const deposit = sellerOrder.charges[0];
     expect(sellerOrder).toMatchObject({ state: "AWAIT_COMMITMENTS", qty: 7, roundId });
+    expect(sellerOrder.depositDueAt).toBeUndefined();
+    expect(sellerOrder.confirmBy).toBeUndefined();
     expect((await pay(deposit.chargeId, seller)).status).toBe(409);
-    await transaction(db => db.query("update public.confirmation_rounds set state = 'OPEN', opens_at = clock_timestamp() where id = $1", [roundId]));
+    const openedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
+    const confirmBy = new Date(+openedAt + 12 * 3_600_000).toISOString();
+    const recordOpening = (deadline: string) => transaction(db =>
+      recordVerifiedRoundOpening(db, draftId, version.versionId, roundId, openedAt.toISOString(), deadline));
+    expect(await recordOpening(new Date(+openedAt + 13 * 3_600_000).toISOString())).toBe(false);
+    expect(await recordOpening(confirmBy)).toBe(true);
+    expect(await recordOpening(confirmBy)).toBe(false);
+    expect(await orderFor(contractId, seller)).toMatchObject({
+      confirmBy, depositDueAt: new Date(+openedAt + 6 * 3_600_000).toISOString(),
+      ...(price > 0 && { paymentDueAt: confirmBy }),
+    });
     const buyers = [rep, second, third];
     const buyerOrders = await Promise.all(buyers.map(buyer => orderFor(contractId, buyer)));
     expect(buyerOrders[0].charges).toHaveLength(price ? 1 : 0);
@@ -464,7 +491,9 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(await stock()).toEqual({ pending: 7, reserved: 0 });
     if (mode === "expired") {
       await transaction(async db => {
-        await db.query("update public.confirmation_rounds set open_by = clock_timestamp() - interval '2 hours', confirm_by = clock_timestamp() - interval '1 hour' where id = $1", [roundId]);
+        await db.query(`update public.confirmation_rounds
+           set opens_at = opens_at - interval '13 hours', confirm_by = confirm_by - interval '13 hours'
+           where id = $1`, [roundId]);
         expect(await expireFujiStage(db, draftId, version.versionId, "CONFIRMATION_TIMEOUT")).toBe(true);
         expect(await expireFujiStage(db, draftId, version.versionId, "CONFIRMATION_TIMEOUT")).toBe(false);
       });
@@ -483,7 +512,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       expect((await orderFor(contractId, seller)).state).toBe("AWAIT_HANDOFF");
       expect(await stock()).toEqual({ pending: 0, reserved: 7 });
     }
-  }, 30_000);
+  });
 
   it("makes idempotency atomic and a JOIN token usable by only one account", async () => {
     const [rep, first, second] = await Promise.all([newUser(), newUser(), newUser()]);
@@ -511,7 +540,23 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect((await call(postInvite, rep, {
       id, method: "POST", body: { kind: "JOIN" }, key: "invite-replay",
     })).status).toBe(403);
-  }, 60_000);
+  });
+
+  it("keeps the representative in the group until transfer and preserves membership history on leave", async () => {
+    const [rep, nextRep] = await Promise.all([newUser(), newUser()]);
+    const id = await newGroup(rep);
+    const request = { id, method: "POST", body: {}, key: "leave-group" };
+    expect((await call(postLeave, rep, request)).data).toMatchObject({ error: { code: "REP_TRANSFER_REQUIRED" } });
+    expect((await accept(nextRep, (await makeInvite(rep, id)).token)).status).toBe(200);
+    expect((await accept(nextRep, (await makeInvite(rep, id, nextRep)).token)).status).toBe(200);
+    const retry = { ...request, key: "leave-after-transfer" };
+    const left = await call(postLeave, rep, retry);
+    expect(left.status).toBe(200);
+    expect(leftGroup.parse(left.data).groupId).toBe(id);
+    expect(await call(postLeave, rep, retry)).toEqual(left);
+    expect((await call(getGroup, rep, { id })).status).toBe(404);
+    expect(group.parse((await call(getGroup, nextRep, { id })).data).members).toHaveLength(1);
+  });
 
   it("serializes publishing against cart changes and rolls back a snapshot without confirmed lines", async () => {
     const rep = await newUser();
@@ -541,7 +586,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     ));
     expect((await put(rep, expired, 1)).status).toBe(409);
     expect((await confirm(rep, expired, 1)).status).toBe(409);
-  }, 60_000);
+  });
 
   it("prevents two active memberships when group creation races", async () => {
     const rep = await newUser();
@@ -646,7 +691,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       return row;
     });
     expect({ pending, reserved, received }).toEqual({ pending: 12, reserved: 0, received: 0 });
-  }, 30_000);
+  });
 
   it("snapshots only the 2+2+3 shares, keeps private fields scoped and preserves old versions across revisions", async () => {
     const { rep, second, third, seller, spare, item, id, edit, submit, respond, revise } = await negotiationWithDraft(48);
@@ -727,15 +772,15 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       );
       expect(demand).toEqual({ pending: 0, reserved: 0, received: 0 });
     });
-  }, 30_000);
+  });
 
-  it("requires a full 30 hours before handoff and expires seller replies exactly once", async () => {
+  it("checks the new and legacy handoff lead times and expires seller replies exactly once", async () => {
     const tight = await negotiationWithDraft(48);
     expect((await tight.edit(tight.rep, 2, 0)).status).toBe(200);
     const original = offers.parse((await call(getOffers, tight.seller, { id: tight.item.demandItemId })).data).items[0];
     const options = { id: tight.item.demandItemId, method: "POST", body: original.terms };
     expect((await call(postOffer, tight.seller, { ...options, body: {
-      ...options.body, handoffStart: dateIn(29.9), handoffBy: dateIn(31),
+      ...options.body, handoffStart: dateIn(19.9), handoffBy: dateIn(21),
     } })).status).toBe(409);
     const spareId = await legacyOffer(tight.item.demandItemId, tight.seller, 48, 2_000);
     await transaction(db => db.query(
@@ -782,7 +827,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(rows).toHaveLength(1);
     expect(rows[0].payload.recipientUserIds).toEqual([rep, second, seller].sort());
     expect(draft.parse((await revise(rep, 1)).data).draftOpen).toBe(true);
-  }, 30_000);
+  });
 
   it("opens one round through seller approval after checking live-RPC responses", async () => {
     const { id, rep, second, seller, edit, submit } = await negotiationWithDraft(48);
@@ -805,7 +850,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     let deny = true;
     let changeWallet = false;
     let wrongNetwork = false;
-    const changedWallet = "0x" + "3".repeat(40);
+    const changedWallet = walletOf(randomUUID());
     const provider = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const req = JSON.parse(String(init?.body)) as { id: number; method: string; params?: [{ data?: string }] };
       if (req.method === "eth_call" && changeWallet) {
@@ -861,18 +906,27 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
     }
-  }, 30_000);
+  });
 
   it("finishes the zero-price order after both parties approve and ops posts the deposit refund", async () => {
-    const { id, rep, second, third, spare, seller, item } = await negotiationWithDraft(48, 0);
+    const { id, rep, second, third, spare, seller, item, groupId, campaignId } = await negotiationWithDraft(48, 0);
     expect((await finalize(id, rep, "too-early")).status).toBe(409);
+    const leaveRequest = { id: groupId, method: "POST", body: {} };
+    expect((await call(postLeave, second, leaveRequest)).data).toMatchObject({ error: { code: "PUBLISHED_NEED_ACTIVE" } });
+    const changeWallet = () => transaction(db => db.query(
+      "update public.wallets set address = $2 where user_id = $1", [second, walletOf(randomUUID())],
+    ));
     await readyDraft(id, rep, seller, [[rep, 2], [second, 2], [third, 3]]);
+    expect((await call(postLeave, second, leaveRequest)).data).toMatchObject({ error: { code: "ACTIVE_COMMITMENT" } });
+    await expect(changeWallet()).rejects.toMatchObject({ code: "23514", constraint: "wallet_active_commitment" });
     const results = await Promise.all([finalize(id, rep, "same-finalize"), finalize(id, rep, "same-finalize")]);
     expect(results[0]).toEqual(results[1]);
     expect(results[0].status).toBe(201);
     const order = contract.parse(results[0].data);
     const orderId = order.contractId;
     expect(order).toMatchObject({ state: "AWAIT_DEPOSIT", qty: 7, goodsVnd: 0, depositVnd: 50_000 });
+    expect((await call(postLeave, second, leaveRequest)).data).toMatchObject({ error: { code: "ACTIVE_COMMITMENT" } });
+    await expect(changeWallet()).rejects.toMatchObject({ code: "23514", constraint: "wallet_active_commitment" });
     expect(order.paymentDueAt).toBeUndefined();
     const [deposit] = (await orderFor(orderId, seller)).charges;
     const readStock = async () => (await transaction(db => db.query(
@@ -943,6 +997,12 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(postTransferResult.parse((await call(postTransfer, ops, post)).data).contractState).toBe("COMPLETED");
     expect((await call(postTransfer, ops, post)).status).toBe(200);
     expect((await orderFor(orderId, seller)).state).toBe("COMPLETED");
+    expect((await changeWallet()).rowCount).toBe(1);
+    await transaction(db => db.query(
+      `update public.campaigns set collect_until = clock_timestamp() - interval '2 hours',
+         need_by = clock_timestamp() - interval '1 hour' where id = $1`, [campaignId],
+    ));
+    expect((await call(postLeave, second, leaveRequest)).status).toBe(200);
     await transaction(async db => {
       const { rows: [stock] } = await db.query(
         "select pending, reserved, received from public.demand_items where id = $1", [item.demandItemId],
@@ -963,7 +1023,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     const mark = { id: notices.items[0].notificationId, method: "PATCH", body: { read: true } };
     expect((await call(patchNotice, rep, mark)).status).toBe(404);
     expect((await call(patchNotice, seller, mark)).data).toMatchObject({ readAt: expect.any(String) });
-  }, 40_000);
+  });
 
   it("settles 6 of 8 paid units, guards receipt revisions and keeps disputed deposit separate", async () => {
     const { id, rep, second, third, spare, seller, item } = await negotiationWithDraft(48);
@@ -1033,7 +1093,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       "select reserved, received, target - reserved - received as missing from public.demand_items where id = $1", [item.demandItemId],
     ));
     expect(stock).toEqual({ reserved: 0, received: 6, missing: 6 });
-  }, 40_000);
+  });
 
   it("expires a deposit from the receive API and keeps mismatched and late events off the order balance", async () => {
     const { id, rep, seller, item } = await negotiationWithDraft(48, 0);
@@ -1074,7 +1134,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
         { disposition: "REVIEW", checkout_started_at: null },
       ]);
     });
-  }, 30_000);
+  });
 
   it("commits a racing stock conflict and releases a paid-in-part order once on expiry", async () => {
     const { id, rep, second, third, seller, item } = await negotiationWithDraft(48);
@@ -1125,7 +1185,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       "select 1 from public.outbox where payload->>'contractId' = $1 and payload->>'action' = 'PAYMENT_TIMEOUT'",
       [order.contractId],
     ))).rowCount).toBe(1);
-  }, 40_000);
+  });
 
   it("requires both parties for excused cancellation and refunds the deposit exactly once", async () => {
     const { id, rep, seller, item } = await negotiationWithDraft(48, 0);
@@ -1147,7 +1207,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       "select pending, reserved, received from public.demand_items where id = $1", [item.demandItemId],
     ));
     expect(stock).toEqual({ pending: 0, reserved: 0, received: 0 });
-  }, 30_000);
+  });
 
   it("validates Gemini drafts and leaves the saved manual cart intact on provider failure", async () => {
     const [rep, outsider] = await Promise.all([newUser(), newUser()]);
@@ -1184,7 +1244,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
     }
-  }, 30_000);
+  });
 
   it("denies direct table access to the authenticated browser role", async () => {
     for (const table of [

@@ -214,6 +214,13 @@ Backend tạo `versionId` và lưu `versionHash = keccak256(abi.encode(...))` kh
 - **BR-33** Ràng buộc duy nhất giữ vai trò chống lặp cho sự kiện thu, chi và xác nhận (`mode + external_ref`, `transfer_ref`, `chain_id + tx_hash + log_index`).
 - **BR-34** Worker thử lại có backoff; không rõ kết quả tạo link thì truy vấn theo `orderCode` trước khi thử lại. Cursor và outbox bền vững qua restart.
 
+### 6.6 Rời nhóm và đổi ví (G-09)
+
+- Thành viên chỉ tự rời nhóm. Đại diện phải có thành viên khác chấp nhận lời mời `REP` trước. Hợp đồng đã chốt giữ nguyên đại diện trong `repId`.
+- Thành viên được rời khi không còn phần nhu cầu trong đợt `PUBLISHED` chưa tới `needBy` và không còn nghĩa vụ trong nhóm với tư cách hộ tham gia hoặc đại diện của hợp đồng. Giỏ nháp và giỏ xác nhận chưa đăng không giữ thành viên lại. Khi rời, server ghi `left_at`, giữ lịch sử và loại phần giỏ của thành viên khỏi lần đăng nhu cầu sau. Vai trò người bán của nhóm khác không chặn rời nhóm hiện tại.
+- Nghĩa vụ còn mở khi hộ thuộc vòng ký chưa đóng của bản `AWAIT_CONFIRMATIONS` hoặc `AWAIT_REP_APPROVAL`, hoặc khi hợp đồng liên quan chưa `COMPLETED`/`CANCELED`. Sau khi hợp đồng kết thúc, khoản chi hoặc hoàn chưa `POSTED` vẫn giữ khóa. Chỉ mở khóa theo trạng thái đã ghi, kể cả khi đã qua giờ hạn nhưng job chưa xử lý.
+- Đổi hoặc gỡ ví, hoặc hạ trạng thái của ví đã xác minh, bị khóa khi tài khoản còn nghĩa vụ với vai trò hộ ký, người mua, đại diện hoặc người bán ở bất kỳ nhóm nào. Xác minh lại cùng địa chỉ vẫn được phép. Khi đủ điều kiện đổi ví, tài khoản phải chứng minh sở hữu địa chỉ mới theo luồng liên kết. Địa chỉ và chữ ký đã chụp cho mỗi vòng vẫn giữ nguyên.
+
 ## 7. Máy trạng thái
 
 ### 7.1 Nhu cầu, đề nghị, phiên bản
@@ -247,9 +254,9 @@ Backend tạo `versionId` và lưu `versionHash = keccak256(abi.encode(...))` kh
 
 ## 8. Thời hạn
 
-Vòng phiếu đóng tại thời điểm đủ lượng chào hoặc tới hạn, tùy mốc nào đến trước. Khi chụp bản gửi người bán, server lấy `submittedAt` từ PostgreSQL và đặt `sellerResponseDueAt = submittedAt + 6 giờ`. Tại hoặc sau hạn phản hồi, API trả `409` kể cả khi worker chưa ghi `EXPIRED`.
+Vòng phiếu có 3 giờ và đóng sớm nếu đủ lượng chào. Khi chụp bản gửi người bán, server lấy `submittedAt` từ PostgreSQL và đặt `sellerResponseDueAt = submittedAt + 3 giờ` theo cấu hình MVP. Tại hoặc sau hạn phản hồi, API trả `409` kể cả khi worker chưa ghi `EXPIRED`.
 
-Sau khi người bán chốt, hạn mở vòng ký, ký Fuji và thu các khoản phải nằm trong lịch bàn giao. Hạn ký của đơn có giá phải chừa thời gian để hộ thanh toán sau khi chữ ký được xác minh. Hạn ký hoặc thu cuối cùng phải cách giờ bắt đầu giao ít nhất 2 giờ để chuẩn bị. Hạn duyệt biên nhận là `handoffBy` + 24 giờ. Thời lượng bỏ phiếu, mở vòng, ký và thu theo luồng mới cần được chốt trước khi cập nhật API và worker.
+Ngay khi người bán chốt, backend đưa yêu cầu mở vòng Fuji vào outbox để worker gửi giao dịch. Từ thời điểm mở ghi trong block Fuji, người bán có 6 giờ để nộp cọc. Hộ có chung 12 giờ để ký và, với đơn có giá, nộp tiền sau khi chữ ký của chính hộ được đồng bộ. Hạn chung phải cách giờ giao ít nhất 2 giờ. Nếu đã qua mốc muộn nhất để mở vòng mà vẫn chưa có giao dịch mở hợp lệ, worker xử lý hủy sau khi đã đồng bộ chain qua mốc đó. Hạn duyệt biên nhận là `handoffBy` + 24 giờ.
 
 | Mốc | Ý nghĩa | Ai kiểm |
 | --- | --- | --- |
@@ -393,7 +400,6 @@ Các mục dưới đây **chưa** có quyết định trong tài liệu hiện 
 | G-06 | Deployment, ABI credential, cấp/thu hồi quyền xác nhận và chính sách block/cutoff/reorg | DEV 3 cấu hình contract và worker Fuji theo [interface backend](architecture.md#bàn-giao-backend-và-worker). Dùng [chuẩn băm và vector đã chốt](#chuẩn-băm-phiên-bản) cho `versionHash`. |
 | G-07 | Định mức nhu yếu phẩm có nguồn và bộ quy tắc gợi ý | MVP seed SKU đại diện và để hộ sửa tay. |
 | G-08 | Điều kiện, mức khấu trừ cọc, bên nhận khấu trừ, thẩm quyền xử lý ca mâu thuẫn | Demo dừng ở `NEEDS_REVIEW`/`DEPOSIT`. |
-| G-09 | Trạng thái và phạm vi khóa thao tác rời nhóm hoặc đổi ví | Demo khóa thao tác có ảnh hưởng khi còn bản đang chờ xác nhận hoặc hợp đồng đang chạy. |
 | G-12 | Năng lực và quyền môi trường thực tế, cách bổ sung giờ cho các mốc vượt quỹ | Xác nhận ở D1 theo [kế hoạch 7 ngày](OOPS-7-Day-Development-Plan.md). |
 
 ## 17. Thứ tự đọc theo vai
