@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, CardTitle, IconTile } from "@/components/ui";
+import { Card, CardTitle } from "@/components/ui";
 import type { Me } from "@/contracts/foundation";
 import { CopyButton } from "./CopyButton";
 import { shortenMiddle } from "./me-api";
@@ -21,17 +21,11 @@ export function WalletSection({ data }: { data: Me }) {
 
   return (
     <Card>
-      <div className="me-card-head flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img
-            src="/assets/fuji-shield.jpg"
-            alt="Fuji Shield"
-            className="h-10 w-10 rounded-xl object-contain mix-blend-multiply flex-none"
-          />
-          <div>
-            <CardTitle className="ui-card__title--flush">Ví Avalanche Fuji</CardTitle>
-            <p className="text-small text-navy-600">Xác thực on-chain (Chain ID: 43113)</p>
-          </div>
+      <div className="me-card-head me-wallet__heading">
+        <img src="/assets/fuji-shield.jpg" alt="" className="me-wallet__shield" />
+        <div>
+          <CardTitle>Ví Avalanche Fuji</CardTitle>
+          <p className="text-small text-navy-600">Xác thực on-chain (Chain ID: 43113)</p>
         </div>
       </div>
 
@@ -42,7 +36,7 @@ export function WalletSection({ data }: { data: Me }) {
             <p className="me-hint">Tính năng sắp ra mắt</p>
           </div>
         ) : (
-          <div className="me-item">
+          <div className="me-item me-wallet__address">
             <div className="me-item__body">
               <p className="me-item__label">Địa chỉ ví</p>
               <div className="me-item__value">
@@ -64,7 +58,9 @@ export function WalletSection({ data }: { data: Me }) {
             <p className="me-item__label">Đủ điều kiện xác nhận</p>
             <p className="me-hint">Theo chính sách xác minh ví trên Fuji.</p>
           </div>
-          <span className="me-body-text">{data.confirmationEligible ? "Có" : "Chưa"}</span>
+          <span className={`me-chip ${data.confirmationEligible ? "me-chip--verified" : "me-chip--pending"}`}>
+            {data.confirmationEligible ? "Có" : "Chưa"}
+          </span>
         </div>
       </div>
     </Card>

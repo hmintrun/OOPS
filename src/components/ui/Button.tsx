@@ -1,6 +1,6 @@
 "use client";
 
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ComponentPropsWithRef, ReactNode } from "react";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -10,7 +10,7 @@ type ButtonProps = {
   full?: boolean;
   loading?: boolean;
   children?: ReactNode;
-} & ButtonHTMLAttributes<HTMLButtonElement>;
+} & ComponentPropsWithRef<"button">;
 
 /** Nút theo STYLE.md mục 6. Không viết hex ở nơi gọi. */
 export function Button({

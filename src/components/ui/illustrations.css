@@ -1,45 +1,70 @@
 .ui-app-page .ui-illustrated-header {
-  --scene-tint: var(--oops-green-100);
-  --scene-accent: var(--oops-green-700);
+  --scene-tint: var(--oops-mint);
+  --scene-accent: var(--oops-jade-dark);
+  --scene-backdrop: var(--oops-lagoon);
   display: flex;
   position: relative;
   isolation: isolate;
   align-items: center;
   justify-content: space-between;
-  min-block-size: 6.5rem;
+  min-block-size: 7.25rem;
   gap: 8px;
   padding: 12px 16px;
-  border: 1px solid var(--oops-surface);
   border-radius: var(--oops-radius-card);
   background:
-    radial-gradient(ellipse at 86% 85%, var(--scene-tint), transparent 63%),
-    linear-gradient(112deg, var(--oops-surface) 8%, var(--scene-tint) 100%);
+    radial-gradient(ellipse at 92% 100%, color-mix(in srgb, var(--scene-backdrop) 42%, transparent), transparent 62%),
+    linear-gradient(112deg, var(--oops-surface), var(--scene-tint) 92%);
   box-shadow: var(--oops-shadow-card);
-  overflow: clip;
+  overflow: hidden;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
-.ui-app-page .ui-illustrated-header--basket { --scene-tint: var(--oops-green-100); }
 .ui-app-page .ui-illustrated-header--parcel {
-  --scene-tint: var(--oops-amber-tint);
-  --scene-accent: var(--oops-navy-900);
+  --scene-tint: var(--oops-sun-tint);
+  --scene-backdrop: var(--oops-sun);
+  --scene-accent: var(--oops-amber-ink);
 }
 .ui-app-page .ui-illustrated-header--home {
+  --scene-tint: var(--oops-violet-tint);
+  --scene-accent: var(--oops-violet-ink);
+}
+.ui-app-page .ui-illustrated-header--flood-relief {
   --scene-tint: var(--oops-sky-tint);
-  --scene-accent: var(--oops-navy-900);
+  --scene-accent: var(--oops-sky-ink);
+  background: linear-gradient(115deg, var(--oops-sky-100), var(--oops-mint) 66%, var(--oops-sun-tint));
+}
+.ui-page-photo {
+  flex: 0 0 clamp(6.25rem, 31%, 18rem);
+  aspect-ratio: 4 / 3;
+  position: relative;
+  overflow: hidden;
+  border: 2px solid var(--oops-surface);
+  border-radius: var(--oops-radius-input);
+  box-shadow: var(--oops-shadow-card);
+}
+.ui-page-photo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 57% 52%;
 }
 .ui-app-page > .ui-illustrated-header {
   width: min(calc(100% - 2 * var(--oops-space-screen)), calc(var(--oops-content-max) - 2 * var(--oops-space-screen)));
   margin-block: var(--oops-space-page-top) var(--oops-space-section);
 }
-.ui-illustrated-header .ui-screen-header__text { padding: 0; }
-.ui-illustrated-header .ui-screen-header__heading { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
-.ui-illustrated-header .ui-screen-header__title { text-wrap: balance; }
-.ui-illustrated-header .ui-screen-header__subtitle { max-inline-size: 54ch; line-height: 1.45; }
+.ui-illustrated-header .ui-screen-header__text { padding: 0; min-width: 0; flex: 1 1 0%; overflow: hidden; }
+.ui-illustrated-header .ui-screen-header__heading { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; max-width: 100%; }
+.ui-illustrated-header .ui-screen-header__title { text-wrap: balance; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+.ui-illustrated-header .ui-screen-header__subtitle { max-inline-size: 54ch; line-height: 1.45; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
 .ui-screen-header__badge {
   display: inline-flex;
   padding: 4px 8px;
   border-radius: var(--oops-radius-pill);
   color: var(--scene-accent, var(--oops-green-700));
-  background: color-mix(in srgb, var(--scene-tint, var(--oops-green-100)) 70%, var(--oops-surface));
+  background: var(--scene-tint, var(--oops-mint));
   font-size: 0.8125rem;
   font-weight: 800;
   line-height: 1.25;
@@ -54,8 +79,11 @@
 .ui-page-art::before {
   content: "";
   position: absolute;
-  inset: 4% 0;
-  background: radial-gradient(ellipse, var(--oops-surface) 0%, transparent 74%);
+  inset: 2% 6% auto auto;
+  inline-size: 40%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--oops-sun) 88%, var(--oops-surface));
 }
 .ui-page-art__cloud {
   position: absolute;
@@ -69,7 +97,7 @@
   block-size: 32%;
   background: url("/assets/hero/hill-strip.webp") center / auto 100% repeat-x;
   mask-image: radial-gradient(ellipse, #000 22%, transparent 72%);
-  opacity: .55;
+  opacity: .8;
 }
 .ui-page-art__subject {
   position: absolute;
@@ -85,6 +113,7 @@
 }
 @media (width >= 40rem) {
   .ui-app-page .ui-illustrated-header { padding-inline: 24px; }
+  .ui-page-photo { aspect-ratio: 2 / 1; }
 }
 @media (width < 23.5rem) {
   .ui-page-art { flex-basis: 4.25rem; }
@@ -97,4 +126,12 @@
 @media (prefers-reduced-motion: no-preference) {
   .ui-page-art__cloud { animation: ui-art-drift 8s ease-in-out 2 alternate; }
   @keyframes ui-art-drift { to { transform: translateX(8px); } }
+}
+
+
+@media (width < 40rem) {
+  .ui-page-art { flex-basis: clamp(3.75rem, 20vw, 6.5rem); }
+  .ui-app-page .ui-illustrated-header { padding: 12px; min-block-size: 5.75rem; }
+  .ui-illustrated-header .ui-screen-header__subtitle { font-size: .875rem; }
+  .ui-page-art__subject { inset-inline-start: 50%; }
 }

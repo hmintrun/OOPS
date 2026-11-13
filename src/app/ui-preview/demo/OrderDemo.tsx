@@ -45,11 +45,11 @@ const roleForNextStep: Partial<Record<Step, { role: Role; instruction: string }>
 };
 
 const STAGES = [
-  { id: 1, label: "Thương lượng", steps: ["draft", "submitted", "revise", "rejected"] },
-  { id: 2, label: "Ký Fuji", steps: ["confirm", "expired", "conflict"] },
-  { id: 3, label: "Cọc & Tiền", steps: ["deposit", "payment"] },
-  { id: 4, label: "Bàn giao", steps: ["handoff", "receipt", "issue"] },
-  { id: 5, label: "Hoàn tất", steps: ["settling", "complete"] },
+  { label: "Thương lượng", icon: "handshake", steps: ["draft", "submitted", "revise", "rejected"] },
+  { label: "Ký Fuji", icon: "verified_user", steps: ["confirm", "expired", "conflict"] },
+  { label: "Cọc và tiền", icon: "payments", steps: ["deposit", "payment"] },
+  { label: "Bàn giao", icon: "local_shipping", steps: ["handoff", "receipt", "issue"] },
+  { label: "Hoàn tất", icon: "task_alt", steps: ["settling", "complete"] },
 ];
 
 const add = (values: number[]) => values.reduce((total, value) => total + value, 0);
@@ -89,6 +89,7 @@ export function OrderDemo({ offerQty, unitPrice }: { offerQty: number; unitPrice
   ].filter(item => item.amount > 0);
 
   const currentStageIndex = STAGES.findIndex(s => s.steps.includes(step));
+  const currentStage = STAGES[currentStageIndex];
   const selectedRole = roles.find(item => item.value === role);
   const receivedQty = add(received);
   const nextAction = step === "handoff" && !ready
@@ -121,6 +122,26 @@ export function OrderDemo({ offerQty, unitPrice }: { offerQty: number; unitPrice
 
   return (
     <div className="ui-stack demo-order-layout demo-order-presentation">
+      <ol className="demo-order-journey" role="list" aria-label="Tiến độ đơn hàng">
+        {STAGES.map((stage, index) => {
+          const isCurrent = index === currentStageIndex;
+          const isPassed = index < currentStageIndex || step === "complete";
+          return (
+            <li
+              key={stage.label}
+              aria-current={isCurrent ? "step" : undefined}
+              data-progress={isPassed ? "done" : isCurrent ? "current" : "upcoming"}
+              className="demo-order-stop"
+            >
+              <span className="demo-order-stop__icon">
+                <MaterialSymbol name={stage.icon} size={22} />
+                {isPassed && <MaterialSymbol name="check" size={12} className="demo-order-stop__check" />}
+              </span>
+              <span>{stage.label}{isPassed && <span className="demo-sr-only">, đã xong</span>}</span>
+            </li>
+          );
+        })}
+      </ol>
       <div className="demo-role-switcher">
         <fieldset>
           <legend>Vai trong bản thử</legend>
@@ -158,7 +179,10 @@ export function OrderDemo({ offerQty, unitPrice }: { offerQty: number; unitPrice
         )}
       </div>
       <Card className="demo-stack demo-order-summary">
-        <CardTitle as="h2" className="ui-card__title--flush">Đề nghị từ {scenario.supplier}</CardTitle>
+        <div className="demo-order-summary__hero">
+          <CardTitle as="h2" className="ui-card__title--flush">Đề nghị từ {scenario.supplier}</CardTitle>
+          <img src="/assets/groceries-box.webp" width={1024} height={1024} alt="" />
+        </div>
         <div className="demo-order-quantity-flow">
           <dl><dt>Cửa hàng chào</dt><dd>{offerQty} <span>chai</span></dd></dl>
           <MaterialSymbol name="arrow_forward" size={22} />
@@ -174,24 +198,8 @@ export function OrderDemo({ offerQty, unitPrice }: { offerQty: number; unitPrice
       </Card>
 
       <Card className="demo-stack demo-order-work">
-        <div className="demo-milestones" role="region" aria-label="Tiến độ 5 bước">
-          {STAGES.map((s, idx) => {
-            const isCurrent = idx === currentStageIndex;
-            const isPassed = idx < currentStageIndex;
-            return (
-              <div
-                key={s.id}
-                aria-current={isCurrent ? "step" : undefined}
-                className={`demo-milestone ${isCurrent ? "demo-milestone--current" : isPassed ? "demo-milestone--passed" : ""}`}
-              >
-                <span className="demo-milestone__icon">{isPassed ? "✓" : s.id}</span>
-                <span className="demo-milestone__label">{s.label}</span>
-              </div>
-            );
-          })}
-        </div>
         <div ref={stageTitle} tabIndex={-1} className="demo-order-title" data-stage={step} aria-live="polite">
-          <MaterialSymbol name={step === "complete" ? "check_circle" : "receipt_long"} size={24} />
+          <span className="demo-order-title__icon"><MaterialSymbol name={currentStage.icon} size={24} /></span>
           <CardTitle as="h2" className="ui-card__title--flush">{steps[step]}</CardTitle>
         </div>
         {nextAction && nextRole && role !== nextRole.value && (

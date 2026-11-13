@@ -1,7 +1,9 @@
 .ui-app-page.ui-family-page {
   width: 100%;
+  max-width: 100vw;
+  overflow-x: clip;
   padding-top: 0;
-  background: var(--oops-surface);
+  background: transparent;
 }
 
 .ui-family-header {
@@ -13,15 +15,15 @@
   --hero-hills-height: clamp(1.75rem, 8vw, 2.75rem);
   --hero-scene-width: 60%;
   --hero-scene-end: var(--oops-space-screen);
-  --hero-family-height: clamp(6rem, 30vw, 7rem);
+  --hero-family-height: clamp(6.25rem, 31vw, 8rem);
   --hero-family-end: 6%;
   --hero-school-height: 0rem;
   --hero-school-end: 0%;
   --hero-bush-left: clamp(4.5rem, 25vw, 9rem);
   --hero-bush-right: clamp(5rem, 25vw, 9rem);
   --hero-cloud-a-width: clamp(3.5rem, 19vw, 6rem);
-  --hero-cloud-a-start: 9%;
-  --hero-cloud-a-top: 57%;
+  --hero-cloud-a-start: 13%;
+  --hero-cloud-a-top: 58%;
   --hero-cloud-b-width: 0rem;
   --hero-cloud-b-start: 53%;
   --hero-cloud-b-top: 12%;
@@ -31,7 +33,9 @@
   position: relative;
   isolation: isolate;
   min-block-size: var(--hero-height);
-  background: linear-gradient(180deg, var(--oops-hero-sky), var(--oops-sky-100) 74%, var(--oops-surface));
+  overflow: hidden;
+  max-width: 100%;
+  background: linear-gradient(to bottom, color-mix(in srgb, var(--oops-lagoon) 55%, var(--oops-hero-sky)), var(--oops-hero-sky) 47%, var(--oops-mint) 79%, var(--oops-page-green));
 }
 
 .ui-family-header > .ui-family-header__content {
@@ -45,24 +49,42 @@
 .ui-family-header__content .ui-screen-header__text { max-inline-size: var(--hero-copy-width); }
 .ui-family-header__content > .ui-icon-tile {
   flex: none;
-  color: var(--oops-green-700);
-  background: var(--oops-surface);
-  border: 2px solid var(--oops-green-600);
+  color: var(--oops-jade-dark);
+  background: var(--oops-sun-tint);
+  border: 2px solid var(--oops-surface);
+  box-shadow: 0 4px 0 rgb(0 86 67 / .14);
 }
+
+.ui-family-header .ui-screen-header__subtitle { color: var(--oops-navy-900); }
 
 .ui-hero__art {
   position: absolute;
   inset: 0;
-  overflow: clip;
+  overflow: hidden;
+  max-width: 100%;
   pointer-events: none;
   mask-image: linear-gradient(to bottom, #000 72%, #000c 88%, transparent 100%);
 }
 
 .ui-hero__container {
   position: relative;
+  overflow: hidden;
+  max-width: 100%;
   width: min(100%, var(--oops-content-max));
   height: 100%;
   margin-inline: auto;
+}
+
+.ui-hero__container::before {
+  content: "";
+  position: absolute;
+  inset-block-start: 42%;
+  inset-inline-end: 9%;
+  inline-size: clamp(3rem, 9vw, 6.5rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--oops-sun);
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--oops-sun) 25%, transparent);
 }
 
 .ui-hero__hills {
@@ -115,6 +137,8 @@
 }
 
 @media (width >= 40rem) {
+  .ui-hero__container::before { inset-block-start: 13%; inset-inline-end: 25%; }
+
   .ui-family-header {
     --hero-height: 13.75rem;
     --hero-copy-top: 2.5rem;

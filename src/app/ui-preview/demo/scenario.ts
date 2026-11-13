@@ -7,7 +7,7 @@ export const scenario = {
   price: 2_000,
   sellerCapacity: 10,
   otherHouseholds: [12, 18],
-  initialPeople: 3,
+  initialPeople: 4,
   initialStock: 6,
   unitsPerPerson: 6,
 };

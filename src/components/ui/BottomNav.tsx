@@ -43,6 +43,7 @@ export function BottomNav({ items }: { items: NavItem[] }) {
           <Link
             key={item.key}
             href={item.href}
+            data-section={item.key}
             className={`ui-nav__item ${active ? "ui-nav__item--active" : ""}`}
             aria-current={pathname === item.href ? "page" : active ? "location" : undefined}
           >
