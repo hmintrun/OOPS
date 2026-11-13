@@ -166,9 +166,9 @@ export async function readDraft(client: PoolClient, userId: string, draftId: str
   return {
     ...await draftDto(client, row, proposal, member),
     permissions: {
-      editLine: Boolean(share),
+      editLine: Boolean(share) && !proposal.vote_due_at,
       manageDraft: Boolean(share && member.id === row.initiated_by_membership_id),
-      finalize: member.role === "REP",
+      finalize: member.role === "REP" && !proposal.vote_due_at,
     },
   };
 }

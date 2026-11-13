@@ -58,9 +58,9 @@ Campaign gồm campaignId, state, collectUntil và needBy. DemandItem gồm dema
 
 ### Receipt và Offer
 
-Receipt gồm receiptId, version, handedAt, lines, evidenceIds, state và approvals với role, approvedAt. Offer gồm proposalId, demandItemId, state, terms theo dữ liệu POST, goodsVnd, depositVnd và draftId? nếu đã khởi tạo thương lượng.
+Receipt gồm receiptId, version, handedAt, lines, evidenceIds, state và approvals với role, approvedAt. Offer gồm proposalId, demandItemId, state, terms theo dữ liệu POST, goodsVnd, depositVnd, draftId?, voteDueAt? và canOpenDraft?.
 
-Đề nghị mới trả ngay `draftId` và `voteDueAt`. `draftId` dùng để đọc bản đã chụp và gửi phản hồi của người bán, còn `proposalId` dùng cho API bỏ phiếu.
+Đề nghị mới trả ngay `draftId` và `voteDueAt` (`canOpenDraft` là `false`). `draftId` dùng để đọc bản đã chụp và gửi phản hồi của người bán, còn `proposalId` dùng cho API bỏ phiếu.
 
 `terms.handoffPrivate` chỉ trả cho người bán của đề nghị và đại diện đang hoạt động của nhóm. Tổng tiền hàng và cọc dự kiến trong Offer tính trên lượng chào.
 
@@ -83,6 +83,7 @@ type Draft = {
   totalVnd: UInt;
   myLine?: MyLine;
   latestVersion?: DraftVersion;
+  permissions?: { editLine: boolean; manageDraft: boolean; finalize: boolean };
 };
 
 type SellerDraftView = {
@@ -133,7 +134,7 @@ type ConfirmationRound = {
 ```
 
 - `Draft.qty` và `Draft.totalVnd` là tổng của bản nháp đang sửa. `Draft.myLine` chỉ chứa dòng nháp của hộ gọi API. Seller chỉ nhận `SellerDraftView` và nhận `404` nếu chưa có bản gửi.
-- GET đề nghị trả `canOpenDraft` theo người gọi. GET bản thương lượng trả `permissions` cho phía mua gồm `editLine`, `manageDraft` và `finalize`. Giao diện dùng các trường này cùng trạng thái hiện tại để hiển thị thao tác. API ghi vẫn kiểm quyền khi nhận yêu cầu.
+- `canOpenDraft` trên `GET /needs/{id}/offers` và `permissions` (`editLine`, `manageDraft`, `finalize`) trên `GET /drafts/{id}` áp dụng cho đề nghị/nháp cũ không có `voteDueAt` (khi `editLine`/`manageDraft`/`finalize` bật theo quyền và vai trò để sửa nháp hoặc đại diện `finalize`). Đề nghị mới từ `POST /needs/{id}/offers` trả ngay `draftId` và `voteDueAt` (`canOpenDraft` luôn `false`, `permissions` đều `false` cho `editLine`, `manageDraft`, `finalize`) và dùng `GET/POST /offers/{id}/vote` cùng `POST /drafts/{id}/vote-close`; khi người bán chấp thuận thì chốt trực tiếp không qua đại diện `finalize`. Giao diện dùng các trường này cùng trạng thái hiện tại để hiển thị thao tác; API ghi vẫn kiểm quyền khi nhận yêu cầu.
 - `DraftVersion` chứa dữ liệu đã chụp khi gửi. `version` bắt đầu từ 1 và là số dùng trong route `/versions/{version}`. Hộ có phần nhận `myLine` của mình. Seller của đề nghị và đại diện có quyền duyệt nhận `lines` gồm lượng và tiền theo từng phần. Các dòng trả cho người duyệt không chứa ghi chú riêng, định danh hộ hoặc địa chỉ ví. Nếu đại diện cũng có phần, `myLine` vẫn chỉ chứa phần của đại diện.
 - `roundId` và `confirmBy` xuất hiện khi đã tạo vòng. `contractId` xuất hiện khi đã chốt. `repApproveBy` chỉ áp dụng cho bản theo luồng cũ. `versionHash` và `roundKey` là hai chuỗi `0x` theo sau bởi 64 ký tự hex chữ thường. [Chuẩn băm và vector kiểm thử](OOPS-Spec.md#chuẩn-băm-phiên-bản) · [Cách sinh roundKey](architecture.md#bàn-giao-backend-và-worker)
 - `myConfirmation` chỉ trả trạng thái và ví của chính hộ gọi. `myConfirmation.state = CONFIRMED` sau khi worker lưu xác nhận hợp lệ của hộ. Backend dùng tập xác nhận của từng hộ để xét điều kiện bàn giao.
@@ -150,7 +151,7 @@ type ConfirmationRound = {
 | Endpoint và quyền | Dữ liệu vào | Phản hồi |
 | --- | --- | --- |
 | `GET /me` và `PATCH /me`<br>Đã đăng nhập | Supabase Auth quản lý phiên. PATCH {contactPrivate}. | 200 {userId, groupId?, wallet?: {address, verificationState}, confirmationEligible, contactPrivate?}. verificationState là PENDING, VERIFIED hoặc FAILED. confirmationEligible còn phụ thuộc chính sách Fuji. |
-| `POST /wallet/link`<br>Chủ phiên | {address, proofTx, nonce}. GET /wallet/challenge cấp nonce một lần và expiresAt. Fuji ghi hash thử thách gắn với ví. | 202 {verificationState}. GET /me cho biết kết quả. 422 nếu bằng chứng sai. |
+| `GET /wallet/challenge`<br>`POST /wallet/link`<br>*(chưa triển khai trong `/api/v1`)*<br>Chủ phiên | `GET /wallet/challenge` cấp nonce một lần và `expiresAt`. `POST /wallet/link` nhận `{address, proofTx, nonce}` sau khi Fuji ghi hash thử thách gắn với ví. | 202 `{verificationState}`. `GET /me` cho biết kết quả. 422 nếu bằng chứng sai. *Lưu ý: hai route này hiện chưa có trong `src/app/api/v1`; trạng thái ví đang được đọc qua `GET /me` từ bảng `wallets`.* |
 | `POST /groups`<br>Người chưa có nhóm | {name, districtCode, wardCode, pickupPrivate?}. Người tạo xác nhận nhận vai trò đại diện khi gửi. | 201 {groupId, membershipId, role}. 409 nếu đã có nhóm. |
 | `GET /groups/{id}`<br>Thành viên | id là groupId. | 200 {groupId, repId, members, campaigns: Campaign[]}. Ẩn điểm nhận cụ thể với hộ chưa chốt. |
 | `POST /groups/{id}/invites`<br>Đại diện | {kind: JOIN hoặc REP, targetUserId?}. REP bắt buộc có targetUserId đang trong nhóm. | 201 {inviteId, inviteUrl, expiresAt}. |
