@@ -110,7 +110,25 @@ export async function orderDto(db: PoolClient, order: OrderRow, actorId: string)
   if (!party && allocations.length === 0) throw notFound();
   const { rows: charges } = await db.query<{
     id: string; kind: Contract["charges"][number]["kind"]; state: Contract["charges"][number]["state"]; amount_vnd: string; due_at: Date;
-  }>("select id, kind, state, amount_vnd, due_at from public.charges where contract_id = $1 and payer_id = $2 order by id", [order.id, actorId]);
+    can_pay: boolean;
+  }>(
+    `select c.id, c.kind, c.state, c.amount_vnd, c.due_at,
+       c.state = 'PENDING' and least(c.due_at, case c.kind when 'DEPOSIT' then o.deposit_due_at else o.payment_due_at end)
+         > statement_timestamp() and case
+         when o.state = 'AWAIT_COMMITMENTS' then coalesce(r.state in ('OPEN', 'CONFIRMED')
+           and r.opens_at < r.open_by and (c.kind = 'DEPOSIT' or x.round_id is not null), false)
+         when c.kind = 'DEPOSIT' then o.state = 'AWAIT_DEPOSIT'
+         else o.state = 'AWAIT_PAYMENT' end as can_pay
+     from public.charges c join public.contracts o on o.id = c.contract_id
+     left join public.confirmation_rounds r on r.version_id = o.source_version_id
+     left join public.allocations a on a.id = c.allocation_id
+     left join public.confirmations x on x.round_id = r.id and x.membership_id = a.membership_id
+     where c.contract_id = $1 and c.payer_id = $2 order by c.id`, [order.id, actorId],
+  );
+  const { rows: [round] } = await db.query<{ id: string; open_by: Date; confirm_by: Date }>(
+    "select id, open_by, confirm_by from public.confirmation_rounds where version_id = $1 and open_by is not null",
+    [order.source_version_id],
+  );
   const { rows: disbursements } = await db.query<{
     id: string; kind: Contract["disbursements"][number]["kind"]; state: Contract["disbursements"][number]["state"];
     amount_vnd: string; posted_at: Date | null;
@@ -131,10 +149,12 @@ export async function orderDto(db: PoolClient, order: OrderRow, actorId: string)
     handoffBy: order.handoff_by.toISOString(), approvalDueAt: order.approval_due_at.toISOString(),
     ...(order.review_scope && { reviewScope: order.review_scope }),
     ...(order.payment_due_at && { paymentDueAt: order.payment_due_at.toISOString() }),
+    ...(round && { roundId: round.id, roundOpenBy: round.open_by.toISOString(), confirmBy: round.confirm_by.toISOString() }),
     ...(order.ready_at && { readyAt: order.ready_at.toISOString() }),
     allocations: allocations.map(row => ({ allocationId: row.id, qty: row.qty, goodsVnd: Number(row.goods_vnd) })),
     charges: charges.map(row => ({
       chargeId: row.id, kind: row.kind, state: row.state, amountVnd: Number(row.amount_vnd), dueAt: row.due_at.toISOString(),
+      ...(round && { canPay: row.can_pay }),
     })),
     disbursements: disbursements.map(row => ({
       disbursementId: row.id, kind: row.kind, state: row.state, amountVnd: Number(row.amount_vnd),

@@ -7,7 +7,7 @@ import { recordOrderEvent } from "./events";
 import { findOrder } from "./records";
 
 type Disbursement = {
-  id: string; contract_id: string; amount_vnd: string; kind: Contract["disbursements"][number]["kind"];
+  id: string; contract_id: string; payee_id: string; amount_vnd: string; kind: Contract["disbursements"][number]["kind"];
   state: Contract["disbursements"][number]["state"]; transfer_ref: string | null; mode: string;
 };
 
@@ -65,6 +65,9 @@ export async function postDisbursement(db: PoolClient, actorId: string, id: stri
        select 1 from public.disbursements d where d.contract_id = c.id and d.state <> 'POSTED'
      ) returning version`, [order.id],
   );
+  await recordOrderEvent(db, order.id, "DISBURSEMENT_POSTED", completed?.version ?? order.version, actorId, {
+    id: payment.id, payeeId: payment.payee_id,
+  });
   if (completed) await recordOrderEvent(db, order.id, "COMPLETED", completed.version, actorId);
   return { disbursementId: id, state: "POSTED" as const, contractState: completed ? "COMPLETED" as const : order.state };
 }

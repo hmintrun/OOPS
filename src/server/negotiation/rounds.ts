@@ -10,6 +10,10 @@ import { lockDraft } from "./drafts";
 import { latestVersion, versionDto, type VersionRow } from "./version-records";
 import { recordVersionState } from "./versions";
 import { demoTiming } from "../orders/events";
+import { advanceCommittedOrder, createCommittedOrder } from "../orders/commitments";
+import { cancelUnderLock } from "../orders/ledger";
+import { lockOrderStock, lockStock } from "../orders/records";
+import { parallelTiming } from "./timing";
 
 type RoundInfo = {
   chainId: number; contractAddress: string; roundKey: string;
@@ -64,6 +68,18 @@ export async function prepareVersionApproval(sellerId: string, draftId: string, 
 export async function approveWithFujiEligibility(
   db: PoolClient, sellerId: string, draftId: string, versionId: string, round: RoundInfo, note?: string,
 ) {
+  const { rows: [source] } = await db.query<{ demand_item_id: string; campaign_id: string; vote_due_at: Date | null }>(
+    `select p.demand_item_id, d.campaign_id, p.vote_due_at from public.negotiations n
+     join public.proposals p on p.id = n.proposal_id join public.demand_items d on d.id = p.demand_item_id
+     where n.id = $1 and p.seller_id = $2`, [draftId, sellerId],
+  );
+  if (!source) throw notFound();
+  const timing = source.vote_due_at ? parallelTiming() : null;
+  const { rows: parts } = await db.query<{ membership_id: string; qty: number }>(
+    "select membership_id, qty from public.negotiation_version_lines where version_id = $1 order by membership_id", [versionId],
+  );
+  if (timing) await db.query("select id from public.campaigns where id = $1 for update", [source.campaign_id]);
+  const stock = timing ? await lockStock(db, source.demand_item_id, parts.map(part => part.membership_id)) : null;
   const { proposal } = await lockDraft(db, draftId);
   if (proposal.seller_id !== sellerId) throw notFound();
   const version = await latestVersion(db, draftId, true);
@@ -72,6 +88,20 @@ export async function approveWithFujiEligibility(
   }
   if (round.chainId !== avalancheFuji.id || !/^0x[0-9a-f]{40}$/.test(round.contractAddress) ||
       round.roundKey !== fujiRoundKey(versionId)) throw invalid("Thông tin vòng không hợp lệ.");
+  const { rows: [rep] } = timing ? await db.query<{ user_id: string }>(
+    `select user_id from public.memberships where group_id = $1 and role = 'REP' and left_at is null for share`,
+    [proposal.group_id],
+  ) : { rows: [] };
+  if (timing && (!rep || rep.user_id === sellerId)) throw conflict("Cần đại diện khác người bán để bàn giao.");
+  if (stock && (stock.item.offerable < version.qty || parts.some(part => (stock.shares.get(part.membership_id) ?? 0) < part.qty))) {
+    const { rows: [changed] } = await db.query<VersionRow>(
+      `update public.negotiation_versions set state = 'STOCK_CONFLICT'
+       where id = $1 and seller_response_due_at > clock_timestamp() returning *`, [versionId],
+    );
+    if (!changed) throw conflict("Đã hết hạn người bán phản hồi.");
+    await recordVersionState(db, proposal, changed, sellerId);
+    return new ApiFailure(409, "STOCK_CONFLICT", "Lượng còn có thể chốt không đủ cho bản đã gửi.");
+  }
   await db.query(
     `select w.user_id from public.negotiation_version_lines l join public.memberships m on m.id = l.membership_id
      join public.wallets w on w.user_id = m.user_id where l.version_id = $1
@@ -85,32 +115,38 @@ export async function approveWithFujiEligibility(
   }
   const { rows: [approved] } = await db.query<VersionRow>(
     `with ts as materialized (select clock_timestamp() as at)
-     update public.negotiation_versions v set state = 'AWAIT_CONFIRMATIONS', seller_approved_at = ts.at,
+     update public.negotiation_versions v set state = $5, seller_approved_at = ts.at,
        seller_note = $2, confirm_by = ts.at + make_interval(hours => $3),
-       rep_approve_by = ts.at + make_interval(hours => $4)
+       rep_approve_by = case when $4::int is not null then ts.at + make_interval(hours => $4) end
      from ts where v.id = $1 and ts.at < v.seller_response_due_at returning v.*`,
-    [versionId, note ?? null, demoTiming.confirm, demoTiming.confirm + demoTiming.representative],
+    [versionId, note ?? null, timing?.confirm ?? demoTiming.confirm,
+      timing ? null : demoTiming.confirm + demoTiming.representative, timing ? "FINALIZED" : "AWAIT_CONFIRMATIONS"],
   );
   if (!approved) throw conflict("Đã hết hạn người bán phản hồi.");
-  const { rows: [created] } = await db.query<{ id: string }>(
-    `insert into public.confirmation_rounds (version_id, chain_id, contract_address, onchain_key, confirm_by, state)
-     select id, $2, $3, $4, confirm_by, 'OPENING' from public.negotiation_versions where id = $1 returning id`,
-    [versionId, round.chainId, round.contractAddress, round.roundKey],
+  const { rows: [created] } = await db.query<{ id: string; open_by: Date | null }>(
+    `insert into public.confirmation_rounds (version_id, chain_id, contract_address, onchain_key, confirm_by, open_by, state)
+     select id, $2, $3, $4, confirm_by, seller_approved_at + make_interval(hours => $5), 'OPENING'
+     from public.negotiation_versions where id = $1 returning id, open_by`,
+    [versionId, round.chainId, round.contractAddress, round.roundKey, timing?.open ?? null],
   );
   for (const entry of expected) {
     await db.query("insert into public.confirmation_participants (round_id, membership_id, wallet) values ($1, $2, $3)",
       [created.id, entry.membershipId, entry.wallet]);
   }
-  const payload = { draftId, versionId, roundId: created.id, versionHash: approved.version_hash };
+  const payload = {
+    draftId, versionId, roundId: created.id, versionHash: approved.version_hash,
+    ...(created.open_by && { openBy: created.open_by.toISOString() }),
+  };
   await db.query(
     `insert into public.outbox (kind, event_key, payload, next_run_at)
      select d.kind, concat('negotiation-round:', $1::uuid, ':', d.kind), $2::jsonb, d.due
      from public.negotiation_versions v cross join lateral (values
        ('FUJI_ROUND_OPEN_REQUESTED', clock_timestamp()), ('FUJI_CONFIRMATION_DUE', v.confirm_by),
        ('REP_APPROVAL_DUE', v.rep_approve_by)
-     ) d(kind, due) where v.id = $3`,
+     ) d(kind, due) where v.id = $3 and d.due is not null`,
     [created.id, JSON.stringify(payload), versionId],
   );
+  if (timing && rep) await createCommittedOrder(db, proposal, approved, rep.user_id);
   await recordVersionState(db, proposal, approved, sellerId);
   return versionDto(db, approved, { canReview: true });
 }
@@ -139,6 +175,18 @@ export async function hasAllConfirmations(db: PoolClient, versionId: string, rou
 }
 
 export async function advanceVerifiedRound(db: PoolClient, draftId: string, versionId: string) {
+  const contractId = await committedContractId(db, draftId, versionId);
+  if (contractId) {
+    const { order, allocations } = await lockOrderStock(db, contractId);
+    if (order.state !== "AWAIT_COMMITMENTS") return false;
+    const round = await lockRound(db, versionId);
+    if (!round || (round.state !== "OPEN" && round.state !== "CONFIRMED") ||
+        !await hasAllConfirmations(db, versionId, round.id)) return false;
+    if (round.state === "OPEN") {
+      await db.query("update public.confirmation_rounds set state = 'CONFIRMED' where id = $1", [round.id]);
+    }
+    return await advanceCommittedOrder(db, order, allocations, null) || round.state === "OPEN";
+  }
   const { proposal } = await lockDraft(db, draftId);
   const current = await latestVersion(db, draftId, true);
   if (current?.id !== versionId || current.state !== "AWAIT_CONFIRMATIONS") return false;
@@ -157,13 +205,26 @@ export async function advanceVerifiedRound(db: PoolClient, draftId: string, vers
 export async function expireFujiStage(
   db: PoolClient, draftId: string, versionId: string, reason: "CONFIRMATION_TIMEOUT" | "FINALIZE_TIMEOUT",
 ) {
+  // The indexer must synchronize through confirmBy before invoking CONFIRMATION_TIMEOUT.
+  const contractId = await committedContractId(db, draftId, versionId);
+  if (contractId) {
+    if (reason !== "CONFIRMATION_TIMEOUT") return false;
+    const { order, allocations } = await lockOrderStock(db, contractId);
+    if (order.state !== "AWAIT_COMMITMENTS") return false;
+    const round = await lockRound(db, versionId);
+    const due = round && await db.query(
+      "select 1 from public.confirmation_rounds where id = $1 and confirm_by <= clock_timestamp()", [round.id],
+    );
+    if (!round || !due || !due.rowCount || await hasAllConfirmations(db, versionId, round.id)) return false;
+    await cancelUnderLock(db, order, allocations, "CONFIRMATION_TIMEOUT", null);
+    return true;
+  }
   const { proposal } = await lockDraft(db, draftId);
   const current = await latestVersion(db, draftId, true);
   if (current?.id !== versionId ||
       (current.state !== "AWAIT_CONFIRMATIONS" && current.state !== "AWAIT_REP_APPROVAL")) return false;
   const round = await lockRound(db, versionId);
   if (!round) return false;
-  // CONFIRMATION_TIMEOUT is invoked after the indexer has synchronized through confirmBy.
   if (reason === "CONFIRMATION_TIMEOUT" &&
       (current.state !== "AWAIT_CONFIRMATIONS" || await hasAllConfirmations(db, versionId, round.id))) return false;
   const { rows: [expired] } = await db.query<VersionRow>(
@@ -177,25 +238,36 @@ export async function expireFujiStage(
   return true;
 }
 
+async function committedContractId(db: PoolClient, draftId: string, versionId: string) {
+  const { rows: [row] } = await db.query<{ id: string }>(
+    `select c.id from public.contracts c join public.negotiation_versions v on v.id = c.source_version_id
+     join public.confirmation_rounds r on r.version_id = v.id
+     where v.id = $1 and v.negotiation_id = $2 and r.open_by is not null`, [versionId, draftId],
+  );
+  return row?.id;
+}
+
 export async function readRound(db: PoolClient, userId: string, id: string) {
   const { rows: [round] } = await db.query<{
     id: string; version_id: string; version_hash: string; onchain_key: string; chain_id: number;
     contract_address: string; state: "OPENING" | "OPEN" | "CONFIRMED" | "CLOSED"; confirm_by: Date;
-    seller_id: string; group_id: string;
+    seller_id: string; group_id: string; rep_id: string | null;
   }>(
-    `select r.*, v.version_hash, p.seller_id, c.group_id from public.confirmation_rounds r
+    `select r.*, v.version_hash, p.seller_id, c.group_id, o.rep_id from public.confirmation_rounds r
      join public.negotiation_versions v on v.id = r.version_id join public.negotiations n on n.id = v.negotiation_id
      join public.proposals p on p.id = n.proposal_id join public.demand_items d on d.id = p.demand_item_id
-     join public.campaigns c on c.id = d.campaign_id where r.id = $1`, [id],
+     join public.campaigns c on c.id = d.campaign_id
+     left join public.contracts o on o.source_version_id = v.id where r.id = $1`, [id],
   );
   if (!round) throw notFound();
-  const member = userId === round.seller_id ? undefined : await requireMember(db, userId, round.group_id);
-  const { rows: participants } = await db.query<{ membership_id: string; wallet: string; confirmed: boolean }>(
-    `select p.membership_id, p.wallet, c.round_id is not null as confirmed from public.confirmation_participants p
+  const { rows: participants } = await db.query<{ user_id: string; wallet: string; confirmed: boolean }>(
+    `select m.user_id, p.wallet, c.round_id is not null as confirmed from public.confirmation_participants p
+     join public.memberships m on m.id = p.membership_id
      left join public.confirmations c using (round_id, membership_id) where p.round_id = $1`, [id],
   );
-  const own = participants.find(row => row.membership_id === member?.id);
-  if (member && member.role !== "REP" && !own) throw notFound();
+  const own = participants.find(row => row.user_id === userId);
+  if (!own && userId !== round.seller_id && userId !== round.rep_id &&
+      (round.rep_id || (await requireMember(db, userId, round.group_id)).role !== "REP")) throw notFound();
   return {
     roundId: id, versionId: round.version_id, versionHash: round.version_hash, roundKey: round.onchain_key,
     chainId: round.chain_id, contractAddress: round.contract_address, state: round.state,

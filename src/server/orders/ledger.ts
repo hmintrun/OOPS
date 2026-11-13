@@ -44,9 +44,40 @@ export async function addDisbursement(
   }
 }
 
+export async function expireCollectionUnderLock(db: PoolClient, order: OrderRow, allocations: AllocationRow[]) {
+  if (order.state === "AWAIT_COMMITMENTS") {
+    const { rows: [deadline] } = await db.query<{ reason: "ROUND_OPEN_TIMEOUT" | "DEPOSIT_TIMEOUT" | "PAYMENT_TIMEOUT" }>(
+      `select reason from (
+         select 'ROUND_OPEN_TIMEOUT' as reason, open_by as due_at from public.confirmation_rounds
+         where version_id = $2 and (state = 'OPENING' or opens_at is null or opens_at >= open_by)
+         union all
+         select case kind when 'DEPOSIT' then 'DEPOSIT_TIMEOUT' else 'PAYMENT_TIMEOUT' end,
+           least(ch.due_at, case ch.kind when 'DEPOSIT' then c.deposit_due_at else c.payment_due_at end)
+         from public.charges ch join public.contracts c on c.id = ch.contract_id
+         where ch.contract_id = $1 and ch.state <> 'RECEIVED'
+       ) deadlines where due_at <= clock_timestamp() order by due_at, reason limit 1`,
+      [order.id, order.source_version_id],
+    );
+    if (!deadline) return false;
+    await cancelUnderLock(db, order, allocations, deadline.reason, null);
+    return true;
+  }
+  if (order.state !== "AWAIT_DEPOSIT" && order.state !== "AWAIT_PAYMENT") return false;
+  const deposit = order.state === "AWAIT_DEPOSIT";
+  const due = await db.query(
+    `select 1 from public.contracts where id = $1
+       and (case when $2::boolean then deposit_due_at else payment_due_at end) <= clock_timestamp()`,
+    [order.id, deposit],
+  );
+  if (!due.rowCount) return false;
+  await cancelUnderLock(db, order, allocations, deposit ? "DEPOSIT_TIMEOUT" : "PAYMENT_TIMEOUT", null);
+  return true;
+}
+
 export async function cancelUnderLock(
   db: PoolClient, order: OrderRow, allocations: AllocationRow[],
-  disposition: "PAYMENT_TIMEOUT" | "DEPOSIT_TIMEOUT" | "SELLER_CANCEL" | "EXCUSED_CANCEL", actorId: string | null,
+  disposition: "ROUND_OPEN_TIMEOUT" | "CONFIRMATION_TIMEOUT" | "PAYMENT_TIMEOUT" | "DEPOSIT_TIMEOUT" | "SELLER_CANCEL" | "EXCUSED_CANCEL",
+  actorId: string | null,
 ) {
   if (order.stock_state !== "PENDING" && order.stock_state !== "RESERVED") throw conflict("Lượng đã được xử lý.");
   const counter = order.stock_state === "PENDING" ? "pending" : "reserved";
@@ -65,6 +96,9 @@ export async function cancelUnderLock(
       fund.kind === "DEPOSIT" ? "DEPOSIT_REFUND" : "GOODS_REFUND", BigInt(fund.amount_vnd));
   }
   await db.query("update public.charges set state = 'EXPIRED' where contract_id = $1 and state = 'PENDING'", [order.id]);
+  if (order.state === "AWAIT_COMMITMENTS") {
+    await db.query("update public.confirmation_rounds set state = 'CLOSED' where version_id = $1", [order.source_version_id]);
+  }
   await db.query("update public.receipts set state = 'SUPERSEDED' where contract_id = $1 and state = 'DRAFT'", [order.id]);
   await db.query(
     "update public.terminations set state = 'EXPIRED', decided_at = clock_timestamp() where contract_id = $1 and state = 'PENDING'",

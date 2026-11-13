@@ -15,6 +15,16 @@ export const createOfferInput = z.strictObject({
   handoffPrivate,
 });
 
+export const voteInput = z.discriminatedUnion("choice", [
+  z.strictObject({ round: positiveQuantity, choice: z.literal("YES"), qty: positiveQuantity, unitPriceVnd: uint }),
+  z.strictObject({ round: positiveQuantity, choice: z.literal("NO") }),
+]);
+export const offerVoting = z.strictObject({
+  draftId: uuid, round: positiveQuantity, dueAt: isoDateTime, open: z.boolean(), totalQty: quantity,
+  seller: z.boolean(),
+  myQty: quantity.optional(), availableQty: quantity.optional(), unitPriceVnd: uint,
+});
+
 export const offer = z.strictObject({
   proposalId: uuid,
   demandItemId: uuid,
@@ -23,6 +33,7 @@ export const offer = z.strictObject({
   goodsVnd: uint,
   depositVnd: uint,
   draftId: uuid.optional(),
+  voteDueAt: isoDateTime.optional(),
 });
 export const offers = z.strictObject({ items: z.array(offer) });
 export const openDraftInput = z.strictObject({});
@@ -90,6 +101,7 @@ export const confirmationRound = z.strictObject({
 });
 
 export type Offer = z.infer<typeof offer>;
+export type OfferVoting = z.infer<typeof offerVoting>;
 export type Draft = z.infer<typeof draft>;
 export type DraftVersion = z.infer<typeof draftVersion>;
 export type SellerDraftView = z.infer<typeof sellerDraftView>;
