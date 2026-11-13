@@ -1,15 +1,15 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { Me } from "@/contracts/foundation";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardTitle, MaterialSymbol } from "@/components/ui";
 import { CreateGroupForm } from "./CreateGroupForm";
-import { serverGet } from "./server-api";
+import { GroupDetail } from "./group-detail";
+import { loadGroupPage } from "./group-page-data";
 
 export default async function GroupsPage() {
-  const result = await serverGet<Me>("/api/v1/me");
+  const result = await loadGroupPage();
   if (!result.ok && result.status === 401) redirect("/login");
-  if (result.ok && result.data.groupId) redirect(`/groups/${result.data.groupId}`);
+  if (result.ok && result.group) return <GroupDetail data={result.group} userId={result.userId} />;
 
   return (
     <AppShell title="Nhóm của tôi" icon={{ icon: "groups", tone: "green" }} familyBackground bare>
@@ -29,7 +29,7 @@ export default async function GroupsPage() {
         <Card className="ui-empty ui-status-card">
           <p role="alert">{result.message}</p>
           <div className="ui-actions">
-            <Link href="/groups" className="ui-btn ui-btn--secondary">Thử lại</Link>
+            <a href="/groups" className="ui-btn ui-btn--secondary">Thử lại</a>
             {process.env.NODE_ENV === "development" && result.status === 503 && (
               <Link href="/ui-preview/demo" className="ui-btn ui-btn--primary">Mở bản thử</Link>
             )}

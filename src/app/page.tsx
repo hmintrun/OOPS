@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function HomePage(): Promise<never> {
   try {
-    await authenticatedActor();
+    await authenticatedActor({ readOnly: true });
   } catch {
     // 401 (chưa đăng nhập) hoặc lỗi khác — đều về trang đăng nhập.
     redirect("/login");
