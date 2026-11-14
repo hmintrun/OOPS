@@ -20,6 +20,7 @@ export const createInviteInput = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("REP"), targetUserId: uuid }),
 ]);
 export const acceptInviteInput = z.strictObject({ token: nonBlank });
+export const leaveGroupInput = z.strictObject({});
 export const createCampaignInput = z.strictObject({
   collectUntil: isoDateTime, needBy: isoDateTime, supportRequested: z.boolean().optional(),
 });
@@ -66,6 +67,7 @@ export const me = z.strictObject({
   contactPrivate: z.string().optional(),
 });
 export const membership = z.strictObject({ groupId: uuid, membershipId: uuid, role: memberRole });
+export const leftGroup = z.strictObject({ groupId: uuid, membershipId: uuid, leftAt: isoDateTime });
 export const member = z.strictObject({ membershipId: uuid, userId: uuid, displayName: z.string(), role: memberRole });
 export const campaign = z.strictObject({
   campaignId: uuid, state: campaignState, collectUntil: isoDateTime, needBy: isoDateTime,

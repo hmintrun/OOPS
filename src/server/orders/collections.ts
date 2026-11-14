@@ -3,8 +3,9 @@ import type { PoolClient } from "pg";
 import type { Contract } from "@/contracts/orders";
 import { conflict, invalid, notFound } from "../errors";
 import { recordOrderEvent } from "./events";
-import { addDisbursement, cancelUnderLock } from "./ledger";
+import { addDisbursement, expireCollectionUnderLock } from "./ledger";
 import { lockOrderStock } from "./records";
+import { advanceCommittedOrder, reserveOrderStock } from "./commitments";
 
 type Charge = {
   id: string; contract_id: string; payer_id: string; kind: "DEPOSIT" | "GOODS"; amount_vnd: string;
@@ -26,34 +27,63 @@ export async function requireSimPayer(db: PoolClient, actorId: string, id: strin
   return row;
 }
 
-type SimEvent = { reference: string; amountVnd: bigint; occurredAt?: string; checkout?: boolean };
+type SimEvent = { reference: string; amountVnd: bigint; occurredAt?: string };
 
 export async function applySimFundEvent(db: PoolClient, chargeId: string, event: SimEvent) {
+  return recordSimFundEvent(db, await findCharge(db, chargeId), event);
+}
+
+async function recordSimFundEvent(db: PoolClient, initial: Charge, event: SimEvent, checkout = false) {
   if (event.amountVnd <= 0n || event.amountVnd > BigInt(Number.MAX_SAFE_INTEGER)) throw invalid("Số tiền không hợp lệ.");
-  const initial = await findCharge(db, chargeId);
   const { order, allocations } = await lockOrderStock(db, initial.contract_id);
-  const charge = await findCharge(db, chargeId, true);
+  const charge = await findCharge(db, initial.id, true);
   if (charge.mode !== "SIM") throw notFound();
-  const expectedState = charge.kind === "DEPOSIT" ? "AWAIT_DEPOSIT" : "AWAIT_PAYMENT";
-  const canApply = order.state === expectedState && charge.state === "PENDING";
+  const parallel = order.state === "AWAIT_COMMITMENTS";
+  if (parallel && checkout && charge.state === "PENDING" && await expireCollectionUnderLock(db, order, allocations)) {
+    return conflict("Đã hết hạn ký hoặc thu tiền. Hợp đồng đã được hủy theo điều khoản.");
+  }
+  const deposit = charge.kind === "DEPOSIT";
+  const awaitingCharge = parallel || order.state === (deposit ? "AWAIT_DEPOSIT" : "AWAIT_PAYMENT");
+  const eligible = parallel ? await db.query(
+    `select 1 from public.confirmation_rounds r
+     join public.charges c on c.id = $2
+     left join public.allocations a on a.id = c.allocation_id
+     left join public.confirmations x on x.round_id = r.id and x.membership_id = a.membership_id
+     where r.version_id = $1 and r.state in ('OPEN', 'CONFIRMED')
+       and r.opens_at < r.open_by
+       and (c.kind = 'DEPOSIT' or x.round_id is not null)`,
+    [order.source_version_id, charge.id],
+  ) : null;
+  const canApply = awaitingCharge && charge.state === "PENDING" &&
+    (parallel ? Boolean(eligible?.rowCount) : order.stock_state === (deposit ? "PENDING" : "RESERVED"));
   const { rows: [saved] } = await db.query<{ id: string; disposition: "APPLIED" | "REVIEW" | "REFUND_DUE" }>(
-    `with ts as materialized (select clock_timestamp() as now)
+    `with timing as materialized (
+       select clock_timestamp() as now,
+         least(c.due_at, case c.kind when 'DEPOSIT' then o.deposit_due_at else o.payment_due_at end) as due_at
+       from public.charges c join public.contracts o on o.id = c.contract_id where c.id = $1
+     ), started as (
+       update public.charges c set checkout_started_at = coalesce(c.checkout_started_at, t.now)
+       from timing t where c.id = $1 and $6::boolean and $5::boolean and t.now < t.due_at returning c.id
+     )
      insert into public.fund_events (charge_id, mode, external_ref, amount_vnd, occurred_at, disposition)
-     select c.id, 'SIM', $2, $3, coalesce($4::timestamptz, ts.now),
-       case when not $5::boolean or coalesce($4::timestamptz, ts.now) >= c.due_at then 'REFUND_DUE'
+     select c.id, 'SIM', $2, $3, coalesce($4::timestamptz, t.now),
+       case when not $5::boolean or coalesce($4::timestamptz, t.now) >= t.due_at then 'REFUND_DUE'
          when c.amount_vnd <> $3 then 'REVIEW' else 'APPLIED' end
-     from public.charges c cross join ts where c.id = $1
-       and (not $6::boolean or ($5::boolean and ts.now < c.due_at))
+     from public.charges c cross join timing t where c.id = $1
+       and (not $6::boolean or exists (select 1 from started))
      on conflict (mode, external_ref) do nothing returning id, disposition`,
-    [charge.id, event.reference, event.amountVnd.toString(), event.occurredAt ?? null, canApply, Boolean(event.checkout)],
+    [charge.id, event.reference, event.amountVnd.toString(), event.occurredAt ?? null, canApply, checkout],
   );
   if (!saved) {
     const replay = await db.query(
       "select 1 from public.fund_events where mode = 'SIM' and external_ref = $1 and charge_id = $2 and amount_vnd = $3",
       [event.reference, charge.id, event.amountVnd.toString()],
     );
-    if (!replay.rowCount) throw conflict("Khoản thu đã đóng, hết hạn hoặc mã giao dịch SIM đã thuộc khoản khác.");
-    return { chargeId: charge.id, state: charge.state };
+    if (replay.rowCount) return { chargeId: charge.id, state: charge.state };
+    if (checkout && awaitingCharge && await expireCollectionUnderLock(db, order, allocations)) {
+      return conflict("Đã hết hạn thu tiền. Hợp đồng đã được hủy theo điều khoản.");
+    }
+    throw conflict("Khoản thu đã đóng, hết hạn hoặc mã giao dịch SIM đã thuộc khoản khác.");
   }
   if (saved.disposition === "REFUND_DUE") {
     await addDisbursement(db, order.id, saved.id, charge.payer_id,
@@ -65,16 +95,13 @@ export async function applySimFundEvent(db: PoolClient, chargeId: string, event:
     "update public.charges set state = 'RECEIVED', checkout_started_at = coalesce(checkout_started_at, clock_timestamp()) where id = $1",
     [charge.id],
   );
-  if (charge.kind === "DEPOSIT") {
-    await db.query(
-      "update public.demand_items set pending = pending - $2, reserved = reserved + $2 where id = $1", [order.demand_item_id, order.qty],
-    );
-    for (const part of allocations) {
-      await db.query(
-        `update public.demand_shares set pending = pending - $3, reserved = reserved + $3
-         where demand_item_id = $1 and membership_id = $2`, [order.demand_item_id, part.membership_id, part.qty],
-      );
+  if (parallel) {
+    if (!await advanceCommittedOrder(db, order, allocations, charge.payer_id)) {
+      await db.query("update public.contracts set version = version + 1 where id = $1", [order.id]);
     }
+    if (deposit) await recordOrderEvent(db, order.id, "DEPOSIT_RECEIVED", order.version + 1, charge.payer_id);
+  } else if (charge.kind === "DEPOSIT") {
+    await reserveOrderStock(db, order, allocations);
     if (BigInt(order.goods_vnd) > 0n) {
       await db.query(
         `insert into public.charges (contract_id, allocation_id, payer_id, kind, amount_vnd, due_at, mode, state)
@@ -109,25 +136,26 @@ async function markHandoffEligible(db: PoolClient, id: string) {
 
 export async function receiveDemoCharge(db: PoolClient, actorId: string, id: string) {
   const charge = await requireSimPayer(db, actorId, id);
-  return applySimFundEvent(db, id, { reference: `SIM:${id}`, amountVnd: BigInt(charge.amount_vnd), checkout: true });
+  return recordSimFundEvent(db, charge, { reference: `SIM:${id}`, amountVnd: BigInt(charge.amount_vnd) }, true);
 }
 
 export async function expireOrderDeadline(
-  db: PoolClient, id: string, stage: "DEPOSIT" | "PAYMENT" | "READY" | "HANDOFF" | "RECEIPT",
+  db: PoolClient, id: string, stage: "ROUND_OPEN" | "DEPOSIT" | "PAYMENT" | "READY" | "HANDOFF" | "RECEIPT",
 ) {
   const { order, allocations } = await lockOrderStock(db, id);
+  if (stage === "ROUND_OPEN" || stage === "DEPOSIT" || stage === "PAYMENT") {
+    if (order.state !== "AWAIT_COMMITMENTS" &&
+        order.state !== (stage === "DEPOSIT" ? "AWAIT_DEPOSIT" : stage === "PAYMENT" ? "AWAIT_PAYMENT" : "")) return false;
+    // ROUND_OPEN is dispatched after the indexer has synchronized through openBy.
+    return expireCollectionUnderLock(db, order, allocations, stage === "ROUND_OPEN");
+  }
   const stages = {
-    DEPOSIT: ["AWAIT_DEPOSIT", "deposit_due_at"], PAYMENT: ["AWAIT_PAYMENT", "payment_due_at"],
     READY: ["AWAIT_HANDOFF", "ready_by"], HANDOFF: ["AWAIT_HANDOFF", "handoff_by"], RECEIPT: ["AWAIT_APPROVAL", "approval_due_at"],
   } as const;
   const [expectedState, column] = stages[stage];
   if (order.state !== expectedState) return false;
   const due = await db.query(`select 1 from public.contracts where id = $1 and ${column} <= clock_timestamp()`, [id]);
   if (!due.rowCount) return false;
-  if (stage === "DEPOSIT" || stage === "PAYMENT") {
-    await cancelUnderLock(db, order, allocations, stage === "DEPOSIT" ? "DEPOSIT_TIMEOUT" : "PAYMENT_TIMEOUT", null);
-    return true;
-  }
   if (stage === "READY") {
     return order.ready_at ? false : recordOrderEvent(db, id, "READY_TIMEOUT", order.version, null);
   }

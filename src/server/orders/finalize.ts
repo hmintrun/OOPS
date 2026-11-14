@@ -66,6 +66,10 @@ export async function finalizeDraft(db: PoolClient, actorId: string, draftId: st
   const goods = BigInt(version.goods_vnd);
   const tenth = (goods + 9n) / 10n;
   const deposit = tenth < 50_000n ? 50_000n : tenth;
+  await db.query(
+    "select user_id from public.wallets where user_id = any($1::uuid[]) order by user_id for share",
+    [[actorId, proposal.seller_id]],
+  );
   const { rows: [saved] } = await db.query<{ id: string }>(
     `with t as materialized (select clock_timestamp() as at)
      insert into public.contracts (proposal_id, source_version_id, rep_id, qty, unit_price_vnd, goods_vnd,

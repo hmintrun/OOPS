@@ -4,8 +4,9 @@ import { z } from "zod";
 import { isoDateTime, uuid, type Campaign, type Cart, type CatalogItem, type DemandItem,
   type DemandPreview, type Feed, type Needs, type createCampaignInput, type feedQuery,
   type putCartInput } from "@/contracts/foundation";
-import { conflict, invalid, notFound } from "./errors";
+import { ApiFailure, conflict, invalid, notFound } from "./errors";
 import { campaignDto, requireMember, requireRepresentative } from "./groups";
+import type { prepareProfileEligibility } from "./profiles";
 
 type CampaignRow = {
   id: string;
@@ -122,12 +123,21 @@ export async function putCart(client: PoolClient, userId: string, campaignId: st
   return cartDto(client, saved);
 }
 
-export async function confirmCart(client: PoolClient, userId: string, campaignId: string, version: number) {
+export async function confirmCart(
+  client: PoolClient, userId: string, campaignId: string, version: number,
+  eligibility?: Awaited<ReturnType<typeof prepareProfileEligibility>>,
+) {
   const { row, member } = await getCampaign(client, userId, campaignId, true);
   await requireOpenCart(client, row);
   const current = await findCart(client, campaignId, member.id);
   if (!current) throw notFound();
   if (current.version !== version) throw conflict("Phiên bản giỏ đã thay đổi.");
+  const { rows: [wallet] } = await client.query<{ address: string }>(
+    "select address from public.wallets where user_id = $1 and verification_state = 'VERIFIED' for share", [userId],
+  );
+  if (!wallet || !eligibility?.eligible || wallet.address !== eligibility.address) {
+    throw new ApiFailure(409, "WALLET_NOT_READY", "Hãy liên kết hoặc xác minh ví đủ điều kiện Fuji trước khi xác nhận giỏ.");
+  }
   const { rows: [saved] } = await client.query<CartRow>(
     `update public.carts set state = 'CONFIRMED', version = version + 1 where id = $1
      returning id, version, state, household_size, support_requested`,
@@ -195,7 +205,8 @@ export async function readNeeds(client: PoolClient, userId: string, campaignId: 
     `select r.id as "roundId", d.id as "demandItemId", r.state from public.confirmation_rounds r
      join public.negotiation_versions v on v.id = r.version_id join public.negotiations n on n.id = v.negotiation_id
      join public.proposals p on p.id = n.proposal_id join public.demand_items d on d.id = p.demand_item_id
-     where d.campaign_id = $1 and v.state in ('AWAIT_CONFIRMATIONS', 'AWAIT_REP_APPROVAL')
+     left join public.contracts o on o.source_version_id = v.id
+     where d.campaign_id = $1 and (v.state in ('AWAIT_CONFIRMATIONS', 'AWAIT_REP_APPROVAL') or o.state = 'AWAIT_COMMITMENTS')
        and r.state <> 'CLOSED' and ($2::boolean or p.seller_id = $3 or exists (
          select 1 from public.confirmation_participants cp where cp.round_id = r.id and cp.membership_id = $4
        )) order by r.id`, [campaignId, member.role === "REP", userId, member.id],

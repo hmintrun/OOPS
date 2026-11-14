@@ -39,6 +39,9 @@ function knownFailure(error: unknown) {
   if (db?.code === "23505" && db.constraint === "memberships_one_active_user") {
     return conflict("Tài khoản đã có nhóm hoạt động.");
   }
+  if (db?.code === "23514" && db.constraint === "wallet_active_commitment") {
+    return new ApiFailure(409, "ACTIVE_COMMITMENT", "Cần xử lý xong vòng ký, hợp đồng và khoản chi/hoàn trước khi đổi ví.");
+  }
   if (db?.code === "22003") return invalid("Số lượng vượt giới hạn lưu trữ.");
 }
 

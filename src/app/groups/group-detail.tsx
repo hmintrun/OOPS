@@ -2,13 +2,15 @@ import Link from "next/link";
 import type { Group } from "@/contracts/foundation";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardTitle } from "@/components/ui";
+import { FamilyStatusWidget } from "./FamilyStatusWidget";
 import { formatDateTime } from "./helpers";
 import { InviteForm } from "./[id]/invite-form";
 
 export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
   const isRepresentative = data.repId === userId;
   return (
-    <AppShell title="Nhóm của tôi" subtitle={`${data.members.length} hộ gia đình`} icon={{ icon: "groups", tone: "green" }} familyBackground bare>
+    <AppShell title="Nhóm của tôi" subtitle={`${data.members.length} hộ gia đình`} icon={{ icon: "groups", tone: "green" }} familyBackground bodyClassName="ui-stack" bare>
+      <FamilyStatusWidget />
       <div className="ui-card-grid">
         <Card>
           <CardTitle as="h2">Đợt gom</CardTitle>

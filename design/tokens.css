@@ -22,13 +22,28 @@
   --oops-green-800: #10562a;
   --oops-green-100: #e7f5ec;
 
+  /* Màu minh họa và điểm nhấn */
+  --oops-jade: #00785d;
+  --oops-jade-dark: #005643;
+  --oops-mint: #dcf6e9;
+  --oops-sun: #ffcf55;
+  --oops-sun-tint: #fff2cc;
+  --oops-lagoon: #32bfdb;
+  --oops-haze: #f4fbf8;
+
   /* Tile pastel */
   --oops-amber-tint: #fff6e0;
   --oops-rose-tint: #fde8ec;
+  --oops-sky-ink: #075985;
+  --oops-amber-ink: #85450c;
+  --oops-rose-ink: #9b3659;
+  --oops-violet-tint: #eeeaff;
+  --oops-violet-ink: #514292;
 
   /* Bề mặt */
   --oops-surface: #ffffff;
   --oops-line: #e2eaf2;
+  --oops-page-green: #cfe8d4;
 
   /* Ngữ nghĩa */
   --oops-danger: #b72d39;

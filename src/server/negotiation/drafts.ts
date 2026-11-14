@@ -17,19 +17,20 @@ export type Proposal = {
   qty: number;
   unit_price_vnd: string;
   state: Offer["state"];
+  vote_due_at: Date | null;
 };
 export type DraftRow = {
   id: string;
   proposal_id: string;
-  initiated_by_membership_id: string;
+  initiated_by_membership_id: string | null;
   edit_revision: number;
   draft_open: boolean;
 };
 type DraftMember = { id: string; role: Membership["role"] };
 
-async function findProposal(client: PoolClient, proposalId: string, lock = false): Promise<Proposal> {
+export async function findProposal(client: PoolClient, proposalId: string, lock = false): Promise<Proposal> {
   const { rows: [row] } = await client.query<Proposal>(
-    `select p.id, p.seller_id, p.demand_item_id, p.qty, p.unit_price_vnd, p.state, c.group_id
+    `select p.id, p.seller_id, p.demand_item_id, p.qty, p.unit_price_vnd, p.state, p.vote_due_at, c.group_id
      from public.proposals p
      join public.demand_items d on d.id = p.demand_item_id
      join public.campaigns c on c.id = d.campaign_id
@@ -56,7 +57,7 @@ export async function lockDraft(client: PoolClient, draftId: string) {
   return { proposal, row: await findDraft(client, draftId, true) };
 }
 
-async function buyerAccess(client: PoolClient, userId: string, proposal: Proposal) {
+export async function buyerAccess(client: PoolClient, userId: string, proposal: Proposal) {
   if (proposal.seller_id === userId) throw forbidden();
   const member = await requireMember(client, userId, proposal.group_id);
   const { rows: [share] } = await client.query<{ target: number }>(
@@ -139,6 +140,7 @@ export async function openDraft(client: PoolClient, userId: string, proposalId: 
   const proposal = await findProposal(client, proposalId, true);
   const { member, share } = await buyerAccess(client, userId, proposal);
   if (!share) throw forbidden();
+  if (proposal.vote_due_at) throw conflict("Đề nghị này dùng vòng bỏ phiếu Có hoặc Không.");
   await assertOfferOpen(client, proposal, true);
 
   const { rows: [row] } = await client.query<DraftRow>(
@@ -164,9 +166,9 @@ export async function readDraft(client: PoolClient, userId: string, draftId: str
   return {
     ...await draftDto(client, row, proposal, member),
     permissions: {
-      editLine: Boolean(share),
+      editLine: Boolean(share) && !proposal.vote_due_at,
       manageDraft: Boolean(share && member.id === row.initiated_by_membership_id),
-      finalize: member.role === "REP",
+      finalize: member.role === "REP" && !proposal.vote_due_at,
     },
   };
 }
@@ -177,6 +179,7 @@ export async function editDraftLine(
   const { proposal, row } = await lockDraft(client, draftId);
   const { member, share } = await buyerAccess(client, userId, proposal);
   if (!share) throw forbidden();
+  if (proposal.vote_due_at) throw conflict("Đề nghị này dùng vòng bỏ phiếu Có hoặc Không.");
   await assertOfferOpen(client, proposal, true);
   if (!row.draft_open || row.edit_revision !== body.editRevision) {
     throw conflict("Nháp đã khóa hoặc phiên sửa đã thay đổi.");

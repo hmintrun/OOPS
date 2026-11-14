@@ -6,7 +6,7 @@ import { assertOfferOpen, draftDto, lockDraft, requireInitiator, type Proposal }
 import { goodsAmount } from "./offers";
 import { hashNegotiationVersion } from "./version-hash";
 import { latestVersion, versionDto, type VersionRow } from "./version-records";
-import { requiredLeadHours, sellerResponseHours } from "./timing";
+import { parallelLeadHours, parallelTiming, requiredLeadHours, sellerResponseHours } from "./timing";
 
 export async function recordVersionState(
   client: PoolClient, proposal: Proposal, version: VersionRow, actorId: string | null,
@@ -68,6 +68,15 @@ export async function submitDraft(client: PoolClient, userId: string, draftId: s
     [draftId, proposal.group_id],
   );
   if (rows.some(line => !line.active)) throw conflict("Có hộ trong bản nháp không còn hoạt động trong nhóm.");
+  const saved = await snapshotVersion(client, proposal, draftId, rows, userId, requiredLeadHours);
+  return versionDto(client, saved, { membershipId: member.id, canReview: member.role === "REP" });
+}
+
+export async function snapshotVersion(
+  client: PoolClient, proposal: Proposal, draftId: string,
+  rows: { membership_id: string; qty: number; note: string | null }[],
+  actorId: string | null, leadHours: number, responseHours = sellerResponseHours,
+) {
   const qty = rows.reduce((sum, line) => sum + line.qty, 0);
   if (qty <= 0 || qty > proposal.qty) throw invalid("Tổng lượng gửi phải dương và không vượt lượng chào.");
   const unitPriceVnd = BigInt(proposal.unit_price_vnd);
@@ -97,7 +106,9 @@ export async function submitDraft(client: PoolClient, userId: string, draftId: s
     lines: rows.map(line => ({ membershipId: line.membership_id, qty: line.qty, note: line.note })),
   });
   const { rows: [saved] } = await client.query<VersionRow>(
-    `with submitted as materialized (select clock_timestamp() as at)
+    `with submitted as materialized (
+       select least(clock_timestamp(), vote_due_at) as at from public.proposals where id = $7
+     )
      insert into public.negotiation_versions
        (id, negotiation_id, version, qty, unit_price_vnd, goods_vnd, handoff_start, handoff_by,
         version_hash, submitted_at, seller_response_due_at)
@@ -106,24 +117,24 @@ export async function submitDraft(client: PoolClient, userId: string, draftId: s
      from public.proposals p cross join submitted s
      where p.id = $7 and p.handoff_start >= s.at + make_interval(hours => $9)
      returning *`,
-    [versionId, draftId, version, qty, totalVnd.toString(), hash, proposal.id, sellerResponseHours, requiredLeadHours],
+    [versionId, draftId, version, qty, totalVnd.toString(), hash, proposal.id, responseHours, leadHours],
   );
-  if (!saved) throw conflict("Cần gửi bản ít nhất 30 giờ trước khi bắt đầu giao.");
+  if (!saved) throw conflict("Lịch giao không còn đủ thời gian để phản hồi, ký và thu.");
   await client.query(
     `insert into public.negotiation_version_lines (version_id, membership_id, qty, goods_vnd, note)
      select $1, membership_id, qty, qty::bigint * $3::bigint, note
-     from public.negotiation_draft_lines where negotiation_id = $2`,
-    [versionId, draftId, proposal.unit_price_vnd],
+     from jsonb_to_recordset($2::jsonb) as line(membership_id uuid, qty int, note text)`,
+    [versionId, JSON.stringify(rows), proposal.unit_price_vnd],
   );
   await client.query("update public.negotiations set draft_open = false where id = $1", [draftId]);
-  await recordVersionState(client, proposal, saved, userId);
+  await recordVersionState(client, proposal, saved, actorId);
   await client.query(
     `insert into public.outbox (kind, event_key, payload, next_run_at)
      select 'NEGOTIATION_SELLER_RESPONSE_DUE', $2, $3, seller_response_due_at
      from public.negotiation_versions where id = $1`,
     [versionId, `negotiation-version:${versionId}:seller-response-due`, JSON.stringify({ draftId, versionId })],
   );
-  return versionDto(client, saved, { membershipId: member.id, canReview: member.role === "REP" });
+  return saved;
 }
 
 async function expireSubmittedVersion(client: PoolClient, proposal: Proposal, draftId: string, versionId: string) {
@@ -140,7 +151,11 @@ async function expireSubmittedVersion(client: PoolClient, proposal: Proposal, dr
 
 export async function expireSellerResponse(client: PoolClient, draftId: string, versionId: string) {
   const { proposal } = await lockDraft(client, draftId);
-  return Boolean(await expireSubmittedVersion(client, proposal, draftId, versionId));
+  const expired = await expireSubmittedVersion(client, proposal, draftId, versionId);
+  if (expired && proposal.vote_due_at) {
+    await client.query("update public.proposals set state = 'EXPIRED' where id = $1", [proposal.id]);
+  }
+  return Boolean(expired);
 }
 
 export async function reviseDraft(client: PoolClient, userId: string, draftId: string, expectedVersion: number) {
@@ -186,6 +201,27 @@ export async function respondToVersion(
   if (state === "REJECTED") {
     await client.query("update public.proposals set state = 'REJECTED' where id = $1", [proposal.id]);
   }
+  if (state === "CHANGES_REQUESTED" && proposal.vote_due_at) {
+    const timing = parallelTiming();
+    const lead = parallelLeadHours(timing);
+    const opened = await client.query(
+      `update public.proposals set vote_due_at = clock_timestamp() + make_interval(hours => $2)
+       where id = $1 and handoff_start >= clock_timestamp() + make_interval(hours => $3)`,
+      [proposal.id, timing.vote, timing.vote + lead],
+    );
+    if (!opened.rowCount) throw conflict("Lịch giao không còn đủ thời gian để mở vòng phiếu mới.");
+    await client.query("update public.negotiations set draft_open = true, edit_revision = edit_revision + 1 where id = $1", [draftId]);
+    await enqueueVoteDeadline(client, draftId, current.version + 1);
+  }
   await recordVersionState(client, proposal, updated, sellerId);
   return versionDto(client, updated, { canReview: true });
+}
+
+export async function enqueueVoteDeadline(client: PoolClient, draftId: string, round: number) {
+  await client.query(
+    `insert into public.outbox (kind, event_key, payload, next_run_at)
+     select 'OFFER_VOTE_DUE', $1, $2, p.vote_due_at
+     from public.negotiations n join public.proposals p on p.id = n.proposal_id where n.id = $3`,
+    [`offer-vote:${draftId}:${round}`, JSON.stringify({ draftId, round }), draftId],
+  );
 }

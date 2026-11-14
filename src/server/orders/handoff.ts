@@ -4,7 +4,7 @@ import type { z } from "zod";
 import type { issueInput, receiptInput, terminationInput } from "@/contracts/orders";
 import { conflict, forbidden, invalid, notFound } from "../errors";
 import { recordOrderEvent } from "./events";
-import { addDisbursement, appliedFunds, cancelUnderLock } from "./ledger";
+import { addDisbursement, appliedFunds, cancelUnderLock, expireCollectionUnderLock } from "./ledger";
 import {
   findOrder, lockOrderStock, orderAllocations, orderDto, receiptDto, requireHandoffParty,
   type AllocationRow, type OrderRow, type ReceiptRow, type TerminationRow,
@@ -189,13 +189,18 @@ export async function reportIssue(db: PoolClient, actorId: string, id: string, i
 export async function cancelBySeller(db: PoolClient, actorId: string, id: string, reason: string) {
   const { order, allocations } = await lockOrderStock(db, id);
   if (requireHandoffParty(order, actorId) !== "SELLER") throw forbidden();
-  if (order.state !== "AWAIT_DEPOSIT" && order.state !== "AWAIT_PAYMENT" && order.state !== "AWAIT_HANDOFF") {
+  if (await expireCollectionUnderLock(db, order, allocations)) {
+    return conflict("Đã hết hạn thu tiền. Hợp đồng đã được hủy theo điều khoản.");
+  }
+  if (!["AWAIT_COMMITMENTS", "AWAIT_DEPOSIT", "AWAIT_PAYMENT", "AWAIT_HANDOFF"].includes(order.state)) {
     throw conflict("Đơn không thể hủy trực tiếp.");
   }
   const started = await db.query(
-    "select 1 from public.receipts where contract_id = $1 union all select 1 from public.evidence where contract_id = $1 limit 1", [id],
+    `select 1 from public.receipts where contract_id = $1
+     union all select 1 from public.evidence where contract_id = $1
+     union all select 1 from public.handoff_issues where contract_id = $1 limit 1`, [id],
   );
-  if (started.rowCount) throw conflict("Đơn đã có bằng chứng hoặc biên nhận bàn giao.");
+  if (started.rowCount) throw conflict("Đơn đã có bằng chứng, biên nhận hoặc sự cố bàn giao.");
   await cancelUnderLock(db, order, allocations, "SELLER_CANCEL", actorId);
   await db.query(
     "insert into public.audit_events (actor_id, entity_type, entity_id, action, version, reason) values ($1, 'CONTRACT', $2, 'CANCEL_REASON', $3, $4)",
@@ -205,8 +210,11 @@ export async function cancelBySeller(db: PoolClient, actorId: string, id: string
 }
 
 export async function proposeTermination(db: PoolClient, actorId: string, id: string, input: z.output<typeof terminationInput>) {
-  const order = await findOrder(db, id, true);
+  const { order, allocations } = await lockOrderStock(db, id);
   requireHandoffParty(order, actorId);
+  if (await expireCollectionUnderLock(db, order, allocations)) {
+    return conflict("Đã hết hạn thu tiền. Hợp đồng đã được hủy theo điều khoản.");
+  }
   if (input.version !== order.version || (order.stock_state !== "PENDING" && order.stock_state !== "RESERVED")) {
     throw conflict("Phiên bản đơn không còn cho phép đề xuất hủy.");
   }
@@ -243,6 +251,9 @@ export async function acceptTermination(db: PoolClient, actorId: string, id: str
   const request = await findTermination(db, id, true);
   if (request.proposed_by === actorId) throw forbidden();
   if (request.state !== "PENDING" || request.base_version !== order.version) throw conflict("Yêu cầu hủy đã hết hiệu lực.");
+  if (await expireCollectionUnderLock(db, order, allocations)) {
+    return conflict("Đã hết hạn thu tiền. Hợp đồng đã được hủy theo điều khoản.");
+  }
   await db.query("update public.terminations set state = 'ACCEPTED', decided_at = clock_timestamp() where id = $1", [id]);
   await cancelUnderLock(db, order, allocations, "EXCUSED_CANCEL", actorId);
   return orderDto(db, await findOrder(db, order.id), actorId);

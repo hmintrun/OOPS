@@ -1,12 +1,13 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { apiError, campaign, cart, cartAiResult, feed, group, invite, me, membership, needs, publishResult } from "@/contracts/foundation";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { apiError, campaign, cart, cartAiResult, feed, group, invite, leftGroup, me, membership, needs, publishResult } from "@/contracts/foundation";
 import { GET as getMe, PATCH as patchMe } from "@/app/api/v1/me/route";
 import { POST as postGroup } from "@/app/api/v1/groups/route";
 import { GET as getGroup } from "@/app/api/v1/groups/[id]/route";
 import { POST as postInvite } from "@/app/api/v1/groups/[id]/invites/route";
+import { POST as postLeave } from "@/app/api/v1/groups/[id]/leave/route";
 import { POST as takeInvite } from "@/app/api/v1/invites/accept/route";
 import { POST as postCampaign } from "@/app/api/v1/groups/[id]/campaigns/route";
 import { GET as getCart, PUT as saveCart } from "@/app/api/v1/campaigns/[id]/cart/route";
@@ -16,6 +17,7 @@ import { POST as postPublish } from "@/app/api/v1/campaigns/[id]/publish/route";
 import { GET as getFeed } from "@/app/api/v1/feed/route";
 import { GET as getOffers, POST as postOffer } from "@/app/api/v1/needs/[id]/offers/route";
 import { POST as postDraft } from "@/app/api/v1/offers/[id]/draft/route";
+import { GET as getVote, POST as postVote } from "@/app/api/v1/offers/[id]/vote/route";
 import { GET as getDraft } from "@/app/api/v1/drafts/[id]/route";
 import { PUT as putDraftLine } from "@/app/api/v1/drafts/[id]/my-line/route";
 import { POST as postSubmit } from "@/app/api/v1/drafts/[id]/submit/route";
@@ -39,11 +41,13 @@ import { GET as getOps } from "@/app/api/v1/ops/disbursements/route";
 import { GET as getNotices } from "@/app/api/v1/notifications/route";
 import { PATCH as patchNotice } from "@/app/api/v1/notifications/[id]/route";
 import { POST as postCartAi } from "@/app/api/v1/campaigns/[id]/cart/ai/route";
-import { confirmationRound, draft, draftVersion, offer, offers, sellerDraftView } from "@/contracts/negotiation";
+import { confirmationRound, draft, draftVersion, offer, offers, offerVoting, sellerDraftView } from "@/contracts/negotiation";
 import { contract, evidenceResult, notificationList, opsList, postTransferResult, receipt, signedEvidence, terminationResult } from "@/contracts/orders";
 import { closeDatabase, transaction } from "@/server/db";
 import { expireSellerResponse } from "@/server/negotiation/versions";
-import { advanceVerifiedRound, approveWithFujiEligibility, fujiRoundKey } from "@/server/negotiation/rounds";
+import { advanceVerifiedRound, approveWithFujiEligibility, expireFujiStage, fujiRoundKey, recordVerifiedRoundOpening } from "@/server/negotiation/rounds";
+import { expireOfferVoting } from "@/server/negotiation/votes";
+import * as profiles from "@/server/profiles";
 import { applySimFundEvent, expireOrderDeadline } from "@/server/orders/collections";
 import { persistNotifications } from "@/server/orders/ops";
 import { householdNeeds, waterSkuId } from "./fixtures/foundation";
@@ -61,6 +65,7 @@ vi.mock("@/server/auth", async () => {
 });
 
 const session = new AsyncLocalStorage<string | undefined>();
+const authFetch = globalThis.fetch.bind(globalThis);
 const users: string[] = [];
 const district = "OOPS_TEST_" + randomUUID();
 const dateIn = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
@@ -84,10 +89,13 @@ async function call(handler: Handler, userId?: string, options: {
 }
 
 const local = () => ["localhost", "127.0.0.1", "[::1]"].includes(new URL(process.env.DATABASE_URL!).hostname);
+const authUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const authKey = process.env.SUPABASE_SECRET_KEY;
 
 function authAdmin() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, {
+  return createClient(authUrl!, authKey!, {
     auth: { autoRefreshToken: false, persistSession: false },
+    global: { fetch: authFetch },
   }).auth.admin;
 }
 
@@ -131,8 +139,17 @@ function put(userId: string, id: string, needQty: number, version = 0, supportRe
   });
 }
 
-function confirm(userId: string, id: string, version: number, key?: string) {
-  return call(postConfirm, userId, { id, method: "POST", body: { version }, key });
+async function confirm(userId: string, id: string, version: number, key?: string) {
+  await transaction(db => db.query(
+    `insert into public.wallets (user_id, address, verification_state)
+     values ($1, $2, 'VERIFIED') on conflict (user_id) do nothing`, [userId, walletOf(userId)],
+  ));
+  const eligibility = vi.spyOn(profiles, "prepareProfileEligibility").mockResolvedValue({ address: walletOf(userId), eligible: true });
+  try {
+    return await call(postConfirm, userId, { id, method: "POST", body: { version }, key });
+  } finally {
+    eligibility.mockRestore();
+  }
 }
 
 function publish(rep: string, id: string) {
@@ -140,11 +157,19 @@ function publish(rep: string, id: string) {
 }
 
 async function openDraftForDemand(demandItemId: string, seller: string, buyer: string, hoursUntilHandoff: number, unitPriceVnd: number) {
-  const proposal = offer.parse((await call(postOffer, seller, { id: demandItemId, method: "POST", body: {
-    qty: 10, unitPriceVnd, supportOffer: unitPriceVnd === 0, handoffPrivate: "Sảnh A",
-    handoffStart: dateIn(hoursUntilHandoff), handoffBy: dateIn(hoursUntilHandoff + 1),
-  } })).data);
-  return draft.parse((await call(postDraft, buyer, { id: proposal.proposalId, method: "POST", body: {} })).data).draftId;
+  const proposalId = await legacyOffer(demandItemId, seller, hoursUntilHandoff, unitPriceVnd);
+  return draft.parse((await call(postDraft, buyer, { id: proposalId, method: "POST", body: {} })).data).draftId;
+}
+
+async function legacyOffer(demandItemId: string, seller: string, hoursUntilHandoff: number, unitPriceVnd: number) {
+  await call(getMe, seller);
+  const { rows: [proposal] } = await transaction(db => db.query<{ id: string }>(
+    `insert into public.proposals (demand_item_id, seller_id, qty, unit_price_vnd, support_offer,
+       handoff_start, handoff_by, handoff_private)
+     values ($1, $2, 10, $3, $4, $5, $6, 'Sảnh A') returning id`,
+    [demandItemId, seller, unitPriceVnd, unitPriceVnd === 0, dateIn(hoursUntilHandoff), dateIn(hoursUntilHandoff + 1)],
+  ));
+  return proposal.id;
 }
 
 async function negotiationWithDraft(hoursUntilHandoff: number, unitPriceVnd = 2_000) {
@@ -173,7 +198,7 @@ async function negotiationWithDraft(hoursUntilHandoff: number, unitPriceVnd = 2_
     });
   const revise = (actor: string, version: number) =>
     call(postRevise, actor, { id, method: "POST", body: { version }, path: `/api/v1/drafts/${id}/revise` });
-  return { rep, second, third, spare, seller, item, campaignId, id, edit, submit, respond, revise };
+  return { rep, second, third, spare, seller, groupId, item, campaignId, id, edit, submit, respond, revise };
 }
 
 const walletOf = (userId: string) => "0x" + userId.replaceAll("-", "").padStart(40, "0");
@@ -194,10 +219,10 @@ async function readyDraft(id: string, rep: string, seller: string, parts: [strin
       await db.query(`insert into public.wallets (user_id, address, verification_state)
         values ($1, $2, 'VERIFIED') on conflict (user_id) do nothing`, [row.user_id, walletOf(row.user_id)]);
     }
-    const approved = await approveWithFujiEligibility(db, seller, id, version.versionId, {
+    const approved = draftVersion.parse(await approveWithFujiEligibility(db, seller, id, version.versionId, {
       chainId: 43113, contractAddress: "0x" + "1".repeat(40), roundKey: fujiRoundKey(version.versionId),
       eligibleWallets: rows.map(row => ({ membershipId: row.membership_id, wallet: walletOf(row.user_id) })),
-    });
+    }));
     expect(approved.state).toBe("AWAIT_CONFIRMATIONS");
     await db.query("update public.confirmation_rounds set state = 'OPEN', opens_at = clock_timestamp() where id = $1", [approved.roundId]);
     expect(await advanceVerifiedRound(db, id, version.versionId)).toBe(false);
@@ -238,7 +263,20 @@ async function databaseTime() {
 
 describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", () => {
   const previousPaymentMode = process.env.OOPS_PAYMENT_MODE;
-  beforeAll(() => { process.env.OOPS_PAYMENT_MODE = "SIM"; });
+  const timing = {
+    OOPS_VOTE_HOURS: "3", OOPS_SELLER_RESPONSE_HOURS: "3",
+    OOPS_FUJI_SIGN_HOURS: "12", OOPS_DEPOSIT_HOURS: "6",
+  };
+  const previousTiming = Object.fromEntries(Object.keys(timing).map(key => [key, process.env[key]]));
+  beforeAll(() => {
+    process.env.OOPS_PAYMENT_MODE = "SIM";
+    Object.assign(process.env, timing);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
   afterAll(async () => {
     try {
       if (users.length === 0) return;
@@ -274,6 +312,9 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
         await client.query(`delete from public.negotiation_versions where negotiation_id in ${negotiations}`, [users]);
         await client.query(`delete from public.negotiation_draft_lines where negotiation_id in
           (select id from public.negotiations where proposal_id in ${proposals})`, [users]);
+        await client.query(`delete from public.offer_votes where negotiation_id in ${negotiations}`, [users]);
+        await client.query(`delete from public.outbox where kind in ('OFFER_VOTE_DUE', 'OFFER_VOTE_CLOSED')
+          and payload->>'draftId' in (select id::text from public.negotiations where proposal_id in ${proposals})`, [users]);
         await client.query(`delete from public.negotiations where proposal_id in ${proposals}`, [users]);
         await client.query(`delete from public.proposals where id in ${proposals}`, [users]);
         await client.query(`delete from public.demand_shares where demand_item_id in
@@ -304,9 +345,13 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     } finally {
       if (previousPaymentMode === undefined) delete process.env.OOPS_PAYMENT_MODE;
       else process.env.OOPS_PAYMENT_MODE = previousPaymentMode;
+      for (const [key, value] of Object.entries(previousTiming)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
       await closeDatabase();
     }
-  }, 60_000);
+  }, 180_000);
 
   it("publishes 12 confirmed units, protects private data, and paginates Feed", async () => {
     const [rep, ...others] = await Promise.all(Array.from({ length: 6 }, newUser));
@@ -363,7 +408,120 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       missing: 12, offerable: 4,
     });
     expect((await call(getFeed, outsider, { path: basePath + "&cursor=invalid" })).status).toBe(422);
-  }, 60_000);
+  });
+
+  it.each(["paid", "free", "expired"])("processes parallel commitments for a %s order", async mode => {
+    const { rep, second, third, seller, item } = await negotiationWithDraft(48);
+    const price = mode === "free" ? 0 : 2_000;
+    const proposal = offer.parse((await call(postOffer, seller, { id: item.demandItemId, method: "POST", body: {
+      qty: mode === "paid" ? 7 : 10, unitPriceVnd: price, supportOffer: price === 0,
+      handoffStart: dateIn(48), handoffBy: dateIn(49), handoffPrivate: "Sảnh A",
+    } })).data);
+    const draftId = proposal.draftId!;
+    const vote = (actor: string, qty: number) => call(postVote, actor, { id: proposal.proposalId, method: "POST",
+      body: { round: 1, choice: "YES", qty, unitPriceVnd: price } });
+    expect(offerVoting.parse((await call(getVote, rep, { id: proposal.proposalId })).data).availableQty).toBe(2);
+    expect((await vote(rep, 1)).status).toBe(409);
+    for (const [buyer, qty] of [[rep, 2], [second, 2], [third, 3]] as const) {
+      expect((await vote(buyer, qty)).status).toBe(200);
+    }
+    if (mode !== "paid") await transaction(async db => {
+      await db.query("update public.proposals set vote_due_at = clock_timestamp() - interval '1 minute' where id = $1", [proposal.proposalId]);
+      expect(await expireOfferVoting(db, draftId, 1)).toBe(true);
+      expect(await expireOfferVoting(db, draftId, 1)).toBe(false);
+    });
+    const { latestVersion: version } = sellerDraftView.parse((await call(getDraft, seller, { id: draftId })).data);
+    expect(version.qty).toBe(7);
+    expect(draft.parse((await call(getDraft, rep, { id: draftId })).data).permissions).toEqual({
+      editLine: false, manageDraft: false, finalize: false,
+    });
+    const { rows: [responseWindow] } = await transaction(db => db.query<{ hours: number }>(
+      `select (extract(epoch from seller_response_due_at - submitted_at) / 3600)::int as hours
+       from public.negotiation_versions where id = $1`, [version.versionId],
+    ));
+    expect(responseWindow.hours).toBe(3);
+    const { approved, participants } = await transaction(async db => {
+      const { rows: participants } = await db.query<{ membership_id: string; user_id: string }>(
+        `select l.membership_id, m.user_id from public.negotiation_version_lines l
+         join public.memberships m on m.id = l.membership_id where l.version_id = $1 order by l.membership_id`, [version.versionId],
+      );
+      const approved = draftVersion.parse(await approveWithFujiEligibility(db, seller, draftId, version.versionId, {
+        chainId: 43113, contractAddress: "0x" + "1".repeat(40), roundKey: fujiRoundKey(version.versionId),
+        eligibleWallets: participants.map(row => ({ membershipId: row.membership_id, wallet: walletOf(row.user_id) })),
+      }));
+      return { approved, participants };
+    });
+    const contractId = approved.contractId!;
+    const roundId = approved.roundId!;
+    expect((await finalize(draftId, rep, "new-contract")).status).toBe(409);
+    const sellerOrder = await orderFor(contractId, seller);
+    const deposit = sellerOrder.charges[0];
+    expect(sellerOrder).toMatchObject({ state: "AWAIT_COMMITMENTS", qty: 7, roundId, roundOpenBy: expect.any(String) });
+    expect(sellerOrder.depositDueAt).toBeUndefined();
+    expect(sellerOrder.confirmBy).toBeUndefined();
+    expect(deposit.canPay).toBe(false);
+    expect((await pay(deposit.chargeId, seller)).status).toBe(409);
+    const openedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
+    const confirmBy = new Date(+openedAt + 12 * 3_600_000).toISOString();
+    const recordOpening = (deadline: string) => transaction(db =>
+      recordVerifiedRoundOpening(db, draftId, version.versionId, roundId, openedAt.toISOString(), deadline));
+    expect(await recordOpening(new Date(+openedAt + 13 * 3_600_000).toISOString())).toBe(false);
+    expect(await recordOpening(confirmBy)).toBe(true);
+    expect(await recordOpening(confirmBy)).toBe(false);
+    expect(await orderFor(contractId, seller)).toMatchObject({
+      confirmBy, depositDueAt: new Date(+openedAt + 6 * 3_600_000).toISOString(),
+      ...(price > 0 && { paymentDueAt: confirmBy }),
+    });
+    expect((await orderFor(contractId, seller)).charges[0].canPay).toBe(true);
+    const buyers = [rep, second, third];
+    const buyerOrders = await Promise.all(buyers.map(buyer => orderFor(contractId, buyer)));
+    expect(buyerOrders[0].charges).toHaveLength(price ? 1 : 0);
+    if (price) {
+      expect(buyerOrders[0].charges[0].canPay).toBe(false);
+      expect((await pay(buyerOrders[0].charges[0].chargeId, rep)).status).toBe(409);
+    }
+    async function sign(actor: string) {
+      const index = participants.findIndex(row => row.user_id === actor);
+      await transaction(db => db.query(
+        `insert into public.confirmations (round_id, membership_id, chain_id, tx_hash, log_index, block_no)
+         values ($1, $2, 43113, $3, $4, 1)`, [roundId, participants[index].membership_id, version.versionHash, index],
+      ));
+    }
+    await sign(rep);
+    if (price) {
+      expect((await orderFor(contractId, rep)).charges[0].canPay).toBe(true);
+      const id = buyerOrders[0].charges[0].chargeId;
+      expect((await Promise.all([pay(id, rep), pay(id, rep)])).map(result => result.status)).toEqual([200, 200]);
+    }
+    expect((await pay(deposit.chargeId, seller)).status).toBe(200);
+    const stock = () => transaction(async db => (await db.query(
+      "select pending, reserved from public.demand_items where id = $1", [item.demandItemId],
+    )).rows[0]);
+    expect(await stock()).toEqual({ pending: 7, reserved: 0 });
+    if (mode === "expired") {
+      await transaction(async db => {
+        await db.query(`update public.confirmation_rounds
+           set opens_at = opens_at - interval '13 hours', confirm_by = confirm_by - interval '13 hours'
+           where id = $1`, [roundId]);
+        expect(await expireFujiStage(db, draftId, version.versionId, "CONFIRMATION_TIMEOUT")).toBe(true);
+        expect(await expireFujiStage(db, draftId, version.versionId, "CONFIRMATION_TIMEOUT")).toBe(false);
+      });
+      expect((await orderFor(contractId, seller)).disbursements).toMatchObject([{ kind: "DEPOSIT_REFUND", amountVnd: 50_000 }]);
+      expect((await orderFor(contractId, rep)).disbursements).toMatchObject([{ kind: "GOODS_REFUND", amountVnd: 4_000 }]);
+      expect(await stock()).toEqual({ pending: 0, reserved: 0 });
+    } else {
+      await sign(second);
+      await sign(third);
+      await transaction(db => advanceVerifiedRound(db, draftId, version.versionId));
+      if (price) {
+        expect((await orderFor(contractId, seller)).state).toBe("AWAIT_COMMITMENTS");
+        expect((await Promise.all([pay(buyerOrders[1].charges[0].chargeId, second),
+          pay(buyerOrders[2].charges[0].chargeId, third)])).map(result => result.status)).toEqual([200, 200]);
+      }
+      expect((await orderFor(contractId, seller)).state).toBe("AWAIT_HANDOFF");
+      expect(await stock()).toEqual({ pending: 0, reserved: 7 });
+    }
+  });
 
   it("makes idempotency atomic and a JOIN token usable by only one account", async () => {
     const [rep, first, second] = await Promise.all([newUser(), newUser(), newUser()]);
@@ -391,7 +549,23 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect((await call(postInvite, rep, {
       id, method: "POST", body: { kind: "JOIN" }, key: "invite-replay",
     })).status).toBe(403);
-  }, 60_000);
+  });
+
+  it("keeps the representative in the group until transfer and preserves membership history on leave", async () => {
+    const [rep, nextRep] = await Promise.all([newUser(), newUser()]);
+    const id = await newGroup(rep);
+    const request = { id, method: "POST", body: {}, key: "leave-group" };
+    expect((await call(postLeave, rep, request)).data).toMatchObject({ error: { code: "REP_TRANSFER_REQUIRED" } });
+    expect((await accept(nextRep, (await makeInvite(rep, id)).token)).status).toBe(200);
+    expect((await accept(nextRep, (await makeInvite(rep, id, nextRep)).token)).status).toBe(200);
+    const retry = { ...request, key: "leave-after-transfer" };
+    const left = await call(postLeave, rep, retry);
+    expect(left.status).toBe(200);
+    expect(leftGroup.parse(left.data).groupId).toBe(id);
+    expect(await call(postLeave, rep, retry)).toEqual(left);
+    expect((await call(getGroup, rep, { id })).status).toBe(404);
+    expect(group.parse((await call(getGroup, nextRep, { id })).data).members).toHaveLength(1);
+  });
 
   it("serializes publishing against cart changes and rolls back a snapshot without confirmed lines", async () => {
     const rep = await newUser();
@@ -421,7 +595,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     ));
     expect((await put(rep, expired, 1)).status).toBe(409);
     expect((await confirm(rep, expired, 1)).status).toBe(409);
-  }, 60_000);
+  });
 
   it("prevents two active memberships when group creation races", async () => {
     const rep = await newUser();
@@ -469,27 +643,47 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     const created = await call(postOffer, seller, request);
     expect(created.status).toBe(201);
     const proposal = offer.parse(created.data);
-    expect(proposal).toMatchObject({ state: "SUBMITTED", goodsVnd: 20_000, depositVnd: 50_000 });
+    expect(proposal).toMatchObject({
+      state: "SUBMITTED", goodsVnd: 20_000, depositVnd: 50_000,
+      draftId: expect.any(String), voteDueAt: expect.any(String),
+    });
     expect(await call(postOffer, seller, request)).toEqual(created);
     expect((await call(postOffer, seller, { ...request, body: { ...terms, qty: 9 } })).status).toBe(409);
     const supported = offer.parse((await call(postOffer, otherSeller, {
       ...request, body: { ...terms, unitPriceVnd: 0, supportOffer: true },
     })).data);
-    expect(supported).toMatchObject({ goodsVnd: 0, depositVnd: 50_000 });
+    expect(supported).toMatchObject({
+      goodsVnd: 0, depositVnd: 50_000,
+      draftId: expect.any(String), voteDueAt: expect.any(String),
+    });
     expect((await call(getOffers, outsider, { id })).status).toBe(404);
     const sellerOffers = offers.parse((await call(getOffers, seller, { id })).data).items;
     expect(sellerOffers).toEqual([{ ...proposal, canOpenDraft: false }]);
     const memberOffers = offers.parse((await call(getOffers, second, { id })).data).items;
     expect(memberOffers).toHaveLength(2);
-    expect(memberOffers.every(entry => entry.canOpenDraft)).toBe(true);
+    expect(memberOffers.every(entry => Boolean(entry.draftId && entry.voteDueAt) && entry.canOpenDraft === false)).toBe(true);
     expect(memberOffers.every(entry => !("handoffPrivate" in entry.terms))).toBe(true);
     expect(offers.parse((await call(getOffers, rep, { id })).data).items[0].terms.handoffPrivate)
       .toBe(terms.handoffPrivate);
 
+    expect(draft.parse((await call(getDraft, rep, { id: proposal.draftId })).data).permissions).toEqual({
+      editLine: false, manageDraft: false, finalize: false,
+    });
+    expect((await call(putDraftLine, rep, { id: proposal.draftId, method: "PUT", body: { qty: 1, editRevision: 0 } })).status).toBe(409);
+
     const open = { id: proposal.proposalId, method: "POST", body: {} };
     expect((await call(postDraft, seller, open)).status).toBe(403);
     expect((await call(postDraft, outsider, open)).status).toBe(404);
-    const attempts = await Promise.all([call(postDraft, rep, open), call(postDraft, second, open)]);
+    expect((await call(postDraft, rep, open)).status).toBe(409);
+    const legacy = { ...open, id: await legacyOffer(id, seller, 48, 2_000) };
+    const legacyMemberOffer = offers.parse((await call(getOffers, second, { id })).data).items
+      .find(entry => entry.proposalId === legacy.id);
+    expect(legacyMemberOffer).toMatchObject({ canOpenDraft: true });
+    expect(legacyMemberOffer?.draftId).toBeUndefined();
+    expect(legacyMemberOffer?.voteDueAt).toBeUndefined();
+    expect(offers.parse((await call(getOffers, seller, { id })).data).items
+      .find(entry => entry.proposalId === legacy.id)?.canOpenDraft).toBe(false);
+    const attempts = await Promise.all([call(postDraft, rep, legacy), call(postDraft, second, legacy)]);
     expect(attempts.map(result => result.status).sort()).toEqual([201, 409]);
     const initial = draft.parse(attempts.find(result => result.status === 201)!.data);
     expect(initial).toMatchObject({ editRevision: 0, draftOpen: true, qty: 0 });
@@ -527,7 +721,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       return row;
     });
     expect({ pending, reserved, received }).toEqual({ pending: 12, reserved: 0, received: 0 });
-  }, 30_000);
+  });
 
   it("snapshots only the 2+2+3 shares, keeps private fields scoped and preserves old versions across revisions", async () => {
     const { rep, second, third, seller, spare, item, id, edit, submit, respond, revise } = await negotiationWithDraft(48);
@@ -559,13 +753,14 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(memberView.latestVersion?.lines).toBeUndefined();
     expect(memberView.latestVersion?.myLine).toEqual({ qty: 2, goodsVnd: 4_000, note: "Ghi chú của hộ 2" });
 
+    await transaction(db => db.query("delete from public.wallets where user_id = $1", [rep]));
     const missing = await respond(seller, 1, "APPROVE");
     expect(missing.status).toBe(409);
     expect(apiError.parse(missing.data).error.code).toBe("WALLET_NOT_READY");
     await transaction(async client => {
       for (const userId of [rep, second, third]) {
         await client.query(
-          "insert into public.wallets (user_id, address, verification_state) values ($1, $2, 'VERIFIED')",
+          "insert into public.wallets (user_id, address, verification_state) values ($1, $2, 'VERIFIED') on conflict (user_id) do nothing",
           [userId, "0x" + userId.replaceAll("-", "").padStart(40, "0")],
         );
       }
@@ -607,22 +802,22 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       );
       expect(demand).toEqual({ pending: 0, reserved: 0, received: 0 });
     });
-  }, 30_000);
+  });
 
-  it("requires a full 30 hours before handoff and expires seller replies exactly once", async () => {
+  it("checks the new and legacy handoff lead times and expires seller replies exactly once", async () => {
     const tight = await negotiationWithDraft(48);
     expect((await tight.edit(tight.rep, 2, 0)).status).toBe(200);
     const original = offers.parse((await call(getOffers, tight.seller, { id: tight.item.demandItemId })).data).items[0];
     const options = { id: tight.item.demandItemId, method: "POST", body: original.terms };
     expect((await call(postOffer, tight.seller, { ...options, body: {
-      ...options.body, handoffStart: dateIn(29.9), handoffBy: dateIn(31),
+      ...options.body, handoffStart: dateIn(19.9), handoffBy: dateIn(21),
     } })).status).toBe(409);
-    const spare = offer.parse((await call(postOffer, tight.seller, options)).data);
+    const spareId = await legacyOffer(tight.item.demandItemId, tight.seller, 48, 2_000);
     await transaction(db => db.query(
       `update public.proposals set handoff_start = clock_timestamp() + interval '29 hours'
-       where id = any($1::uuid[])`, [[original.proposalId, spare.proposalId]],
+       where id = any($1::uuid[])`, [[original.proposalId, spareId]],
     ));
-    expect((await call(postDraft, tight.rep, { id: spare.proposalId, method: "POST", body: {} })).status).toBe(409);
+    expect((await call(postDraft, tight.rep, { id: spareId, method: "POST", body: {} })).status).toBe(409);
     expect((await tight.edit(tight.rep, 1, 1)).status).toBe(409);
     expect((await tight.submit(tight.rep, 1)).status).toBe(409);
     expect(offers.parse((await call(getOffers, tight.seller, { id: tight.item.demandItemId })).data).items
@@ -662,7 +857,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(rows).toHaveLength(1);
     expect(rows[0].payload.recipientUserIds).toEqual([rep, second, seller].sort());
     expect(draft.parse((await revise(rep, 1)).data).draftOpen).toBe(true);
-  }, 30_000);
+  });
 
   it("opens one round through seller approval after checking live-RPC responses", async () => {
     const { id, rep, second, seller, edit, submit } = await negotiationWithDraft(48);
@@ -672,7 +867,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     await transaction(async db => {
       for (const userId of [rep, second]) {
         await db.query(
-          "insert into public.wallets (user_id, address, verification_state) values ($1, $2, 'VERIFIED')",
+          "insert into public.wallets (user_id, address, verification_state) values ($1, $2, 'VERIFIED') on conflict (user_id) do nothing",
           [userId, walletOf(userId)],
         );
       }
@@ -685,7 +880,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     let deny = true;
     let changeWallet = false;
     let wrongNetwork = false;
-    const changedWallet = "0x" + "3".repeat(40);
+    const changedWallet = walletOf(randomUUID());
     const provider = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
       const req = JSON.parse(String(init?.body)) as { id: number; method: string; params?: [{ data?: string }] };
       if (req.method === "eth_call" && changeWallet) {
@@ -741,18 +936,27 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
     }
-  }, 30_000);
+  });
 
   it("finishes the zero-price order after both parties approve and ops posts the deposit refund", async () => {
-    const { id, rep, second, third, spare, seller, item } = await negotiationWithDraft(48, 0);
+    const { id, rep, second, third, spare, seller, item, groupId, campaignId } = await negotiationWithDraft(48, 0);
     expect((await finalize(id, rep, "too-early")).status).toBe(409);
+    const leaveRequest = { id: groupId, method: "POST", body: {} };
+    expect((await call(postLeave, second, leaveRequest)).data).toMatchObject({ error: { code: "PUBLISHED_NEED_ACTIVE" } });
+    const changeWallet = () => transaction(db => db.query(
+      "update public.wallets set address = $2 where user_id = $1", [second, walletOf(randomUUID())],
+    ));
     await readyDraft(id, rep, seller, [[rep, 2], [second, 2], [third, 3]]);
+    expect((await call(postLeave, second, leaveRequest)).data).toMatchObject({ error: { code: "ACTIVE_COMMITMENT" } });
+    await expect(changeWallet()).rejects.toMatchObject({ code: "23514", constraint: "wallet_active_commitment" });
     const results = await Promise.all([finalize(id, rep, "same-finalize"), finalize(id, rep, "same-finalize")]);
     expect(results[0]).toEqual(results[1]);
     expect(results[0].status).toBe(201);
     const order = contract.parse(results[0].data);
     const orderId = order.contractId;
     expect(order).toMatchObject({ state: "AWAIT_DEPOSIT", qty: 7, goodsVnd: 0, depositVnd: 50_000 });
+    expect((await call(postLeave, second, leaveRequest)).data).toMatchObject({ error: { code: "ACTIVE_COMMITMENT" } });
+    await expect(changeWallet()).rejects.toMatchObject({ code: "23514", constraint: "wallet_active_commitment" });
     expect(order.paymentDueAt).toBeUndefined();
     const [deposit] = (await orderFor(orderId, seller)).charges;
     const readStock = async () => (await transaction(db => db.query(
@@ -761,8 +965,15 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(await readStock()).toEqual({ pending: 7, reserved: 0, received: 0 });
     expect((await call(getOrder, spare, { id: orderId })).status).toBe(404);
     expect((await pay(deposit.chargeId, second)).status).toBe(404);
-    expect((await pay(deposit.chargeId, seller)).data).toEqual({ chargeId: deposit.chargeId, state: "RECEIVED" });
+    const depositRequest = { id: deposit.chargeId, method: "POST", body: {}, key: "same-deposit" };
+    const payments = await Promise.all([call(postReceive, seller, depositRequest), call(postReceive, seller, depositRequest)]);
+    expect(payments[0]).toEqual({ status: 200, data: { chargeId: deposit.chargeId, state: "RECEIVED" } });
+    expect(payments[1]).toEqual(payments[0]);
     expect((await pay(deposit.chargeId, seller)).status).toBe(200);
+    expect((await transaction(db => db.query(
+      `select f.disposition, c.checkout_started_at <= f.occurred_at as started
+       from public.charges c join public.fund_events f on f.charge_id = c.id where c.id = $1`, [deposit.chargeId],
+    ))).rows).toEqual([{ disposition: "APPLIED", started: true }]);
     expect((await orderFor(orderId, second)).charges).toEqual([]);
     expect((await orderFor(orderId, rep)).state).toBe("AWAIT_HANDOFF");
     expect(await readStock()).toEqual({ pending: 0, reserved: 7, received: 0 });
@@ -816,11 +1027,24 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(postTransferResult.parse((await call(postTransfer, ops, post)).data).contractState).toBe("COMPLETED");
     expect((await call(postTransfer, ops, post)).status).toBe(200);
     expect((await orderFor(orderId, seller)).state).toBe("COMPLETED");
+    expect((await changeWallet()).rowCount).toBe(1);
+    await transaction(db => db.query(
+      `update public.campaigns set collect_until = clock_timestamp() - interval '2 hours',
+         need_by = clock_timestamp() - interval '1 hour' where id = $1`, [campaignId],
+    ));
+    expect((await call(postLeave, second, leaveRequest)).status).toBe(200);
     await transaction(async db => {
       const { rows: [stock] } = await db.query(
         "select pending, reserved, received from public.demand_items where id = $1", [item.demandItemId],
       );
       expect(stock).toEqual({ pending: 0, reserved: 0, received: 7 });
+      expect((await db.query(
+        "select payload from public.outbox where payload->>'disbursementId' = $1",
+        [refund.disbursementId],
+      )).rows).toEqual([{ payload: {
+        contractId: orderId, state: "COMPLETED", action: "DISBURSEMENT_POSTED",
+        disbursementId: refund.disbursementId, recipientUserIds: [seller],
+      } }]);
       await persistNotifications(db, "CONTRACT", orderId, "test:" + orderId, [seller]);
       await persistNotifications(db, "CONTRACT", orderId, "test:" + orderId, [seller]);
     });
@@ -829,7 +1053,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     const mark = { id: notices.items[0].notificationId, method: "PATCH", body: { read: true } };
     expect((await call(patchNotice, rep, mark)).status).toBe(404);
     expect((await call(patchNotice, seller, mark)).data).toMatchObject({ readAt: expect.any(String) });
-  }, 40_000);
+  });
 
   it("settles 6 of 8 paid units, guards receipt revisions and keeps disputed deposit separate", async () => {
     const { id, rep, second, third, spare, seller, item } = await negotiationWithDraft(48);
@@ -838,11 +1062,13 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     const orderId = order.contractId;
     const [deposit] = (await orderFor(orderId, seller)).charges;
     expect((await pay(deposit.chargeId, seller)).status).toBe(200);
-    for (const userId of [rep, second, third, spare]) {
+    const paymentResults = await Promise.all([rep, second, third, spare].map(async userId => {
       const [goods] = (await orderFor(orderId, userId)).charges;
       expect(goods.kind).toBe("GOODS");
-      expect((await pay(goods.chargeId, userId)).status).toBe(200);
-    }
+      return pay(goods.chargeId, userId);
+    }));
+    expect(paymentResults.map(result => result.status)).toEqual([200, 200, 200, 200]);
+    expect((await orderFor(orderId, rep)).state).toBe("AWAIT_HANDOFF");
     const evidenceId = randomUUID();
     await transaction(db => db.query(
       "insert into public.evidence (id, contract_id, uploaded_by, object_key) values ($1, $2, $3, $1::uuid::text)",
@@ -886,11 +1112,59 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     const reference = "SIM-UNIQUE-" + randomUUID();
     expect((await call(postTransfer, ops, { id: items[0].disbursementId, method: "POST", body: { transferRef: reference } })).status).toBe(200);
     expect((await call(postTransfer, ops, { id: items[1].disbursementId, method: "POST", body: { transferRef: reference } })).status).toBe(409);
+    const remaining = await Promise.all(items.slice(1).map(row => call(postTransfer, ops, {
+      id: row.disbursementId, method: "POST", body: { transferRef: "SIM-" + randomUUID() },
+    })));
+    for (const posted of remaining) {
+      expect(posted.status).toBe(200);
+      expect(postTransferResult.parse(posted.data).contractState).toBe("NEEDS_REVIEW");
+    }
     const { rows: [stock] } = await transaction(db => db.query(
       "select reserved, received, target - reserved - received as missing from public.demand_items where id = $1", [item.demandItemId],
     ));
     expect(stock).toEqual({ reserved: 0, received: 6, missing: 6 });
-  }, 40_000);
+  });
+
+  it("expires a deposit from the receive API and keeps mismatched and late events off the order balance", async () => {
+    const { id, rep, seller, item } = await negotiationWithDraft(48, 0);
+    await readyDraft(id, rep, seller, [[rep, 2]]);
+    const order = contract.parse((await finalize(id, rep, "late-deposit")).data);
+    const [deposit] = (await orderFor(order.contractId, seller)).charges;
+    const mismatch = { reference: "mismatch-" + randomUUID(), amountVnd: 49_999n };
+    await transaction(db => applySimFundEvent(db, deposit.chargeId, mismatch));
+    expect((await orderFor(order.contractId, seller)).charges[0].state).toBe("PENDING");
+
+    // The contract cutoff must also win if the charge deadline has drifted.
+    await transaction(db => db.query(
+      "update public.contracts set deposit_due_at = clock_timestamp() where id = $1", [order.contractId],
+    ));
+    expect((await pay(deposit.chargeId, rep)).status).toBe(404);
+    expect((await orderFor(order.contractId, seller)).state).toBe("AWAIT_DEPOSIT");
+    const request = { id: deposit.chargeId, method: "POST", body: {}, key: "expired-deposit" };
+    const rejected = await call(postReceive, seller, request);
+    expect(rejected.status).toBe(409);
+    expect(await call(postReceive, seller, request)).toEqual(rejected);
+    expect(await transaction(db => expireOrderDeadline(db, order.contractId, "DEPOSIT"))).toBe(false);
+    const late = { reference: "late-deposit-" + randomUUID(), amountVnd: 50_000n };
+    await Promise.all([late, late].map(event => transaction(db => applySimFundEvent(db, deposit.chargeId, event))));
+
+    expect(await orderFor(order.contractId, seller)).toMatchObject({
+      state: "CANCELED", charges: [{ state: "EXPIRED" }],
+      disbursements: [{ kind: "DEPOSIT_REFUND", amountVnd: 50_000 }],
+    });
+    await transaction(async db => {
+      expect((await db.query(
+        "select pending, reserved, received from public.demand_items where id = $1", [item.demandItemId],
+      )).rows).toEqual([{ pending: 0, reserved: 0, received: 0 }]);
+      expect((await db.query(
+        `select f.disposition, c.checkout_started_at from public.charges c
+         join public.fund_events f on f.charge_id = c.id where c.id = $1 order by f.disposition`, [deposit.chargeId],
+      )).rows).toEqual([
+        { disposition: "REFUND_DUE", checkout_started_at: null },
+        { disposition: "REVIEW", checkout_started_at: null },
+      ]);
+    });
+  });
 
   it("commits a racing stock conflict and releases a paid-in-part order once on expiry", async () => {
     const { id, rep, second, third, seller, item } = await negotiationWithDraft(48);
@@ -911,26 +1185,37 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     await pay(deposit.chargeId, seller);
     const [paid] = (await orderFor(order.contractId, rep)).charges;
     await pay(paid.chargeId, rep);
+    const extra = { reference: "extra-" + randomUUID(), amountVnd: 500n };
+    await transaction(db => applySimFundEvent(db, paid.chargeId, extra));
+    await transaction(db => applySimFundEvent(db, paid.chargeId, extra));
     const [unpaid] = (await orderFor(order.contractId, second)).charges;
     await transaction(async db => {
       await db.query(`update public.contracts set deposit_due_at = clock_timestamp() - interval '2 hours',
          payment_due_at = clock_timestamp() - interval '1 hour' where id = $1`, [order.contractId]);
       await db.query("update public.charges set due_at = clock_timestamp() - interval '1 hour' where id = $1", [unpaid.chargeId]);
     });
-    expect((await pay(unpaid.chargeId, second)).status).toBe(409);
+    const cancel = () => call(postCancel, seller, { id: order.contractId, method: "POST", body: { reason: "SELLER_CANCEL" } });
     const expire = () => transaction(db => expireOrderDeadline(db, order.contractId, "PAYMENT"));
-    expect((await Promise.all([expire(), expire()])).sort()).toEqual([false, true]);
+    const [cancelled, rejected] = await Promise.all([cancel(), pay(unpaid.chargeId, second), expire(), expire()]);
+    expect([cancelled.status, rejected.status]).toEqual([409, 409]);
+    expect(await expire()).toBe(false);
     const late = { reference: "late-" + randomUUID(), amountVnd: BigInt(unpaid.amountVnd) };
     await transaction(db => applySimFundEvent(db, unpaid.chargeId, late));
     await transaction(db => applySimFundEvent(db, unpaid.chargeId, late));
-    expect((await orderFor(order.contractId, seller)).state).toBe("CANCELED");
-    expect((await orderFor(order.contractId, rep)).disbursements.map(row => row.amountVnd)).toEqual([4_000]);
+    expect(await orderFor(order.contractId, seller)).toMatchObject({
+      state: "CANCELED", disbursements: [{ kind: "DEPOSIT_REFUND", amountVnd: 50_000 }],
+    });
+    expect((await orderFor(order.contractId, rep)).disbursements.map(row => row.amountVnd).sort((a, b) => a - b)).toEqual([500, 4_000]);
     expect((await orderFor(order.contractId, second)).disbursements.map(row => row.amountVnd)).toEqual([4_000]);
     const { rows: [stock] } = await transaction(db => db.query(
       "select pending, reserved, received from public.demand_items where id = $1", [item.demandItemId],
     ));
     expect(stock).toEqual({ pending: 0, reserved: 0, received: 0 });
-  }, 40_000);
+    expect((await transaction(db => db.query(
+      "select 1 from public.outbox where payload->>'contractId' = $1 and payload->>'action' = 'PAYMENT_TIMEOUT'",
+      [order.contractId],
+    ))).rowCount).toBe(1);
+  });
 
   it("requires both parties for excused cancellation and refunds the deposit exactly once", async () => {
     const { id, rep, seller, item } = await negotiationWithDraft(48, 0);
@@ -952,7 +1237,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       "select pending, reserved, received from public.demand_items where id = $1", [item.demandItemId],
     ));
     expect(stock).toEqual({ pending: 0, reserved: 0, received: 0 });
-  }, 30_000);
+  });
 
   it("validates Gemini drafts and leaves the saved manual cart intact on provider failure", async () => {
     const [rep, outsider] = await Promise.all([newUser(), newUser()]);
@@ -989,12 +1274,12 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
     }
-  }, 30_000);
+  });
 
   it("denies direct table access to the authenticated browser role", async () => {
     for (const table of [
       "carts", "proposals", "negotiations", "negotiation_draft_lines", "negotiation_versions", "negotiation_version_lines",
-      "confirmation_rounds", "contracts", "charges", "fund_events", "disbursements", "notifications", "evidence", "receipts", "ops_accounts",
+      "offer_votes", "confirmation_rounds", "contracts", "charges", "fund_events", "disbursements", "notifications", "evidence", "receipts", "ops_accounts",
     ]) {
       await expect(transaction(async client => {
         await client.query("set local role authenticated");

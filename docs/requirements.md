@@ -51,6 +51,6 @@ Ghép giỏ nhập tay và Feed với Fuji và thanh toán mô phỏng. DEV 2 b�
 ## Các quyết định cần chốt
 
 - Chốt chuẩn token, cấp/thu hồi và chính sách xác nhận block Fuji. Các hạn nghiệp vụ dùng [đặc tả thời hạn](OOPS-Spec.md#8-thời-hạn).
-- Đợt gom cần chốt danh mục và đơn vị chuẩn, bộ quy tắc gợi ý có nguồn và chính sách rời nhóm khi còn hợp đồng đang chạy.
+- Đợt gom cần chốt danh mục và đơn vị chuẩn, bộ quy tắc gợi ý có nguồn. Quy tắc rời nhóm và đổi ví theo [G-09](OOPS-Spec.md#66-rời-nhóm-và-đổi-ví-g-09).
 - Bàn giao cần chốt hạn xử lý khi thiếu duyệt, điều kiện và mức khấu trừ cọc, bên nhận khoản khấu trừ và thẩm quyền giải quyết ca mâu thuẫn trước khi chạy thật.
 - Trước khi mở rộng sang sửa điều khoản sau chốt hoặc VND thật, chốt cách xác nhận lại, đối soát, giữ/chi/hoàn tiền, quyền vận hành và chính sách lưu bằng chứng.

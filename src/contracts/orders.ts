@@ -5,7 +5,7 @@ const amount = z.number().int().nonnegative();
 const qty = amount.max(2_147_483_647);
 const revision = qty.min(1);
 export const contractState = z.enum([
-  "AWAIT_DEPOSIT", "AWAIT_PAYMENT", "AWAIT_HANDOFF", "AWAIT_APPROVAL", "SETTLING", "COMPLETED", "CANCELED", "NEEDS_REVIEW",
+  "AWAIT_COMMITMENTS", "AWAIT_DEPOSIT", "AWAIT_PAYMENT", "AWAIT_HANDOFF", "AWAIT_APPROVAL", "SETTLING", "COMPLETED", "CANCELED", "NEEDS_REVIEW",
 ]);
 export const chargeState = z.enum(["PENDING", "RECEIVED", "EXPIRED", "REVIEW"]);
 export const disbursementKind = z.enum(["GOODS_PAYOUT", "GOODS_REFUND", "DEPOSIT_REFUND", "DEPOSIT_DEDUCTION"]);
@@ -44,7 +44,7 @@ const termination = terminationResult.extend({
 });
 export const chargeResult = z.strictObject({ chargeId: uuid, state: chargeState });
 const charge = chargeResult.extend({
-  kind: z.enum(["DEPOSIT", "GOODS"]), amountVnd: amount, dueAt: isoDateTime,
+  kind: z.enum(["DEPOSIT", "GOODS"]), amountVnd: amount, dueAt: isoDateTime.optional(), canPay: z.boolean().optional(),
 });
 const disbursement = z.strictObject({
   disbursementId: uuid, kind: disbursementKind, amountVnd: amount, state: disbursementState, postedAt: isoDateTime.optional(),
@@ -53,7 +53,8 @@ export const contract = z.strictObject({
   contractId: uuid, demandItemId: uuid, sourceVersionId: uuid, sellerId: uuid, repId: uuid, version: revision,
   state: contractState, reviewScope: z.enum(["HANDOFF", "DEPOSIT"]).optional(),
   qty: qty.min(1), unitPriceVnd: amount, goodsVnd: amount, depositVnd: amount,
-  depositDueAt: isoDateTime, paymentDueAt: isoDateTime.optional(), readyAt: isoDateTime.optional(),
+  depositDueAt: isoDateTime.optional(), paymentDueAt: isoDateTime.optional(), readyAt: isoDateTime.optional(),
+  roundId: uuid.optional(), roundOpenBy: isoDateTime.optional(), confirmBy: isoDateTime.optional(),
   handoffStart: isoDateTime, handoffBy: isoDateTime, approvalDueAt: isoDateTime,
   allocations: z.array(z.strictObject({ allocationId: uuid, qty: qty.min(1), goodsVnd: amount })),
   charges: z.array(charge), disbursements: z.array(disbursement),

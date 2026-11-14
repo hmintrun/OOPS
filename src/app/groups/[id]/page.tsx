@@ -1,6 +1,8 @@
 import { notFound, redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { Card } from "@/components/ui";
 import { uuid } from "@/contracts/foundation";
+import { FamilyStatusWidget } from "../FamilyStatusWidget";
 import { GroupDetail } from "../group-detail";
 import { loadGroupPage } from "../group-page-data";
 
@@ -13,8 +15,11 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
     if (result.status === 401) redirect("/login");
     if (result.status === 404) notFound();
     return (
-      <AppShell title="Nhóm của tôi" icon={{ icon: "groups", tone: "green" }} familyBackground>
-        <p role="alert">{result.message}</p>
+      <AppShell title="Nhóm của tôi" icon={{ icon: "groups", tone: "green" }} familyBackground bodyClassName="ui-stack" bare>
+        <FamilyStatusWidget />
+        <Card className="ui-status-card">
+          <p role="alert">{result.message}</p>
+        </Card>
       </AppShell>
     );
   }
