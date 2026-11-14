@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button, Card, CardTitle } from "@/components/ui";
 import { createOfferInput, draft as draftSchema, offer, offers } from "@/contracts/negotiation";
+import type { DemandItem } from "@/contracts/foundation";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { INPUT_CLASS } from "@/app/campaigns/_shared/ui";
 import { dateTime, useTrade, vnd } from "../trade-client";
@@ -16,7 +17,11 @@ function earliestHandoff() {
   return new Date(Math.ceil((Date.now() + requiredLeadHours * 60 * minute) / minute) * minute);
 }
 
-export function OffersPanel({ id, standalone = false }: { id: string; standalone?: boolean }) {
+export function OffersPanel({ id, standalone = false, demand }: {
+  id: string;
+  standalone?: boolean;
+  demand?: Pick<DemandItem, "missing" | "needBy" | "unit">;
+}) {
   const router = useRouter();
   const path = `/api/v1/needs/${encodeURIComponent(id)}/offers`;
   const load = useCallback(async () => {
@@ -30,11 +35,12 @@ export function OffersPanel({ id, standalone = false }: { id: string; standalone
   const trade = useTrade(load);
   const [formError, setFormError] = useState("");
   const [sent, setSent] = useState(false);
+  const canOffer = !demand || (demand.missing > 0 && earliestHandoff() <= new Date(demand.needBy));
   return <div className="grid min-w-0 gap-4">
       {standalone && <Link href="/feed" className="ui-btn ui-btn--secondary justify-self-start">Về nhu cầu</Link>}
       <TradeStatus {...trade} retry={() => void trade.refresh()} />
       {trade.data && <div className="ui-card-grid">
-        <Card>
+        {canOffer ? <Card>
           <CardTitle as="h2">Gửi đề nghị bán hoặc tặng</CardTitle>
           <form className="grid gap-3" onSubmit={event => {
             event.preventDefault();
@@ -51,6 +57,10 @@ export function OffersPanel({ id, standalone = false }: { id: string; standalone
               setFormError(`Chọn giờ bắt đầu giao cách hiện tại ít nhất ${requiredLeadHours} giờ.`);
               return;
             }
+            if (demand && end > new Date(demand.needBy)) {
+              setFormError("Chọn giờ giao muộn nhất trong hạn cần hàng.");
+              return;
+            }
             const parsed = createOfferInput.safeParse({
               qty: Number(fields.get("qty")), unitPriceVnd: Number(fields.get("price")),
               supportOffer: fields.has("support"), handoffStart: start.toISOString(),
@@ -61,7 +71,8 @@ export function OffersPanel({ id, standalone = false }: { id: string; standalone
               method: "POST", body: parsed.data, schema: offer, idempotencyKey: key,
             }), () => setSent(true));
           }}>
-            <label className="grid gap-1">Số lượng chào tối đa<input className={INPUT_CLASS} name="qty" type="number" min="1" max="2147483647" required /></label>
+            <label className="grid gap-1">Số lượng chào tối đa<input className={INPUT_CLASS} name="qty" type="number" min="1" max={demand?.missing ?? 2147483647} required /></label>
+            {demand && <p className="text-small">Còn thiếu {demand.missing} {demand.unit} · Cần trước {dateTime(demand.needBy)}.</p>}
             <label className="grid gap-1">Đơn giá (đồng)<input className={INPUT_CLASS} name="price" type="number" min="0" required /></label>
             <p className="text-small">Nhập 0 đồng nếu tặng hàng. Giờ bắt đầu giao cách hiện tại ít nhất {requiredLeadHours} giờ.</p>
             <label className="grid gap-1">Bắt đầu giao<input className={INPUT_CLASS} name="start" type="datetime-local" required /></label>
@@ -72,7 +83,10 @@ export function OffersPanel({ id, standalone = false }: { id: string; standalone
             {sent && <p role="status">Đã gửi đề nghị.</p>}
             <Button type="submit" loading={trade.busy}>Gửi đề nghị</Button>
           </form>
-        </Card>
+        </Card> : <Card>
+          <CardTitle as="h2">Chào hàng</CardTitle>
+          <p>{demand?.missing === 0 ? "Nhu cầu này đã đủ hàng." : "Hạn cần hàng còn quá gần để gửi đề nghị mới."}</p>
+        </Card>}
         <Card className="grid gap-3">
           <CardTitle as="h2">Đề nghị hiện có</CardTitle>
           {trade.data.items.length === 0 && <p>Chưa có đề nghị để xem.</p>}

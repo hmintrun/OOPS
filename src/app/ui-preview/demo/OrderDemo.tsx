@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
+import type { OfferSubmitData } from "@/app/feed/OfferModalWidget";
 import { households, money, scenario } from "./scenario";
 import "./order-presentation.css";
 
@@ -34,11 +35,11 @@ const roles = [
 ] as const;
 
 const roleForNextStep: Partial<Record<Step, { role: Role; instruction: string }>> = {
-  draft: { role: "household", instruction: "Sửa số chai và gửi đề nghị từ nhóm." },
+  draft: { role: "household", instruction: "Sửa số lượng và gửi đề nghị từ nhóm." },
   submitted: { role: "seller", instruction: "Phản hồi đề nghị của nhóm." },
   revise: { role: "household", instruction: "Mở bản nháp để sửa đề nghị." },
   expired: { role: "household", instruction: "Mở lại bản nháp để gửi đề nghị mới." },
-  conflict: { role: "household", instruction: "Mở lại bản nháp để điều chỉnh số chai." },
+  conflict: { role: "household", instruction: "Mở lại bản nháp để điều chỉnh số lượng." },
   deposit: { role: "seller", instruction: "Ghi nhận tiền cọc SIM của cửa hàng." },
   payment: { role: "household", instruction: "Ghi nhận tiền hàng SIM cho từng hộ." },
   settling: { role: "ops", instruction: "Ghi nhận các khoản chi và hoàn." },
@@ -56,12 +57,20 @@ const add = (values: number[]) => values.reduce((total, value) => total + value,
 const replaceAt = (values: number[], index: number, value: number) =>
   values.map((current, at) => at === index ? value : current);
 
-export function OrderDemo({ offerQty, unitPrice }: { offerQty: number; unitPrice: number }) {
+export function OrderDemo({ offer }: { offer: OfferSubmitData }) {
+  const { quantity: offerQty, unitPrice, name, unit, deliveryTime, note } = offer;
   const stageTitle = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState<Step>("draft");
   const [role, setRole] = useState<Role>("household");
   const [person, setPerson] = useState(0);
-  const [lines, setLines] = useState([2, 2, 3]);
+  const [lines, setLines] = useState(() => {
+    let remaining = offerQty;
+    return [2, 2, 3].map(share => {
+      const qty = Math.min(remaining, share);
+      remaining -= qty;
+      return qty;
+    });
+  });
   const [version, setVersion] = useState(0);
   const [walletsReady, setWalletsReady] = useState(true);
   const [stockReady, setStockReady] = useState(true);
@@ -171,7 +180,7 @@ export function OrderDemo({ offerQty, unitPrice }: { offerQty: number; unitPrice
                   onClick={() => setPerson(index)}
                 >
                   <span>{name}</span>
-                  <span className="demo-role-qty">{lines[index]} chai</span>
+                  <span className="demo-role-qty">{lines[index]} {unit}</span>
                 </button>
               ))}
             </div>
@@ -183,17 +192,19 @@ export function OrderDemo({ offerQty, unitPrice }: { offerQty: number; unitPrice
           <CardTitle as="h2" className="ui-card__title--flush">Đề nghị từ {scenario.supplier}</CardTitle>
           <img src="/assets/groceries-box.webp" width={1024} height={1024} alt="" />
         </div>
+        <p className="demo-order-meta">{name}</p>
         <div className="demo-order-quantity-flow">
-          <dl><dt>Cửa hàng chào</dt><dd>{offerQty} <span>chai</span></dd></dl>
+          <dl><dt>Cửa hàng chào</dt><dd>{offerQty} <span>{unit}</span></dd></dl>
           <MaterialSymbol name="arrow_forward" size={22} />
-          <dl><dt>Các hộ góp</dt><dd>{qty} <span>chai</span></dd></dl>
+          <dl><dt>Các hộ góp</dt><dd>{qty} <span>{unit}</span></dd></dl>
         </div>
         <dl className="demo-cost">
-          <div><dt>Đơn giá</dt><dd>{money(unitPrice)} / chai</dd></div>
+          <div><dt>Đơn giá</dt><dd>{money(unitPrice)} / {unit}</dd></div>
           <div><dt>Tiền hàng</dt><dd>{money(goods)}</dd></div>
           <div><dt>Cọc cửa hàng</dt><dd>{money(deposit)}</dd></div>
-          {role === "household" && <div><dt>Phần hộ đang chọn</dt><dd>{lines[person]} chai · {money(lines[person] * unitPrice)}</dd></div>}
+          {role === "household" && <div><dt>Phần hộ đang chọn</dt><dd>{lines[person]} {unit} · {money(lines[person] * unitPrice)}</dd></div>}
         </dl>
+        <p className="demo-note">Dự kiến giao {deliveryTime.toLowerCase()}{note.trim() ? ` · ${note.trim()}` : ""}</p>
         <p className="demo-note">Cọc bằng 10% tiền hàng, tối thiểu 50.000 ₫.</p>
       </Card>
 
@@ -218,13 +229,13 @@ export function OrderDemo({ offerQty, unitPrice }: { offerQty: number; unitPrice
           <p className="demo-order-meta">{selectedRole?.label} · Đề nghị bản {version}</p>
         )}
         {step === "draft" && role === "household" && <>
-          <label className="demo-order-quantity">Số chai hộ góp
+          <label className="demo-order-quantity">Số lượng hộ góp ({unit})
             <input type="number" min={0} max={offerQty} value={lines[person]} onChange={event => {
               const value = event.target.valueAsNumber;
               if (Number.isSafeInteger(value) && value >= 0 && value <= offerQty) setLines(replaceAt(lines, person, value));
             }} />
           </label>
-          {qty > offerQty && <p role="alert">Tổng lượng góp vượt {offerQty} chai.</p>}
+          {qty > offerQty && <p role="alert">Tổng lượng góp vượt {offerQty} {unit}.</p>}
           {person === 0 && <Button disabled={qty === 0 || qty > offerQty} onClick={() => {
             setVersion(current => current + 1);
             advance("submitted");
@@ -271,7 +282,7 @@ export function OrderDemo({ offerQty, unitPrice }: { offerQty: number; unitPrice
                           : "bg-white border-line text-navy-600 font-medium"
                       }`}
                     >
-                      <span>{households[idx]} · {lines[idx]} chai</span>
+                      <span>{households[idx]} · {lines[idx]} {unit}</span>
                       <span>{isDone ? "Đã ký" : "Chờ ký"}</span>
                     </div>
                   );
@@ -286,7 +297,7 @@ export function OrderDemo({ offerQty, unitPrice }: { offerQty: number; unitPrice
               >
                 {confirmed.includes(person)
                   ? `✓ ${households[person]} đã ký xác nhận`
-                  : `Ký xác nhận cho ${households[person]} (${lines[person]} chai)`}
+                  : `Ký xác nhận cho ${households[person]} (${lines[person]} ${unit})`}
               </Button>
             )}
 
@@ -335,15 +346,15 @@ export function OrderDemo({ offerQty, unitPrice }: { offerQty: number; unitPrice
         {(step === "handoff" || step === "receipt") && (role === "seller" || role === "rep") &&
           <Button variant="secondary" onClick={() => { setApprovals([]); advance("issue"); }}>Báo có vấn đề bàn giao</Button>}
         {step === "receipt" && <>
-          <p role="status">Biên nhận {receiptVersion} · Nhận {add(received)}/{qty} chai · {approvals.length}/2 bên đã duyệt</p>
+          <p role="status">Biên nhận {receiptVersion} · Nhận {add(received)}/{qty} {unit} · {approvals.length}/2 bên đã duyệt</p>
           {(role === "seller" || role === "rep") && <Button disabled={approvals.includes(role)} onClick={() => approveReceipt(role)}>Duyệt biên nhận {receiptVersion}</Button>}
         </>}
         {step === "complete" && (
           <div className="demo-result">
             <img src="/assets/delivery-van.webp" width={1024} height={1024} alt="" />
             <div>
-              <strong>{receivedQty} / {qty} chai</strong>
-              <p>{receivedQty < qty ? `Đã nhận ${receivedQty} chai, thiếu ${qty - receivedQty} chai` : "Đã nhận đủ hàng"}</p>
+              <strong>{receivedQty} / {qty} {unit}</strong>
+              <p>{receivedQty < qty ? `Đã nhận ${receivedQty} ${unit}, thiếu ${qty - receivedQty} ${unit}` : "Đã nhận đủ hàng"}</p>
             </div>
           </div>
         )}

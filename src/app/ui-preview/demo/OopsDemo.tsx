@@ -16,16 +16,13 @@ import { OrderDemo } from "./OrderDemo";
 import { SAMPLE_DEMANDS } from "./sampleDemands";
 
 type Tab = "groups" | "feed" | "orders" | "me";
-type Phase = "draft" | "published" | "offered";
 
 export function OopsDemo() {
   const [tab, setTab] = useState<Tab>("groups");
-  const [phase, setPhase] = useState<Phase>("draft");
   const [people, setPeople] = useState(scenario.initialPeople);
   const [stock, setStock] = useState(scenario.initialStock);
   const [quantityOverride, setQuantityOverride] = useState<number>();
   const [saved, setSaved] = useState(false);
-  const [gift, setGift] = useState(false);
   const [suggestionStatus, setSuggestionStatus] = useState<"idle" | "ready" | "error">("idle");
   const publishButton = useRef<HTMLButtonElement>(null);
 
@@ -34,15 +31,15 @@ export function OopsDemo() {
 
   // Widget Chào hàng tương tác
   const [selectedDemand, setSelectedDemand] = useState<DemandItem | null>(null);
-  const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
   const [offerData, setOfferData] = useState<OfferSubmitData | null>(null);
+  const [offerRevision, setOfferRevision] = useState(0);
+  const [publishedDemand, setPublishedDemand] = useState<DemandItem | null>(null);
+  const phase = publishedDemand ? "published" : "draft";
 
   const suggested = Math.max(0, people * scenario.unitsPerPerson - stock);
   const quantity = quantityOverride ?? suggested;
   const shares = [quantity, ...scenario.otherHouseholds];
   const total = shares.reduce((sum, share) => sum + share, 0);
-  const unitPrice = offerData?.unitPrice ?? (gift ? 0 : scenario.price);
-  const offerQty = offerData?.quantity ?? Math.min(scenario.sellerCapacity, total);
 
   const validCart =
     people >= 1 &&
@@ -67,35 +64,35 @@ export function OopsDemo() {
   }
 
   function reset() {
-    setPhase("draft");
     setPeople(readFamilyStatus().members);
     setStock(scenario.initialStock);
     setQuantityOverride(undefined);
     setSaved(false);
-    setGift(false);
     setSuggestionStatus("idle");
     setCurrentPage(1);
     setSelectedDemand(null);
     setOfferData(null);
+    setPublishedDemand(null);
     changeTab("groups");
   }
 
   function handleOpenOffer(item: DemandItem) {
     setSelectedDemand(item);
-    setIsOfferModalOpen(true);
   }
 
   function handleOfferSuccess(data: OfferSubmitData) {
     setOfferData(data);
-    setPhase("offered");
-    setIsOfferModalOpen(false);
+    setOfferRevision(current => current + 1);
+    setSelectedDemand(null);
     changeTab("orders");
   }
 
-  // Tính toán phân trang
-  const totalPages = Math.ceil(SAMPLE_DEMANDS.length / FEED_PAGE_SIZE);
+  const demands = publishedDemand
+    ? [{ item: publishedDemand, category: "WATER" as const }, ...SAMPLE_DEMANDS]
+    : SAMPLE_DEMANDS;
+  const totalPages = Math.ceil(demands.length / FEED_PAGE_SIZE);
   const startIndex = (currentPage - 1) * FEED_PAGE_SIZE;
-  const displayedDemands = SAMPLE_DEMANDS.slice(startIndex, startIndex + FEED_PAGE_SIZE);
+  const displayedDemands = demands.slice(startIndex, startIndex + FEED_PAGE_SIZE);
 
   return (
     <main className={tab === "groups" ? "ui-app-page demo-page ui-family-page" : "ui-app-page demo-page"}>
@@ -302,7 +299,27 @@ export function OopsDemo() {
                   ref={publishButton}
                   disabled={!saved}
                   onClick={() => {
-                    if (phase === "draft") setPhase("published");
+                    if (phase === "draft") {
+                      setPublishedDemand({
+                        demandItemId: "10000000-0000-4000-8000-000000000100",
+                        campaignId: "c0000000-0000-4000-8000-000000000100",
+                        skuId: "50000000-0000-4000-8000-000000000100",
+                        name: scenario.item,
+                        unit: "chai",
+                        target: total,
+                        missing: total,
+                        offerable: total,
+                        pending: 0,
+                        reserved: 0,
+                        received: 0,
+                        supportRequested: false,
+                        districtCode: scenario.area,
+                        wardCode: scenario.group,
+                        needBy: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+                        state: "OPEN",
+                      });
+                    }
+                    setCurrentPage(1);
                     changeTab("feed");
                   }}
                 >
@@ -333,10 +350,13 @@ export function OopsDemo() {
         )}
 
         {/* ==================== TAB ORDERS: ĐƠN HÀNG & HỢP ĐỒNG ==================== */}
-        {tab === "orders" && (
-          <div>
-            {phase === "offered" ? (
-              <OrderDemo offerQty={offerQty} unitPrice={unitPrice} />
+        {(tab === "orders" || offerData) && (
+          <div hidden={tab !== "orders"}>
+            {offerData ? (
+              <OrderDemo
+                key={offerRevision}
+                offer={offerData}
+              />
             ) : (
               <Card className="demo-stack demo-orders-empty">
                 <img src="/assets/delivery-van.webp" alt="" width={1024} height={1024} />
@@ -403,12 +423,14 @@ export function OopsDemo() {
       </div>
 
       {/* Widget Chào hàng (Modal Popup) */}
-      <OfferModalWidget
-        isOpen={isOfferModalOpen}
-        onClose={() => setIsOfferModalOpen(false)}
-        item={selectedDemand}
-        onSuccess={handleOfferSuccess}
-      />
+      {selectedDemand && (
+        <OfferModalWidget
+          onClose={() => setSelectedDemand(null)}
+          item={selectedDemand}
+          suggestedUnitPrice={selectedDemand.demandItemId === publishedDemand?.demandItemId ? scenario.price : undefined}
+          onSuccess={handleOfferSuccess}
+        />
+      )}
     </main>
   );
 }

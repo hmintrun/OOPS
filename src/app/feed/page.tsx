@@ -278,7 +278,7 @@ export default function FeedPage() {
 
       {selectedItemForOffer && (
         <WidgetDialog title={selectedItemForOffer.name} icon="storefront" onClose={() => setSelectedItemForOffer(null)}>
-          <OffersPanel id={selectedItemForOffer.demandItemId} />
+          <OffersPanel id={selectedItemForOffer.demandItemId} demand={selectedItemForOffer} />
         </WidgetDialog>
       )}
     </AppShell>

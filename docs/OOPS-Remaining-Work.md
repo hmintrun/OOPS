@@ -1,5 +1,21 @@
 # OOPS — Báo cáo công việc còn lại
 
+## Cập nhật bàn giao DEV 1 · `feat/a07-pwa-install`
+
+Đối chiếu phạm vi A01–A06 trong [kế hoạch 7 ngày](OOPS-7-Day-Development-Plan.md). Phần báo cáo bên dưới ghi nhận mốc `b095b19`.
+
+| Task | Trạng thái frontend và phần cần tích hợp |
+| --- | --- |
+| A01–A03 | **VERIFIED — code.** App shell, API client, đăng ký/đăng nhập, nhóm và lời mời, giỏ tay, đợt gom và Feed có màn hình gọi API. Widget chào hàng từ Feed kiểm tra lượng còn thiếu và hạn cần hàng theo dữ liệu đang hiển thị. API vẫn quyết định theo dữ liệu hiện tại. |
+| A04 | **VERIFIED — code.** Có UI thương lượng, chốt đơn, cọc/tiền hàng SIM, bàn giao, biên nhận, thông báo và đối soát. UI hiển thị trạng thái chưa có hạn. **CONFLICT — DTO trên nhánh này** vẫn yêu cầu `charges[].dueAt` và `confirmationRound.confirmBy`. Dev 2 cần xác nhận cách biểu diễn hạn chưa có trên nhánh tích hợp để Dev 1 kiểm lại UI và parser. **MISSING — ký thật.** Dev 1 cần interface liên kết và ký bằng Core Wallet từ Dev 3 rồi kiểm kết quả xác nhận qua API. |
+| A05 | **VERIFIED — code.** Có luồng đưa gợi ý Gemini vào giỏ nháp để hộ sửa và đường nhập tay khi lỗi. Gemini thật cần kiểm trên môi trường tích hợp. |
+| A06 | **VERIFIED — demo local.** Đăng giỏ nhóm → nhu cầu xuất hiện trên Feed → chào 10 chai với giá 2.000đ → ba hộ góp 7 chai. Feed phân trang 12 thẻ, đơn giữ tiến độ khi đổi tab. Chào mẫu 1 túi gạo giá 0đ giữ đúng đơn vị và cho gửi bản chung. Kiểm đơn và widget trong khung điện thoại 375px, không phát hiện tràn ngang ở hai màn đã kiểm. **MISSING — staging.** Cần URL, tài khoản theo vai, Auth/DB/Storage/Gemini và Fuji/worker để kiểm luồng API thật, lỗi theo vai và các ca tiền hàng đến `COMPLETED`. |
+| PWA | **VERIFIED — code.** Có manifest, service worker, biểu tượng và [hướng dẫn mở app, triển khai và lấy link](huong-dan-mo-oops.md). Nghiệm thu cài và mở từ biểu tượng trên thiết bị thật cần link HTTPS theo SHA của Dev 3. |
+
+Luồng rời nhóm/đổi ví (G-09) cần chốt quy tắc và API trước khi bổ sung thao tác trên UI.
+
+## Mốc bàn giao `b095b19`
+
 Đối chiếu theo [đặc tả MVP](OOPS-Spec.md), [hợp đồng API](API%20doc.md) và [kế hoạch 7 ngày](OOPS-7-Day-Development-Plan.md). Phạm vi báo cáo là bản bàn giao trên `feat/integrate-seven-agents`, gồm bản tích hợp `b095b19` và luồng tham gia nhóm bằng liên kết bổ sung sau đó.
 
 Luồng đăng nhập demo → tạo/tham gia nhóm → lập và xác nhận giỏ tay → đăng nhu cầu lên Feed đã có UI và API. Phần còn lại để demo giao dịch là nối Feed với thương lượng, xác nhận Fuji, duyệt hợp đồng, thu SIM và bàn giao.

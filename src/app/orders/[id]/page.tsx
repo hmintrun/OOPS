@@ -8,6 +8,7 @@ import { Button, Card, CardTitle } from "@/components/ui";
 import { chargeResult, contract, evidenceResult, issueInput, receipt, receiptInput, signedEvidence, terminationResult } from "@/contracts/orders";
 import { apiFetch, getMe } from "@/lib/api-client";
 import { INPUT_CLASS } from "@/app/campaigns/_shared/ui";
+import { isPast } from "@/app/campaigns/_shared/dates";
 import { TradeStatus } from "@/app/trade/TradeStatus";
 import { dateTime, localDateTime, useTrade, vnd } from "@/app/trade/trade-client";
 import { orderStates, paymentKinds } from "../order-labels";
@@ -83,12 +84,12 @@ export default function OrderPage() {
           <p className="text-small">Các khoản thu trong bản MVP được ghi bằng SIM.</p>
           {order.charges.length === 0 && order.disbursements.length === 0 && <p>Chưa có khoản nào hiển thị cho bạn.</p>}
           {order.charges.map(charge => {
-            const overdue = Date.parse(charge.dueAt) <= Date.now();
+            const overdue = isPast(charge.dueAt);
             const payable = !overdue && charge.state === "PENDING" &&
               (charge.kind === "DEPOSIT" ? order.state === "AWAIT_DEPOSIT" : order.state === "AWAIT_PAYMENT");
             return <section key={charge.chargeId} className="grid gap-2 rounded-input border border-line p-3">
               <strong>{charge.kind === "DEPOSIT" ? "Cọc cửa hàng" : "Tiền hàng của bạn"} · {vnd(charge.amountVnd)}</strong>
-              <p>{chargeLabels[charge.state]} · Hạn {dateTime(charge.dueAt)}</p>
+              <p>{chargeLabels[charge.state]} · {charge.dueAt ? `Hạn ${dateTime(charge.dueAt)}` : "Chưa có hạn thu"}</p>
               {overdue && charge.state === "PENDING" && <p>Đã qua hạn thu. Tải lại để xem trạng thái mới nhất.</p>}
               {payable && <Button disabled={trade.busy || trade.loading} onClick={() => void trade.run(`charge:${charge.chargeId}`, key =>
                 apiFetch(`/api/v1/demo/charges/${charge.chargeId}/receive`, {
