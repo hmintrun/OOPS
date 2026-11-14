@@ -47,7 +47,7 @@ export function ContactSection({ data, onData, onUnauthorized }: Props) {
   return (
     <Card>
       <div className="me-card-head">
-        <IconTile icon="alternate_email" tone="sky" />
+        <IconTile icon="alternate_email" tone="amber" />
         <CardTitle>Liên hệ riêng</CardTitle>
       </div>
 

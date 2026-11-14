@@ -6,22 +6,59 @@
 @import "../components/ui/hero.css";
 @import "../components/ui/illustrations.css";
 
+.pwa-connection {
+  position: fixed;
+  inset: max(8px, env(safe-area-inset-top)) 12px auto;
+  z-index: 60;
+  display: grid;
+  justify-items: center;
+  pointer-events: none;
+}
+
+.pwa-connection p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--oops-sun, var(--oops-warn));
+  border-radius: var(--oops-radius-input);
+  background: var(--oops-sun-tint, var(--oops-amber-tint));
+  color: var(--oops-amber-ink, var(--oops-navy-900));
+  box-shadow: var(--oops-shadow-card);
+  font-weight: 750;
+}
+
+.ui-card.pwa-install-card {
+  background: linear-gradient(135deg, var(--oops-mint, var(--oops-green-100)), var(--oops-surface) 68%);
+}
+
 @layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
   html {
-    /* Màu overscroll (iOS rubber-band) khớp đáy gradient, tránh lộ nền trắng. */
-    background-color: var(--oops-sky-300);
+    /* Khóa trượt ngang trên thiết bị di động (fix mobile horizontal scroll) */
+    overflow-x: hidden !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    background-color: var(--oops-page-green);
     color-scheme: light;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
   }
+
   body {
     font-family: var(--oops-font-sans);
     color: var(--oops-navy-900);
-    background: linear-gradient(180deg, var(--oops-sky-100), var(--oops-sky-300));
+    background-color: var(--oops-page-green);
     min-height: 100dvh;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    position: relative;
     font-size: 15.5px;
     line-height: 1.55;
-    letter-spacing: -0.01em;
   }
 }

@@ -13,8 +13,7 @@ import { resolveLoginNext } from "@/lib/login-next";
  */
 const FIELD_ROW = [
   "flex h-[var(--oops-control-h)] items-center gap-3 rounded-input border border-line",
-  "bg-surface px-3 focus-within:border-green-600",
-  "focus-within:shadow-[0_0_0_3px_var(--oops-green-100)]",
+  "login-field px-3",
 ].join(" ");
 
 const FIELD_INPUT = [
@@ -120,7 +119,7 @@ export function LoginForm() {
       <div className="login-form-heading">
         <IconTile icon={register ? "person_add" : "lock_open"} tone="green" />
         <div>
-        <CardTitle as="h2" className="ui-card__title--flush">{register ? "Tạo tài khoản" : "Đăng nhập"}</CardTitle>
+          <CardTitle as="h2" className="ui-card__title--flush">{register ? "Tạo tài khoản" : "Đăng nhập"}</CardTitle>
           <p>{register ? "Nhập thông tin để tạo tài khoản OOPS." : "Nhập email và mật khẩu để tiếp tục."}</p>
         </div>
       </div>

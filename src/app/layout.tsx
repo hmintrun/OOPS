@@ -1,16 +1,19 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { PwaProvider } from "@/components/pwa";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "OOPS",
   description: "Gom nhu yếu phẩm theo nhóm, chốt hợp đồng có cọc và xác nhận trên Fuji.",
   applicationName: "OOPS",
+  icons: { icon: "/icons/oops-192.png", apple: "/icons/oops-apple.png" },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
   viewportFit: "cover",
   themeColor: "#BFE3F7",
 };
@@ -30,7 +33,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body><PwaProvider>{children}</PwaProvider></body>
     </html>
   );
 }

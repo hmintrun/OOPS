@@ -55,6 +55,7 @@ export function BottomNav({ items }: { items: NavItem[] }) {
             key={item.key}
             href={item.href}
             prefetch={item.prefetch}
+            data-section={item.key}
             className={`ui-nav__item ${active ? "ui-nav__item--active" : ""}`}
             aria-current={pathname === item.href ? "page" : active ? "location" : undefined}
           >
