@@ -1,14 +1,14 @@
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 type CardProps = {
   className?: string;
   children?: ReactNode;
   /** Kích cỡ thẻ: 'default' 24px; 'tight' 16px; 'flush' không padding. */
   padding?: "default" | "tight" | "flush";
-};
+} & ComponentPropsWithoutRef<"section">;
 
 /** Thẻ trắng nổi dùng khắp màn theo STYLE.md mục 4. */
-export function Card({ className = "", padding = "default", children }: CardProps) {
+export function Card({ className = "", padding = "default", children, ...rest }: CardProps) {
   const classes = [
     "ui-card",
     padding === "tight" ? "ui-card--tight" : "",
@@ -18,7 +18,7 @@ export function Card({ className = "", padding = "default", children }: CardProp
     .filter(Boolean)
     .join(" ");
 
-  return <section className={classes}>{children}</section>;
+  return <section className={classes} {...rest}>{children}</section>;
 }
 
 export function CardTitle({ as: Heading = "h3", className = "", children }: {

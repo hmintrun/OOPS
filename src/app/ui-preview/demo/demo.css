@@ -19,56 +19,67 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
+  gap: 6px 10px;
   color: var(--oops-amber-ink);
-  padding: 8px 12px;
+  padding: 12px 14px;
   border-radius: var(--oops-radius-input);
-  background: var(--oops-sun-tint);
+  background: linear-gradient(135deg, #FFF9EB 0%, #FFF2D1 100%);
+  border: 1px solid rgba(245, 166, 35, 0.35);
+  box-shadow: 0 2px 8px rgba(245, 166, 35, 0.08);
   font-size: .9375rem;
 }
 .demo-recommendation strong {
   border-radius: var(--oops-radius-pill);
-  padding-inline: 8px;
+  padding: 2px 10px;
   background: var(--oops-sun);
+  color: #522b00;
   font-size: 1rem;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
-.demo-group-total {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  border-radius: var(--oops-radius-input);
-  background:
-    radial-gradient(circle at 82% 36%, var(--oops-sun) 0 20px, transparent 21px),
-    linear-gradient(110deg, var(--oops-jade-dark), var(--oops-jade));
-  color: var(--oops-surface);
-}
-.demo-group-total strong {
-  display: block;
-  font-size: clamp(1.75rem, 5vw, 2.5rem);
-  line-height: 1.1;
-  color: var(--oops-sun);
-  font-variant-numeric: tabular-nums;
-}
-.demo-group-total p { margin-block-start: 4px; }
-.demo-group-total img { width: clamp(4.5rem, 13vw, 6.5rem); height: auto; }
-.demo-group-shares, .demo-offer-preview {
+.demo-offer-preview {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin: 0;
 }
-.demo-group-shares > div, .demo-offer-preview > div {
-  padding: 8px 12px;
+.demo-offer-preview > div {
+  padding: 10px 14px;
   border-radius: var(--oops-radius-input);
   background: var(--oops-surface);
+  border: 1px solid var(--oops-line);
 }
-.demo-group-shares dt, .demo-offer-preview span { color: var(--oops-navy-600); }
-.demo-group-shares dd, .demo-offer-preview strong { display: block; margin: 0; font-weight: 800; }
-.demo-group-shares > div:first-child { background: var(--oops-mint); }
-.demo-group-shares > div:nth-child(2) { background: var(--oops-sky-tint); }
+.demo-offer-preview span { color: var(--oops-navy-600); }
+.demo-offer-preview strong { display: block; margin: 0; font-weight: 800; }
+
+/* Relief item selector pill */
+.demo-relief-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--oops-radius-pill);
+  font-family: var(--oops-font-sans);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  border: 1px solid var(--oops-line);
+  background: var(--oops-surface);
+  color: var(--oops-navy-900);
+  cursor: pointer;
+  transition: all 140ms ease;
+  user-select: none;
+}
+.demo-relief-pill:hover {
+  background: var(--oops-sky-tint);
+  border-color: var(--oops-sky-300);
+}
+.demo-relief-pill--active {
+  background: var(--oops-green-800) !important;
+  border-color: var(--oops-green-800) !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 10px rgba(16, 86, 42, 0.28);
+}
 
 .ui-card.demo-orders-empty, .ui-card.demo-resident {
   max-inline-size: 46rem;
@@ -219,7 +230,6 @@
   .demo-actions { grid-template-columns: 1fr; }
   .demo-fields label { gap: 6px; }
   .demo-fields .ui-icon-tile { width: 34px; height: 34px; }
-  .demo-group-total { padding: 8px 12px; }
 }
 @media (width < 40rem) and (height <= 37.5rem) {
   .demo-page .ui-family-header .ui-screen-header__subtitle { line-height: 1.35; }
@@ -230,7 +240,6 @@
   .demo-family-form .demo-heading img { width: 36px; height: 36px; }
 }
 @media (width >= 64rem) {
-  .demo-cart-grid { align-items: stretch; }
   .demo-page .demo-result { padding-block: 4px; }
   .demo-page .demo-result img { width: 56px; }
   .demo-page .demo-settlement__status { display: inline-block; margin-inline-start: 6px; }
@@ -269,4 +278,28 @@
   .demo-family-form { gap: 12px; }
   .demo-family-form .demo-fields { gap: 8px; }
   .demo-family-form .demo-fields label { padding-block: 4px; }
+}
+.demo-campaign-fields label {
+  display: grid;
+  min-inline-size: 0;
+  gap: 4px;
+}
+
+.demo-campaign-fields :is(input, textarea) {
+  inline-size: 100%;
+  min-block-size: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--oops-line);
+  border-radius: var(--oops-radius-input);
+  background: var(--oops-surface);
+  color: var(--oops-navy-900);
+  font: inherit;
+  font-weight: 500;
+}
+
+.demo-campaign-fields textarea { resize: vertical; }
+
+.demo-campaign-fields :is(input, textarea):focus-visible {
+  outline: 2px solid var(--oops-jade);
+  outline-offset: 2px;
 }

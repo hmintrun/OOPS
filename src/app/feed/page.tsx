@@ -56,9 +56,11 @@ export default function FeedPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState("");
   const generation = useRef(0);
+  const resultsHeading = useRef<HTMLHeadingElement>(null);
 
   // Phân trang 12 items (3x4)
   const [currentPage, setCurrentPage] = useState(1);
+  const previousPage = useRef(currentPage);
 
   // Modal Widget Chào hàng
   const [selectedItemForOffer, setSelectedItemForOffer] = useState<DemandItem | null>(null);
@@ -133,10 +135,23 @@ export default function FeedPage() {
     void loadFirstPage(applied);
   }, [applied, loadFirstPage]);
 
+  useEffect(() => {
+    if (previousPage.current === currentPage) return;
+    previousPage.current = currentPage;
+    resultsHeading.current?.focus({ preventScroll: true });
+    resultsHeading.current?.scrollIntoView({ block: "start" });
+  }, [currentPage]);
+
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setApplied((current) => ({ ...current, district, ward }));
   };
+
+  function clearFilters() {
+    setDistrict("");
+    setWard("");
+    setApplied({ category: "", district: "", ward: "" });
+  }
 
   const handleOpenOfferModal = (item: DemandItem) => {
     setSelectedItemForOffer(item);
@@ -147,6 +162,8 @@ export default function FeedPage() {
   const totalPages = Math.max(1, Math.ceil(items.length / FEED_PAGE_SIZE));
   const startIndex = (currentPage - 1) * FEED_PAGE_SIZE;
   const displayedItems = items.slice(startIndex, startIndex + FEED_PAGE_SIZE);
+  const locationFilter = [applied.district.trim(), applied.ward.trim()].filter(Boolean).join(" · ");
+  const hasFilters = Boolean(locationFilter || applied.category);
 
   return (
     <AppShell
@@ -172,30 +189,37 @@ export default function FeedPage() {
             </button>
           ))}
         </div>
-        <form onSubmit={onSubmit} className="feed-filters">
-          <label className="feed-field">
-            <IconTile icon="location_on" tone="sky" size="sm" />
-            <input
-              value={district}
-              onChange={(event) => setDistrict(event.target.value)}
-              placeholder="Khu vực (quận/huyện)"
-              aria-label="Khu vực (quận/huyện)"
-            />
-          </label>
-          <label className="feed-field">
-            <IconTile icon="signpost" tone="sky" size="sm" />
-            <input
-              value={ward}
-              onChange={(event) => setWard(event.target.value)}
-              placeholder="Phường/xã"
-              aria-label="Phường/xã"
-            />
-          </label>
-          <Button variant="secondary" type="submit">
-            <MaterialSymbol className="ui-btn__icon" name="filter_list" />
-            Lọc nhu cầu
-          </Button>
-        </form>
+        <details className="feed-location">
+          <summary>
+            <MaterialSymbol name="location_on" size={22} />
+            <span>{locationFilter || "Lọc theo khu vực"}</span>
+            <MaterialSymbol name="expand_more" size={20} className="feed-location__chevron" />
+          </summary>
+          <form onSubmit={onSubmit} className="feed-filters">
+            <label className="feed-field">
+              <IconTile icon="location_on" tone="sky" size="sm" />
+              <input
+                value={district}
+                onChange={(event) => setDistrict(event.target.value)}
+                placeholder="Khu vực (quận/huyện)"
+                aria-label="Khu vực (quận/huyện)"
+              />
+            </label>
+            <label className="feed-field">
+              <IconTile icon="signpost" tone="sky" size="sm" />
+              <input
+                value={ward}
+                onChange={(event) => setWard(event.target.value)}
+                placeholder="Phường/xã"
+                aria-label="Phường/xã"
+              />
+            </label>
+            <Button variant="secondary" type="submit">
+              <MaterialSymbol className="ui-btn__icon" name="filter_list" />
+              Áp dụng khu vực
+            </Button>
+          </form>
+        </details>
       </Card>
 
       {status === "loading" && (
@@ -215,9 +239,9 @@ export default function FeedPage() {
             <IconTile icon="inbox" tone="sky" />
             <div style={{ minWidth: 0 }}>
               <CardTitle>Chưa có nhu cầu nào phù hợp</CardTitle>
-              <p className="text-body" style={{ margin: "4px 0 0", color: "var(--oops-navy-600)" }}>
-                Thử bỏ bộ lọc hoặc chọn khu vực lân cận nhé.
-              </p>
+              {hasFilters ? (
+                <Button variant="secondary" full={false} onClick={clearFilters}>Xóa bộ lọc</Button>
+              ) : <p className="text-body text-navy-600">Khi có nhóm đăng nhu cầu, bạn sẽ thấy tại đây.</p>}
             </div>
           </div>
         </Card>
@@ -239,6 +263,10 @@ export default function FeedPage() {
 
       {status === "ready" && (
         <>
+          <div className="feed-results-heading">
+            <h2 ref={resultsHeading} tabIndex={-1}>Nhu cầu đang đăng</h2>
+            <span>Trang {currentPage}</span>
+          </div>
           {/* Lưới 3 cột trên desktop, 2 cột tablet, 1 cột mobile */}
           <div className="feed-grid-3">
             {displayedItems.map((item) => (

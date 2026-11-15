@@ -19,13 +19,18 @@
   font-weight: 700;
   line-height: 1.2;
   text-align: center;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, transform 100ms ease, box-shadow 120ms ease;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
 }
-.ui-btn--full { width: 100%; }
+.ui-btn--full {
+  width: 100%;
+  flex-shrink: 1;
+  white-space: normal;
+}
 .ui-btn:disabled {
   background: var(--oops-sky-tint);
   border-color: var(--oops-line);
@@ -95,6 +100,7 @@
 .ui-card {
   min-inline-size: 0;
   background: var(--oops-surface);
+  border: 1px solid var(--oops-line);
   border-radius: var(--oops-radius-card);
   box-shadow: var(--oops-shadow-card);
   padding: var(--oops-space-card);
@@ -488,12 +494,23 @@
   position: sticky;
   bottom: 0;
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   padding-block: 8px;
   background: var(--oops-surface);
   box-shadow: 0 -8px 12px var(--oops-surface);
 }
-.family-editor__actions .ui-btn { padding-inline: 16px; }
+.family-editor__actions .ui-btn {
+  white-space: nowrap;
+}
+.family-editor__actions .family-editor__cancel {
+  flex: 0 0 auto;
+  min-width: 5.5rem;
+  padding-inline: 18px;
+}
+.family-editor__actions .family-editor__submit {
+  flex: 1 1 auto;
+}
 @media (width < 40rem) {
   .family-status__header { gap: 8px; padding: 8px 12px; }
   .family-status__portrait { width: 40px; }

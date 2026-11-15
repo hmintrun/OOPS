@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Group } from "@/contracts/foundation";
 import { AppShell } from "@/components/app-shell";
-import { Card, CardTitle } from "@/components/ui";
+import { Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import { FamilyStatusWidget } from "./FamilyStatusWidget";
 import { formatDateTime } from "./helpers";
 import { InviteForm } from "./[id]/invite-form";
@@ -13,7 +13,10 @@ export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
       <FamilyStatusWidget />
       <div className="ui-card-grid">
         <Card>
-          <CardTitle as="h2">Đợt gom</CardTitle>
+          <div className="mb-3 flex items-center gap-3">
+            <IconTile icon="shopping_basket" tone="amber" />
+            <CardTitle as="h2" className="ui-card__title--flush">Đợt gom</CardTitle>
+          </div>
           {data.campaigns.length > 0 ? (
             <ul className="grid gap-2">
               {data.campaigns.map(campaign => (
@@ -25,17 +28,22 @@ export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
                 </li>
               ))}
             </ul>
-          ) : <p>Nhóm chưa có đợt gom.</p>}
+          ) : <p className="rounded-input bg-amber-tint p-3 text-navy-900">Nhóm chưa có đợt gom.</p>}
           <Link href="/campaigns" className="ui-btn ui-btn--primary ui-btn--full mt-3">
+            <MaterialSymbol name="arrow_forward" className="ui-btn__icon" />
             {isRepresentative ? "Quản lý đợt gom" : "Xem các đợt gom"}
           </Link>
         </Card>
         <Card>
-          <CardTitle as="h2">Thành viên</CardTitle>
+          <div className="mb-3 flex items-center gap-3">
+            <IconTile icon="groups" tone="green" />
+            <CardTitle as="h2" className="ui-card__title--flush">Thành viên</CardTitle>
+          </div>
           <ul className="grid gap-2">
             {data.members.map(member => (
-              <li key={member.membershipId}>
-                {member.displayName}{member.role === "REP" ? " · Đại diện" : ""}
+              <li key={member.membershipId} className="flex flex-wrap items-center justify-between gap-2 rounded-input bg-sky-tint p-3">
+                <span className="min-w-0 font-semibold text-navy-900 [overflow-wrap:anywhere]">{member.displayName}</span>
+                {member.role === "REP" && <span className="rounded-pill bg-green-100 px-3 py-1 text-small font-bold text-green-700">Đại diện</span>}
               </li>
             ))}
           </ul>

@@ -1,17 +1,17 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
 import type { OfferSubmitData } from "@/app/feed/OfferModalWidget";
 import { households, money, scenario } from "./scenario";
 import "./order-presentation.css";
 
 const steps = {
-  draft: "Các hộ góp phần",
+  draft: "Các hộ bỏ phiếu",
   submitted: "Chờ cửa hàng phản hồi",
   revise: "Cửa hàng yêu cầu sửa",
   rejected: "Cửa hàng đã từ chối",
-  confirm: "Chờ các hộ xác nhận mẫu",
+  confirm: "Ký Fuji & Nộp tiền",
   expired: "Phiên bản đã hết hạn",
   conflict: "Lượng hàng đã thay đổi",
   deposit: "Chờ cọc cửa hàng",
@@ -35,47 +35,61 @@ const roles = [
 ] as const;
 
 const roleForNextStep: Partial<Record<Step, { role: Role; instruction: string }>> = {
-  draft: { role: "household", instruction: "Sửa số lượng và gửi đề nghị từ nhóm." },
+  draft: { role: "household", instruction: "Từng hộ chọn mua hoặc không mua phần đã tính từ giỏ." },
   submitted: { role: "seller", instruction: "Phản hồi đề nghị của nhóm." },
-  revise: { role: "household", instruction: "Mở bản nháp để sửa đề nghị." },
-  expired: { role: "household", instruction: "Mở lại bản nháp để gửi đề nghị mới." },
+  revise: { role: "household", instruction: "Đã tự động mở lại bản nháp để các hộ cập nhật." },
   conflict: { role: "household", instruction: "Mở lại bản nháp để điều chỉnh số lượng." },
-  deposit: { role: "seller", instruction: "Ghi nhận tiền cọc SIM của cửa hàng." },
-  payment: { role: "household", instruction: "Ghi nhận tiền hàng SIM cho từng hộ." },
-  settling: { role: "ops", instruction: "Ghi nhận các khoản chi và hoàn." },
+  confirm: { role: "household", instruction: "Từng hộ ký Fuji và nộp tiền hàng song song." },
+  handoff: { role: "seller", instruction: "Báo hàng đã sẵn sàng và tải bằng chứng." },
+  receipt: { role: "rep", instruction: "Duyệt biên nhận theo lượng thực nhận." },
+  settling: { role: "ops", instruction: "Ghi nhận các khoản chi và hoàn qua SIM." },
 };
 
 const STAGES = [
-  { label: "Thương lượng", icon: "handshake", steps: ["draft", "submitted", "revise", "rejected"] },
-  { label: "Ký Fuji", icon: "verified_user", steps: ["confirm", "expired", "conflict"] },
-  { label: "Cọc và tiền", icon: "payments", steps: ["deposit", "payment"] },
+  { label: "Thương lượng", icon: "handshake", steps: ["draft", "submitted", "revise", "rejected", "expired", "conflict"] },
+  { label: "Ký Fuji & Cọc", icon: "verified_user", steps: ["confirm", "deposit", "payment"] },
   { label: "Bàn giao", icon: "local_shipping", steps: ["handoff", "receipt", "issue"] },
   { label: "Hoàn tất", icon: "task_alt", steps: ["settling", "complete"] },
 ];
 
+export function getDemoOrderStatus(step: Step) {
+  const stage = STAGES[0].steps.includes(step) ? "negotiation"
+    : STAGES[1].steps.includes(step) ? "fuji"
+    : STAGES[2].steps.includes(step) ? "handoff" : "complete";
+  return { stage, statusText: steps[step], badgeClass: "bg-sky-tint text-navy-900 border-line" } as const;
+}
+
 const add = (values: number[]) => values.reduce((total, value) => total + value, 0);
 const replaceAt = (values: number[], index: number, value: number) =>
-  values.map((current, at) => at === index ? value : current);
+  values.map((current, at) => (at === index ? value : current));
 
-export function OrderDemo({ offer }: { offer: OfferSubmitData }) {
+export function OrderDemo({
+  offer,
+  onBack,
+  supplier = scenario.supplier,
+  onProgress,
+  initialStep = "draft",
+}: {
+  offer: OfferSubmitData;
+  onBack?: () => void;
+  supplier?: string;
+  onProgress?: (step: Step, quantity: number) => void;
+  initialStep?: Step;
+}) {
   const { quantity: offerQty, unitPrice, name, unit, deliveryTime, note } = offer;
   const stageTitle = useRef<HTMLDivElement>(null);
-  const [step, setStep] = useState<Step>("draft");
+  const [step, setStep] = useState<Step>(initialStep);
   const [role, setRole] = useState<Role>("household");
   const [person, setPerson] = useState(0);
-  const [lines, setLines] = useState(() => {
-    let remaining = offerQty;
-    return [2, 2, 3].map(share => {
-      const qty = Math.min(remaining, share);
-      remaining -= qty;
-      return qty;
-    });
-  });
-  const [version, setVersion] = useState(0);
+  const [votes, setVotes] = useState<Partial<Record<number, number>>>(
+    () => initialStep === "draft" ? {} : { 0: Math.min(offerQty, 2), 1: Math.min(2, Math.max(0, offerQty - 2)), 2: Math.max(0, offerQty - 4) },
+  );
+  const [voteDueAt, setVoteDueAt] = useState(() => Date.now() + 3 * 60 * 60 * 1000);
+  const [version, setVersion] = useState(initialStep === "draft" ? 0 : 1);
   const [walletsReady, setWalletsReady] = useState(true);
-  const [stockReady, setStockReady] = useState(true);
-  const [confirmed, setConfirmed] = useState<number[]>([]);
+  const [confirmed, setConfirmed] = useState<number[]>(initialStep === "confirm" ? [1] : []);
   const [paid, setPaid] = useState<number[]>([]);
+  const [depositPaid, setDepositPaid] = useState(initialStep === "handoff" || initialStep === "complete");
   const [ready, setReady] = useState(false);
   const [evidence, setEvidence] = useState(false);
   const [received, setReceived] = useState<number[]>([]);
@@ -83,28 +97,33 @@ export function OrderDemo({ offer }: { offer: OfferSubmitData }) {
   const [approvals, setApprovals] = useState<ReceiptApproval[]>([]);
   const [posted, setPosted] = useState<string[]>([]);
   const [notice, setNotice] = useState("");
-  const [notifications, setNotifications] = useState<string[]>([]);
-  const [readCount, setReadCount] = useState(0);
+
+  const lines = households.map((_, index) => votes[index] ?? 0);
   const qty = add(lines);
-  const people = lines.flatMap((line, index) => line > 0 ? [index] : []);
+  const myShare = Math.min([2, 2, 3][person], offerQty - qty);
+  const people = lines.flatMap((line, index) => (line > 0 ? [index] : []));
   const goods = qty * unitPrice;
+  // Bất biến OOPS: max(50_000, ceil(goods / 10))
   const deposit = Math.max(50_000, Math.ceil(goods / 10));
   const settlement = [
     { key: "deposit", label: "Hoàn cọc cửa hàng", amount: deposit },
     { key: "goods", label: "Chi tiền hàng thực nhận", amount: add(received) * unitPrice },
     ...lines.map((line, index) => ({
-      key: `refund-${index}`, label: `Hoàn tiền ${households[index]}`, amount: (line - (received[index] ?? 0)) * unitPrice,
+      key: `refund-${index}`,
+      label: `Hoàn tiền ${households[index]}`,
+      amount: (line - (received[index] ?? 0)) * unitPrice,
     })),
-  ].filter(item => item.amount > 0);
+  ].filter((item) => item.amount > 0);
 
-  const currentStageIndex = STAGES.findIndex(s => s.steps.includes(step));
-  const currentStage = STAGES[currentStageIndex];
-  const selectedRole = roles.find(item => item.value === role);
+  const currentStageIndex = STAGES.findIndex((s) => s.steps.includes(step));
+  const currentStage = STAGES[currentStageIndex] || STAGES[0];
+  const selectedRole = roles.find((item) => item.value === role);
   const receivedQty = add(received);
-  const nextAction = step === "handoff" && !ready
-    ? { role: "seller" as const, instruction: "Báo hàng đã sẵn sàng để bàn giao." }
-    : roleForNextStep[step];
-  const nextRole = roles.find(item => item.value === nextAction?.role);
+  const nextAction =
+    step === "handoff" && !ready
+      ? { role: "seller" as const, instruction: "Báo hàng đã sẵn sàng để bàn giao." }
+      : roleForNextStep[step];
+  const nextRole = roles.find((item) => item.value === nextAction?.role);
 
   function chooseRole(nextRole: Role) {
     setRole(nextRole);
@@ -114,23 +133,81 @@ export function OrderDemo({ offer }: { offer: OfferSubmitData }) {
   function advance(next: Step) {
     setStep(next);
     setNotice("");
-    setNotifications(current => [...current, steps[next]]);
+    onProgress?.(next, qty || offerQty);
+  }
+
+  function castVote(yes: boolean) {
+    if (votes[person] !== undefined || Date.now() >= voteDueAt || (yes && myShare === 0)) return;
+    const amount = yes ? myShare : 0;
+    setVotes(current => ({ ...current, [person]: amount }));
+  }
+
+  useEffect(() => {
+    if (step !== "draft") return;
+    const closeVote = () => {
+      const nextStep = qty > 0 ? "submitted" : "expired";
+      setStep(nextStep);
+      setNotice("");
+      if (qty > 0) setVersion(current => current + 1);
+      onProgress?.(nextStep, qty || offerQty);
+    };
+    if (qty >= offerQty || Date.now() >= voteDueAt) {
+      closeVote();
+      return;
+    }
+    const timer = window.setTimeout(closeVote, voteDueAt - Date.now());
+    return () => window.clearTimeout(timer);
+  }, [offerQty, onProgress, qty, step, voteDueAt]);
+
+  function handleSellerRequestRevision() {
+    setVotes({});
+    setVoteDueAt(Date.now() + 3 * 60 * 60 * 1000);
+    advance("draft");
+    setNotice("Cửa hàng đã yêu cầu sửa. Vòng bỏ phiếu mới đã mở.");
+  }
+
+  function checkCommitments(nextSigned: number[], nextPaid: number[], nextDepositPaid: boolean) {
+    if (nextDepositPaid && people.every(index =>
+      nextSigned.includes(index) && (unitPrice === 0 || nextPaid.includes(index)),
+    )) advance("handoff");
   }
 
   function saveReceipt() {
     setApprovals([]);
-    setReceiptVersion(current => current + 1);
+    setReceiptVersion((current) => current + 1);
     advance("receipt");
   }
 
   function approveReceipt(actor: ReceiptApproval) {
     if (approvals.includes(actor)) return;
-    setApprovals(current => [...current, actor]);
-    if (approvals.length === 1) advance("settling");
+    const nextApprovals = [...approvals, actor];
+    setApprovals(nextApprovals);
+    if (nextApprovals.length === 2) {
+      advance("settling");
+    }
   }
 
   return (
     <div className="ui-stack demo-order-layout demo-order-presentation">
+      {/* Nút quay lại danh sách đơn hàng Shopee nếu có callback */}
+      {onBack && (
+        <div className="flex items-center justify-between pb-1">
+          <Button
+            variant="ghost"
+            full={false}
+            className="shrink-0 text-xs px-2.5 py-1.5 h-auto min-h-0 flex items-center gap-1 text-emerald-800 font-bold"
+            onClick={onBack}
+          >
+            <MaterialSymbol name="arrow_back" size={18} />
+            Danh sách đơn hàng
+          </Button>
+          <span className="text-[11px] font-bold text-navy-600 bg-slate-100 px-2 py-0.5 rounded-full">
+            Đơn #{offer.name.slice(0, 10)}
+          </span>
+        </div>
+      )}
+
+      {/* Tiến độ 4 chặng: Thương lượng -> Ký Fuji & Cọc -> Bàn giao -> Hoàn tất */}
       <ol className="demo-order-journey" role="list" aria-label="Tiến độ đơn hàng">
         {STAGES.map((stage, index) => {
           const isCurrent = index === currentStageIndex;
@@ -143,14 +220,19 @@ export function OrderDemo({ offer }: { offer: OfferSubmitData }) {
               className="demo-order-stop"
             >
               <span className="demo-order-stop__icon">
-                <MaterialSymbol name={stage.icon} size={22} />
+                <MaterialSymbol name={stage.icon} size={20} />
                 {isPassed && <MaterialSymbol name="check" size={12} className="demo-order-stop__check" />}
               </span>
-              <span>{stage.label}{isPassed && <span className="demo-sr-only">, đã xong</span>}</span>
+              <span>
+                {stage.label}
+                {isPassed && <span className="demo-sr-only">, đã xong</span>}
+              </span>
             </li>
           );
         })}
       </ol>
+
+      {/* Bộ chọn vai mô phỏng demo */}
       <div className="demo-role-switcher">
         <fieldset>
           <legend>Vai trong bản thử</legend>
@@ -172,220 +254,320 @@ export function OrderDemo({ offer }: { offer: OfferSubmitData }) {
           <fieldset>
             <legend>Chọn hộ trong nhóm</legend>
             <div className="demo-role-buttons demo-role-buttons--households">
-              {households.map((name, index) => (
+              {households.map((nameStr, index) => (
                 <button
-                  key={name}
+                  key={nameStr}
                   type="button"
                   aria-pressed={person === index}
                   onClick={() => setPerson(index)}
                 >
-                  <span>{name}</span>
-                  <span className="demo-role-qty">{lines[index]} {unit}</span>
+                  <span>{nameStr}</span>
+                  <span className="demo-role-qty">
+                    {lines[index]} {unit}
+                  </span>
                 </button>
               ))}
             </div>
           </fieldset>
         )}
       </div>
+
+      {/* Thẻ tóm tắt đơn hàng */}
       <Card className="demo-stack demo-order-summary">
         <div className="demo-order-summary__hero">
-          <CardTitle as="h2" className="ui-card__title--flush">Đề nghị từ {scenario.supplier}</CardTitle>
+          <CardTitle as="h2" className="ui-card__title--flush">
+            Đề nghị từ {supplier}
+          </CardTitle>
           <img src="/assets/groceries-box.webp" width={1024} height={1024} alt="" />
         </div>
-        <p className="demo-order-meta">{name}</p>
+        <p className="demo-order-meta font-bold text-navy-900">{name}</p>
         <div className="demo-order-quantity-flow">
-          <dl><dt>Cửa hàng chào</dt><dd>{offerQty} <span>{unit}</span></dd></dl>
+          <dl>
+            <dt>Cửa hàng chào</dt>
+            <dd>
+              {offerQty} <span>{unit}</span>
+            </dd>
+          </dl>
           <MaterialSymbol name="arrow_forward" size={22} />
-          <dl><dt>Các hộ góp</dt><dd>{qty} <span>{unit}</span></dd></dl>
+          <dl>
+            <dt>Các hộ góp</dt>
+            <dd>
+              {qty} <span>{unit}</span>
+            </dd>
+          </dl>
         </div>
         <dl className="demo-cost">
-          <div><dt>Đơn giá</dt><dd>{money(unitPrice)} / {unit}</dd></div>
-          <div><dt>Tiền hàng</dt><dd>{money(goods)}</dd></div>
-          <div><dt>Cọc cửa hàng</dt><dd>{money(deposit)}</dd></div>
-          {role === "household" && <div><dt>Phần hộ đang chọn</dt><dd>{lines[person]} {unit} · {money(lines[person] * unitPrice)}</dd></div>}
+          <div>
+            <dt>Đơn giá</dt>
+            <dd>{unitPrice === 0 ? "0 đ (Tặng)" : `${money(unitPrice)} / ${unit}`}</dd>
+          </div>
+          <div>
+            <dt>Tiền hàng</dt>
+            <dd>{money(goods)}</dd>
+          </div>
+          <div>
+            <dt>Cọc cửa hàng</dt>
+            <dd>{money(deposit)}</dd>
+          </div>
+          {role === "household" && (
+            <div>
+              <dt>Phần hộ đang chọn</dt>
+              <dd>
+                {lines[person]} {unit} · {money(lines[person] * unitPrice)}
+              </dd>
+            </div>
+          )}
         </dl>
-        <p className="demo-note">Dự kiến giao {deliveryTime.toLowerCase()}{note.trim() ? ` · ${note.trim()}` : ""}</p>
+        <p className="demo-note">
+          Dự kiến giao: {deliveryTime}
+          {note.trim() ? ` · ${note.trim()}` : ""}
+        </p>
         <p className="demo-note">Cọc bằng 10% tiền hàng, tối thiểu 50.000 ₫.</p>
       </Card>
 
+      {/* Thẻ thao tác chính theo từng chặng */}
       <Card className="demo-stack demo-order-work">
         <div ref={stageTitle} tabIndex={-1} className="demo-order-title" data-stage={step} aria-live="polite">
-          <span className="demo-order-title__icon"><MaterialSymbol name={currentStage.icon} size={24} /></span>
-          <CardTitle as="h2" className="ui-card__title--flush">{steps[step]}</CardTitle>
+          <span className="demo-order-title__icon">
+            <MaterialSymbol name={currentStage.icon} size={24} />
+          </span>
+          <CardTitle as="h2" className="ui-card__title--flush">
+            {steps[step]}
+          </CardTitle>
         </div>
+
         {nextAction && nextRole && role !== nextRole.value && (
           <div className="demo-next-action">
             <p>{nextAction.instruction}</p>
-            <Button full={false} variant="secondary" onClick={() => {
-              chooseRole(nextRole.value);
-              stageTitle.current?.focus();
-            }}>
+            <Button
+              full={false}
+              variant="secondary"
+              onClick={() => {
+                chooseRole(nextRole.value);
+                stageTitle.current?.focus();
+              }}
+            >
               Chuyển sang vai {nextRole.label}
               <MaterialSymbol name="arrow_forward" size={18} />
             </Button>
           </div>
         )}
+
         {version > 0 && step !== "draft" && (
-          <p className="demo-order-meta">{selectedRole?.label} · Đề nghị bản {version}</p>
+          <p className="demo-order-meta">
+            {selectedRole?.label} · Đề nghị bản {version}
+          </p>
         )}
-        {step === "draft" && role === "household" && <>
-          <label className="demo-order-quantity">Số lượng hộ góp ({unit})
-            <input type="number" min={0} max={offerQty} value={lines[person]} onChange={event => {
-              const value = event.target.valueAsNumber;
-              if (Number.isSafeInteger(value) && value >= 0 && value <= offerQty) setLines(replaceAt(lines, person, value));
-            }} />
-          </label>
-          {qty > offerQty && <p role="alert">Tổng lượng góp vượt {offerQty} {unit}.</p>}
-          {person === 0 && <Button disabled={qty === 0 || qty > offerQty} onClick={() => {
-            setVersion(current => current + 1);
-            advance("submitted");
-          }}>Gửi bản chung</Button>}
-        </>}
-        {step === "submitted" && role === "seller" && <>
-          <label className="demo-check"><input type="checkbox" checked={walletsReady} onChange={event => setWalletsReady(event.target.checked)} /> Tất cả hộ có ví đủ điều kiện (mẫu)</label>
-          <Button onClick={() => {
-            if (walletsReady) advance("confirm");
-            else setNotice("Có hộ chưa đủ điều kiện xác nhận. Bản đang chờ cửa hàng phản hồi.");
-          }}>Chấp thuận bản này</Button>
-          <div className="ui-actions">
-            <Button full={false} variant="secondary" onClick={() => advance("revise")}>Yêu cầu sửa</Button>
-            <Button full={false} variant="secondary" onClick={() => advance("rejected")}>Từ chối đề nghị</Button>
+
+        {/* 1. THƯƠNG LƯỢNG: Mỗi hộ tự góp phần của mình */}
+        {step === "draft" && role === "household" && (
+          <div className="grid gap-3">
+            <p>Đã đăng ký {qty}/{offerQty} {unit}. Vòng phiếu đóng khi đủ lượng chào hoặc hết hạn.</p>
+            <p>Hạn bỏ phiếu · {new Date(voteDueAt).toLocaleString("vi-VN")}</p>
+            {votes[person] !== undefined ? (
+              <p role="status">{votes[person] ? `Bạn đã chọn mua ${votes[person]} ${unit}.` : "Bạn đã chọn không mua."}</p>
+            ) : (
+              <>
+                <p>Phần hộ bạn có thể mua · {myShare} {unit} · {money(myShare * unitPrice)}</p>
+                <div className="ui-actions">
+                  <Button full={false} disabled={!myShare} onClick={() => castVote(true)}>Có, mua phần này</Button>
+                  <Button full={false} variant="secondary" onClick={() => castVote(false)}>Không mua</Button>
+                </div>
+              </>
+            )}
+            <Button full={false} variant="ghost" onClick={() => setVoteDueAt(Date.now())}>
+              Mô phỏng hết hạn bỏ phiếu
+            </Button>
           </div>
-        </>}
-        {(step === "revise" || step === "expired" || step === "conflict") && role === "household" && person === 0 && <Button onClick={() => {
-          setConfirmed([]);
-          setStockReady(true);
-          advance("draft");
-        }}>Mở bản nháp mới</Button>}
+        )}
+        {step === "expired" && <p>Không có hộ chọn mua trước hạn. Nhu cầu vẫn có thể nhận đề nghị khác.</p>}
+
+        {/* CỬA HÀNG PHẢN HỒI ĐỀ NGHỊ */}
+        {step === "submitted" && role === "seller" && (
+          <div className="flex flex-col gap-3">
+            <label className="demo-check">
+              <input
+                type="checkbox"
+                checked={walletsReady}
+                onChange={(event) => setWalletsReady(event.target.checked)}
+              />
+              Tất cả hộ có ví hợp lệ trên Fuji (mẫu)
+            </label>
+            <Button
+              onClick={() => {
+                if (walletsReady) {
+                  advance("confirm");
+                  setNotice("Đã mở vòng ký mẫu. Cửa hàng có thể nộp cọc ngay.");
+                } else {
+                  setNotice("Có hộ chưa đủ điều kiện xác nhận ví. Bản đang chờ.");
+                }
+              }}
+            >
+              Chấp thuận bản {qty} {unit} &amp; Mở vòng ký
+            </Button>
+            <div className="ui-actions">
+              {/* Cửa hàng yêu cầu sửa: auto mở lại bản nháp luôn */}
+              <Button full={false} variant="secondary" onClick={handleSellerRequestRevision}>
+                Yêu cầu sửa (Tự động mở nháp)
+              </Button>
+              <Button full={false} variant="secondary" onClick={() => advance("rejected")}>
+                Từ chối đề nghị
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* 2. KÝ FUJI & ĐÓNG CỌC/TIỀN HÀNG SONG SONG (Bảo mật: không lộ danh sách từng hộ) */}
         {step === "confirm" && (
           <div className="grid gap-3">
-            <div className="rounded-xl bg-sky-tint/80 p-3 border border-line">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                <span className="font-bold text-navy-900 flex items-center gap-1.5">
-                  <MaterialSymbol name="how_to_vote" size={18} className="text-green-700" />
-                  Xác nhận mẫu trên Fuji
-                </span>
-                <span className="rounded-pill bg-white px-2.5 py-0.5 text-sm font-extrabold text-green-700 border border-line">
-                  {confirmed.length} / {people.length} hộ đã ký
-                </span>
-              </div>
-              <progress className="demo-confirm-progress" aria-label="Số hộ đã xác nhận" value={confirmed.length} max={people.length} />
-              <div className="grid gap-2">
-                {people.map(idx => {
-                  const isDone = confirmed.includes(idx);
-                  return (
-                    <div
-                      key={idx}
-                      className={`flex flex-wrap items-center justify-between gap-x-2 p-2 rounded-lg border text-sm ${
-                        isDone
-                          ? "bg-green-100/70 border-green-300 text-green-800 font-bold"
-                          : "bg-white border-line text-navy-600 font-medium"
-                      }`}
-                    >
-                      <span>{households[idx]} · {lines[idx]} {unit}</span>
-                      <span>{isDone ? "Đã ký" : "Chờ ký"}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {role === "household" && people.includes(person) && (
-              <Button
-                disabled={confirmed.includes(person)}
-                onClick={() => setConfirmed(current => current.includes(person) ? current : [...current, person])}
-              >
-                {confirmed.includes(person)
-                  ? `✓ ${households[person]} đã ký xác nhận`
-                  : `Ký xác nhận cho ${households[person]} (${lines[person]} ${unit})`}
-              </Button>
+            <p>{confirmed.filter(index => people.includes(index)).length}/{people.length} hộ đã ký Fuji mẫu.</p>
+            {unitPrice > 0 && <p>{paid.length}/{people.length} khoản tiền hàng đã ghi SIM.</p>}
+            <p>Cọc cửa hàng · {money(deposit)} · {depositPaid ? "Đã nộp SIM" : "Chờ nộp"}</p>
+            {role === "seller" && !depositPaid && (
+              <Button onClick={() => {
+                setDepositPaid(true);
+                checkCommitments(confirmed, paid, true);
+              }}>Nộp cọc SIM · {money(deposit)}</Button>
             )}
-
-            {role === "rep" && (
-              <div className="grid gap-2 pt-1">
-                <label className="demo-check">
-                  <input type="checkbox" checked={stockReady} onChange={event => setStockReady(event.target.checked)} />
-                  <span>Còn đủ lượng khả dụng tại kho (mẫu)</span>
-                </label>
-                <Button
-                  disabled={!people.every(index => confirmed.includes(index))}
-                  onClick={() => advance(stockReady ? "deposit" : "conflict")}
-                >
-                  Chốt đơn
-                </Button>
-                <Button variant="ghost" onClick={() => advance("expired")}>
-                  Thử tình huống quá hạn
-                </Button>
-              </div>
+            {role === "household" && people.includes(person) && (
+              <>
+                <p>Hộ bạn · {confirmed.includes(person) ? "Đã xác nhận chữ ký mẫu" : "Chờ ký"}</p>
+                {!confirmed.includes(person) ? (
+                  <Button onClick={() => {
+                    const signed = [...confirmed, person];
+                    setConfirmed(signed);
+                    checkCommitments(signed, paid, depositPaid);
+                  }}>Ký Fuji mẫu</Button>
+                ) : unitPrice > 0 && (
+                  <Button disabled={paid.includes(person)} onClick={() => {
+                    const nextPaid = [...paid, person];
+                    setPaid(nextPaid);
+                    checkCommitments(confirmed, nextPaid, depositPaid);
+                  }}>{paid.includes(person) ? "Đã nộp tiền hàng" : `Nộp tiền hàng SIM · ${money(lines[person] * unitPrice)}`}</Button>
+                )}
+              </>
             )}
           </div>
         )}
-        {step === "deposit" && role === "seller" && <Button onClick={() => advance(goods ? "payment" : "handoff")}>Ghi cọc SIM · {money(deposit)}</Button>}
-        {step === "payment" && <>
-          <p role="status">{paid.length}/{people.length} hộ đã thanh toán.</p>
-          {role === "household" && people.includes(person) && <Button disabled={paid.includes(person)} onClick={() => {
-            const next = [...paid, person];
-            setPaid(next);
-            if (people.every(index => next.includes(index))) advance("handoff");
-          }}>Ghi tiền hàng SIM · {money(lines[person] * unitPrice)}</Button>}
-        </>}
-        {(step === "handoff" || step === "issue") && role === "seller" && <>
-          <Button disabled={ready} onClick={() => { setReady(true); setReceived([...lines]); }}>Báo hàng sẵn sàng</Button>
-          {ready && <Button variant="secondary" disabled={evidence} onClick={() => setEvidence(true)}>{evidence ? "Đã ghi bằng chứng mẫu" : "Ghi bằng chứng mẫu"}</Button>}
-        </>}
-        {(step === "handoff" || step === "issue") && role === "rep" && ready && <>
-          {people.map(index => <label key={index} className="demo-order-quantity">Thực nhận · {households[index]}
-            <input type="number" min={0} max={lines[index]} value={received[index]} onChange={event => {
-              const value = event.target.valueAsNumber;
-              if (Number.isSafeInteger(value) && value >= 0 && value <= lines[index]) setReceived(replaceAt(received, index, value));
-            }} />
-          </label>)}
-          {add(received) > 0 && !evidence && <p>Cần bằng chứng từ cửa hàng để lập biên nhận.</p>}
-          <Button disabled={add(received) > 0 && !evidence} onClick={saveReceipt}>Lập biên nhận</Button>
-        </>}
-        {(step === "handoff" || step === "receipt") && (role === "seller" || role === "rep") &&
-          <Button variant="secondary" onClick={() => { setApprovals([]); advance("issue"); }}>Báo có vấn đề bàn giao</Button>}
-        {step === "receipt" && <>
-          <p role="status">Biên nhận {receiptVersion} · Nhận {add(received)}/{qty} {unit} · {approvals.length}/2 bên đã duyệt</p>
-          {(role === "seller" || role === "rep") && <Button disabled={approvals.includes(role)} onClick={() => approveReceipt(role)}>Duyệt biên nhận {receiptVersion}</Button>}
-        </>}
+
+        {/* 3. BÀN GIAO */}
+        {(step === "handoff" || step === "issue") && role === "seller" && (
+          <div className="flex flex-col gap-2">
+            <Button
+              disabled={ready}
+              onClick={() => {
+                setReady(true);
+                setReceived([...lines]);
+              }}
+            >
+              Báo hàng sẵn sàng tại sảnh
+            </Button>
+            {ready && (
+              <Button
+                variant="secondary"
+                disabled={evidence}
+                onClick={() => setEvidence(true)}
+              >
+                {evidence ? "✓ Đã tải bằng chứng giao nhận" : "Tải ảnh bằng chứng giao nhận"}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {(step === "handoff" || step === "issue") && role === "rep" && ready && (
+          <div className="flex flex-col gap-3">
+            {people.map((index) => (
+              <label key={index} className="demo-order-quantity">
+                Thực nhận · {households[index]}
+                <input
+                  type="number"
+                  min={0}
+                  max={lines[index]}
+                  value={received[index]}
+                  onChange={(event) => {
+                    const value = event.target.valueAsNumber;
+                    if (Number.isSafeInteger(value) && value >= 0 && value <= lines[index]) {
+                      setReceived(replaceAt(received, index, value));
+                    }
+                  }}
+                />
+              </label>
+            ))}
+            {add(received) > 0 && !evidence && <p>Cần bằng chứng từ cửa hàng để lập biên nhận.</p>}
+            <Button disabled={add(received) > 0 && !evidence} onClick={saveReceipt}>
+              Lập biên nhận giao nhận
+            </Button>
+          </div>
+        )}
+
+        {(step === "handoff" || step === "receipt") && (role === "seller" || role === "rep") && (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setApprovals([]);
+              advance("issue");
+            }}
+          >
+            Báo có vấn đề bàn giao
+          </Button>
+        )}
+
+        {/* DUYỆT BIÊN NHẬN */}
+        {step === "receipt" && (
+          <div className="space-y-3">
+            <p role="status" className="font-bold text-navy-800">
+              Biên nhận #{receiptVersion} · Nhận {add(received)}/{qty} {unit} · {approvals.length}/2 bên đã duyệt
+            </p>
+            {(role === "seller" || role === "rep") && (
+              <Button disabled={approvals.includes(role)} onClick={() => approveReceipt(role)}>
+                {approvals.includes(role) ? `✓ ${selectedRole?.label} đã duyệt` : `Duyệt biên nhận (${selectedRole?.label})`}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* 4. HOÀN TẤT */}
         {step === "complete" && (
           <div className="demo-result">
             <img src="/assets/delivery-van.webp" width={1024} height={1024} alt="" />
             <div>
-              <strong>{receivedQty} / {qty} {unit}</strong>
-              <p>{receivedQty < qty ? `Đã nhận ${receivedQty} ${unit}, thiếu ${qty - receivedQty} ${unit}` : "Đã nhận đủ hàng"}</p>
+              <strong>
+                {receivedQty} / {qty} {unit}
+              </strong>
+              <p>
+                {receivedQty < qty
+                  ? `Đã nhận ${receivedQty} ${unit}, thiếu ${qty - receivedQty} ${unit}. Hoàn tiền tự động cho hộ thiếu.`
+                  : "Đã nhận đủ toàn bộ hàng. Đơn hàng hoàn tất thành công!"}
+              </p>
             </div>
           </div>
         )}
-        {(step === "settling" || step === "complete") && settlement.map(item => (
-          <div className="demo-settlement" key={item.key}>
-            <p>{item.label}{posted.includes(item.key) && <span className="demo-settlement__status">Đã ghi SIM</span>}</p>
-            <strong>{money(item.amount)}</strong>
-            {role === "ops" && !posted.includes(item.key) && <Button variant="secondary" onClick={() => {
-              const next = [...posted, item.key];
-              setPosted(next);
-              if (next.length === settlement.length) advance("complete");
-            }}>Ghi SIM · {item.label}</Button>}
-          </div>
-        ))}
-        {notice && <p role="alert">{notice}</p>}
-      </Card>
-      <Card className="demo-stack demo-order-notifications">
-        <div className="demo-order-notifications__title">
-          <MaterialSymbol name="notifications" size={21} />
-          <CardTitle as="h2" className="ui-card__title--flush">Thông báo mẫu</CardTitle>
-        </div>
-        {notifications.length ? <>
-          <ul className="demo-order-log" role="list">
-            {notifications.slice(-5).map((message, index, visible) => (
-              <li key={index} className={index === visible.length - 1 ? "demo-order-log__latest" : undefined}>{message}</li>
-            ))}
-          </ul>
-          <Button variant="secondary" disabled={readCount === notifications.length} onClick={() => setReadCount(notifications.length)}>
-            {readCount === notifications.length ? "Đã đọc tất cả" : `Đánh dấu đã đọc (${notifications.length - readCount})`}
-          </Button>
-        </> : <p>Chưa có thông báo.</p>}
+
+        {/* QUYẾT TOÁN SIM */}
+        {(step === "settling" || step === "complete") &&
+          settlement.map((item) => (
+            <div className="demo-settlement" key={item.key}>
+              <p>
+                {item.label}
+                {posted.includes(item.key) && <span className="demo-settlement__status">Đã ghi SIM</span>}
+              </p>
+              <strong>{money(item.amount)}</strong>
+              {role === "ops" && !posted.includes(item.key) && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    const next = [...posted, item.key];
+                    setPosted(next);
+                    if (next.length === settlement.length) advance("complete");
+                  }}
+                >
+                  Ghi SIM · {item.label}
+                </Button>
+              )}
+            </div>
+          ))}
+
+        {notice && <p role="alert" className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-navy-800">{notice}</p>}
       </Card>
     </div>
   );

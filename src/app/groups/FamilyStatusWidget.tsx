@@ -31,7 +31,7 @@ export function readFamilyStatus(): FamilyStatusData {
     const saved = localStorage.getItem("oops_family_status");
     if (saved) {
       const data = JSON.parse(saved) as FamilyStatusData;
-      if (Number.isInteger(data?.members) && data.members >= 1 && data.members <= 20) return data;
+      if (Number.isInteger(data?.members) && data.members >= 1 && data.members <= 30) return data;
     }
   } catch {
     // Storage may be unavailable.
@@ -52,19 +52,29 @@ const INCOME_LABELS: Record<FamilyStatusData["incomeLevel"], { label: string; ba
   high: { label: "Trên 10 tr/tháng", badge: "Tự túc / Góp thêm", desc: "Sẵn sàng hỗ trợ thêm các hộ khác" },
 };
 
-export function FamilyStatusWidget({ onMembersSaved }: { onMembersSaved?: (members: number) => void }) {
+export function FamilyStatusWidget({
+  onMembersSaved,
+  onStatusSaved,
+}: {
+  onMembersSaved?: (members: number) => void;
+  onStatusSaved?: (data: FamilyStatusData) => void;
+}) {
   const [data, setData] = useState<FamilyStatusData>(DEFAULT_FAMILY_STATUS);
   const [isOpen, setIsOpen] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
 
   // Load from localStorage if present
   useEffect(() => {
-    setData(readFamilyStatus());
-  }, []);
+    const status = readFamilyStatus();
+    setData(status);
+    onMembersSaved?.(status.members);
+    onStatusSaved?.(status);
+  }, [onMembersSaved, onStatusSaved]);
 
   const handleSave = (newData: FamilyStatusData) => {
     setData(newData);
     onMembersSaved?.(newData.members);
+    onStatusSaved?.(newData);
     try {
       localStorage.setItem("oops_family_status", JSON.stringify(newData));
     } catch {
@@ -130,18 +140,24 @@ function FamilyStatusModalWidget({
   onClose: () => void;
   onSave: (newData: FamilyStatusData) => void;
 }) {
-  const [members, setMembers] = useState(data.members);
-  const [adults, setAdults] = useState(data.adults);
-  const [children, setChildren] = useState(data.children);
-  const [elderly, setElderly] = useState(data.elderly);
+  const [members, setMembers] = useState<number | "">(data.members);
+  const [adults, setAdults] = useState<number | "">(data.adults);
+  const [children, setChildren] = useState<number | "">(data.children);
+  const [elderly, setElderly] = useState<number | "">(data.elderly);
   const [housingType, setHousingType] = useState<FamilyStatusData["housingType"]>(data.housingType);
   const [incomeLevel, setIncomeLevel] = useState<FamilyStatusData["incomeLevel"]>(data.incomeLevel);
   const [priorityNeeds, setPriorityNeeds] = useState<string[]>(data.priorityNeeds);
   const [notes, setNotes] = useState(data.notes);
 
-  const handleMemberChange = (newVal: number) => {
-    const val = Math.max(1, Math.min(20, newVal));
-    setMembers(val);
+  const handleMemberChange = (raw: string) => {
+    if (raw === "") {
+      setMembers("");
+      return;
+    }
+    const val = parseInt(raw, 10);
+    if (!isNaN(val)) {
+      setMembers(Math.min(30, Math.max(0, val)));
+    }
   };
 
   const toggleNeed = (need: string) => {
@@ -152,11 +168,15 @@ function FamilyStatusModalWidget({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const finalMembers = typeof members === "number" && members > 0 ? members : 1;
+    const finalAdults = typeof adults === "number" ? adults : 0;
+    const finalChildren = typeof children === "number" ? children : 0;
+    const finalElderly = typeof elderly === "number" ? elderly : 0;
     onSave({
-      members,
-      adults,
-      children,
-      elderly,
+      members: finalMembers,
+      adults: finalAdults,
+      children: finalChildren,
+      elderly: finalElderly,
       housingType,
       incomeLevel,
       priorityNeeds,
@@ -164,15 +184,28 @@ function FamilyStatusModalWidget({
     });
   };
 
-  const waterLitres = members * 2 * 3;
+  const activeMembers = typeof members === "number" && members > 0 ? members : 1;
+  const waterLitres = activeMembers * 2 * 3;
 
   return (
     <WidgetDialog title="Hiện trạng gia đình" icon="family_restroom" onClose={onClose}>
       <form className="family-editor" onSubmit={handleSubmit}>
         <label className="family-editor__field">
           Số người trong nhà
-          <input type="number" min={1} max={20} inputMode="numeric" value={members}
-            onChange={event => handleMemberChange(event.target.valueAsNumber || 1)} />
+          <input
+            type="number"
+            min={1}
+            max={30}
+            inputMode="numeric"
+            value={members}
+            placeholder="1"
+            onChange={event => handleMemberChange(event.target.value)}
+            onBlur={() => {
+              if (members === "" || members < 1) {
+                setMembers(1);
+              }
+            }}
+          />
         </label>
         <label className="family-editor__field">
           Tình trạng nơi ở
@@ -214,8 +247,28 @@ function FamilyStatusModalWidget({
             ].map(({ label, value, setValue }) => (
               <label key={label} className="family-editor__field">
                 {label}
-                <input type="number" min={0} inputMode="numeric" value={value}
-                  onChange={event => setValue(Math.max(0, event.target.valueAsNumber || 0))} />
+                <input
+                  type="number"
+                  min={0}
+                  max={20}
+                  inputMode="numeric"
+                  value={value}
+                  placeholder="0"
+                  onChange={event => {
+                    const raw = event.target.value;
+                    if (raw === "") {
+                      setValue("");
+                    } else {
+                      const parsed = parseInt(raw, 10);
+                      if (!isNaN(parsed)) {
+                        setValue(Math.max(0, Math.min(20, parsed)));
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    if (value === "") setValue(0);
+                  }}
+                />
               </label>
             ))}
           </div>
@@ -231,8 +284,20 @@ function FamilyStatusModalWidget({
           </label>
         </details>
         <div className="family-editor__actions">
-          <Button variant="ghost" full={false} onClick={onClose}>Hủy</Button>
-          <Button type="submit">Lưu hiện trạng</Button>
+          <Button
+            variant="ghost"
+            full={false}
+            className="family-editor__cancel"
+            onClick={onClose}
+          >
+            Hủy
+          </Button>
+          <Button
+            type="submit"
+            className="family-editor__submit"
+          >
+            Lưu hiện trạng
+          </Button>
         </div>
       </form>
     </WidgetDialog>
