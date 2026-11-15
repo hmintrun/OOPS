@@ -87,7 +87,7 @@ export default function MePage() {
           <>
             <AccountSection data={state.data} />
             <ContactSection data={state.data} onData={onData} onUnauthorized={goLogin} />
-            <WalletSection data={state.data} />
+            <WalletSection data={state.data} onData={onData} onUnauthorized={goLogin} />
             <SignOutSection />
           </>
         )}

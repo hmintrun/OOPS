@@ -119,7 +119,7 @@ type StoredResult = { request_hash: string; status: number; response: unknown };
 export function write<I extends z.ZodType, R, O extends z.ZodType, P = undefined>(
   bodySchema: I,
   outputSchema: O,
-  status: 200 | 201,
+  status: 200 | 201 | 202,
   run: (client: PoolClient, call: Call, body: z.output<I>, prepared?: P) => Promise<R | ApiFailure>,
   options: {
     serialize?: (value: R) => z.input<O>;

@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CardTitle } from "@/components/ui";
+import { WalletLinkModal } from "@/components/wallet/WalletLinkModal";
 import type { Me } from "@/contracts/foundation";
 import { CopyButton } from "./CopyButton";
 import { shortenMiddle } from "./me-api";
@@ -14,7 +15,15 @@ const VERIFICATION: Record<VerificationState, { label: string; className: string
 };
 
 /** Ví Fuji: trạng thái liên kết ví, xác minh và điều kiện xác nhận hợp đồng. */
-export function WalletSection({ data }: { data: Me }) {
+export function WalletSection({
+  data,
+  onData,
+  onUnauthorized,
+}: {
+  data: Me;
+  onData?: (next: Me) => void;
+  onUnauthorized?: () => void;
+}) {
   const wallet = data.wallet;
   // verificationState ngoài ba giá trị đã biết (API đổi enum) → coi như chưa xác minh.
   const verification = wallet ? VERIFICATION[wallet.verificationState] : undefined;
@@ -33,7 +42,7 @@ export function WalletSection({ data }: { data: Me }) {
         {!wallet || !verification ? (
           <div>
             <p className="me-body-text">Chưa liên kết ví</p>
-            <p className="me-hint">Tính năng sắp ra mắt</p>
+            <p className="me-hint">Kết nối Core Wallet và ký thử thách trên Fuji để tham gia xác nhận hợp đồng.</p>
           </div>
         ) : (
           <div className="me-item me-wallet__address">
@@ -61,6 +70,9 @@ export function WalletSection({ data }: { data: Me }) {
           <span className={`me-chip ${data.confirmationEligible ? "me-chip--verified" : "me-chip--pending"}`}>
             {data.confirmationEligible ? "Có" : "Chưa"}
           </span>
+        </div>
+        <div>
+          <WalletLinkModal currentAddress={wallet?.address} onData={onData} onUnauthorized={onUnauthorized} />
         </div>
       </div>
     </Card>

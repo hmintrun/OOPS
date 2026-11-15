@@ -12,6 +12,15 @@ export const campaignState = z.enum(["DRAFT", "PUBLISHED"]);
 export const roundState = z.enum(["OPENING", "OPEN", "CONFIRMED", "CLOSED"]);
 
 export const patchMeInput = z.strictObject({ contactPrivate: z.string() });
+export const evmAddress = z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Địa chỉ ví EVM không hợp lệ.");
+export const txHash = z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Mã giao dịch Fuji không hợp lệ.");
+export const bytes32Hex = z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Giá trị bytes32 không hợp lệ.");
+export const walletVerificationState = z.enum(["PENDING", "VERIFIED", "FAILED"]);
+export const walletLinkInput = z.strictObject({
+  address: evmAddress,
+  proofTx: txHash,
+  nonce: uuid,
+});
 export const createGroupInput = z.strictObject({
   name: nonBlank, districtCode: nonBlank, wardCode: nonBlank, pickupPrivate: z.string().optional(),
 });
@@ -61,10 +70,20 @@ export const me = z.strictObject({
   userId: uuid,
   groupId: uuid.optional(),
   wallet: z.strictObject({
-    address: z.string(), verificationState: z.enum(["PENDING", "VERIFIED", "FAILED"]),
+    address: z.string(), verificationState: walletVerificationState,
   }).optional(),
   confirmationEligible: z.boolean(),
   contactPrivate: z.string().optional(),
+});
+export const walletChallenge = z.strictObject({
+  nonce: uuid,
+  expiresAt: isoDateTime,
+  challengeHash: bytes32Hex,
+  chainId: z.number().int(),
+  contractAddress: evmAddress,
+});
+export const walletLinkResult = z.strictObject({
+  verificationState: walletVerificationState,
 });
 export const membership = z.strictObject({ groupId: uuid, membershipId: uuid, role: memberRole });
 export const leftGroup = z.strictObject({ groupId: uuid, membershipId: uuid, leftAt: isoDateTime });
@@ -120,7 +139,11 @@ export const feed = z.strictObject({ items: z.array(demandItem), nextCursor: z.s
 
 export type ApiError = z.infer<typeof apiError>;
 export type Me = z.infer<typeof me>;
+export type WalletChallenge = z.infer<typeof walletChallenge>;
+export type WalletLinkInput = z.infer<typeof walletLinkInput>;
+export type WalletLinkResult = z.infer<typeof walletLinkResult>;
 export type Membership = z.infer<typeof membership>;
+export type LeftGroup = z.infer<typeof leftGroup>;
 export type Member = z.infer<typeof member>;
 export type Group = z.infer<typeof group>;
 export type Invite = z.infer<typeof invite>;

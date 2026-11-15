@@ -13,6 +13,8 @@ import {
   feed,
   group,
   invite,
+  leaveGroupInput,
+  leftGroup,
   me,
   membership,
   needs,
@@ -20,11 +22,17 @@ import {
   publishInput,
   publishResult,
   putCartInput,
+  walletChallenge,
+  walletLinkInput,
+  walletLinkResult,
 } from "@/contracts/foundation";
 
 export type Category = z.infer<typeof category>;
 export type Me = z.infer<typeof me>;
+export type WalletChallenge = z.infer<typeof walletChallenge>;
+export type WalletLinkResult = z.infer<typeof walletLinkResult>;
 export type Membership = z.infer<typeof membership>;
+export type LeftGroup = z.infer<typeof leftGroup>;
 export type Group = z.infer<typeof group>;
 export type Invite = z.infer<typeof invite>;
 export type Campaign = z.infer<typeof campaign>;
@@ -34,6 +42,7 @@ export type Needs = z.infer<typeof needs>;
 export type PublishResult = z.infer<typeof publishResult>;
 export type Feed = z.infer<typeof feed>;
 
+export type LinkWalletBody = z.input<typeof walletLinkInput>;
 export type CreateGroupBody = z.input<typeof createGroupInput>;
 export type CreateInviteBody = z.input<typeof createInviteInput>;
 export type CreateCampaignBody = z.input<typeof createCampaignInput>;
@@ -169,6 +178,17 @@ export function updateMe(contactPrivate: string): Promise<Me> {
   return apiFetch("/api/v1/me", { method: "PATCH", body, schema: me });
 }
 
+/** `GET /api/v1/wallet/challenge` — nhận thử thách một lần để ký proveWallet trên Fuji. */
+export function getWalletChallenge(): Promise<WalletChallenge> {
+  return apiFetch("/api/v1/wallet/challenge", { schema: walletChallenge });
+}
+
+/** `POST /api/v1/wallet/link` → 202 {verificationState}. */
+export function linkWallet(input: LinkWalletBody, idempotencyKey?: string): Promise<WalletLinkResult> {
+  const body = walletLinkInput.parse(input);
+  return apiFetch("/api/v1/wallet/link", { method: "POST", body, idempotencyKey, schema: walletLinkResult });
+}
+
 /** `POST /api/v1/groups` → 201 Membership. */
 export function createGroup(input: CreateGroupBody): Promise<Membership> {
   const body = createGroupInput.parse(input);
@@ -178,6 +198,17 @@ export function createGroup(input: CreateGroupBody): Promise<Membership> {
 /** `GET /api/v1/groups/{id}` — nhóm, thành viên và các đợt gom. */
 export function getGroup(groupId: string): Promise<Group> {
   return apiFetch(`/api/v1/groups/${encodeURIComponent(groupId)}`, { schema: group });
+}
+
+/** `POST /api/v1/groups/{id}/leave` → 200 LeftGroup. */
+export function leaveGroup(groupId: string, idempotencyKey?: string): Promise<LeftGroup> {
+  const body = leaveGroupInput.parse({});
+  return apiFetch(`/api/v1/groups/${encodeURIComponent(groupId)}/leave`, {
+    method: "POST",
+    body,
+    idempotencyKey,
+    schema: leftGroup,
+  });
 }
 
 /** `POST /api/v1/groups/{id}/invites` → 201 Invite kèm inviteUrl. */
