@@ -5,6 +5,7 @@ import { Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import { FamilyStatusWidget } from "./FamilyStatusWidget";
 import { formatDateTime } from "./helpers";
 import { InviteForm } from "./[id]/invite-form";
+import { LeaveGroupButton } from "./[id]/leave-group-button";
 
 export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
   const isRepresentative = data.repId === userId;
@@ -49,6 +50,7 @@ export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
           </ul>
         </Card>
         {isRepresentative && <InviteForm groupId={data.groupId} members={data.members.filter(member => member.role !== "REP")} />}
+        <LeaveGroupButton groupId={data.groupId} isRepresentative={isRepresentative} />
       </div>
     </AppShell>
   );

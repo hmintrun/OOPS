@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import type { confirmationRound } from "@/contracts/negotiation";
 import { Button } from "@/components/ui";
+import { FujiConfirmButton } from "@/components/wallet/FujiConfirmButton";
 import { dateTime } from "./trade-client";
 
 export function RoundInfo({ round, disabled, refresh }: {
@@ -13,7 +14,9 @@ export function RoundInfo({ round, disabled, refresh }: {
     {round.state === "OPENING" && <p>Đang chờ hệ thống mở vòng trên Fuji.</p>}
     {round.state === "CLOSED" && <p>Vòng xác nhận đã đóng.</p>}
     {round.myConfirmation?.state === "CONFIRMED" && <p>Hộ bạn đã xác nhận.</p>}
-    {round.state === "OPEN" && round.myConfirmation?.state === "PENDING" && <p>Hộ bạn còn cần ký trên Fuji. Tính năng ký trong ứng dụng đang được tích hợp.</p>}
+    {round.state === "OPEN" && round.myConfirmation?.state === "PENDING" && (
+      <FujiConfirmButton round={round} disabled={disabled} onConfirmed={refresh} />
+    )}
     <Button full={false} variant="secondary" disabled={disabled} onClick={refresh}>Cập nhật xác nhận</Button>
   </section>;
 }

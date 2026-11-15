@@ -33,5 +33,5 @@ yarn-error.log*
 *.swp
 *.swo
 
-# Claude Code worktrees (session-local, never commit)
-.claude/worktrees/
+# Claude Code session files & worktrees (local, never commit)
+.claude/

@@ -279,9 +279,9 @@ export async function expireFujiStage(
   if (reason === "CONFIRMATION_TIMEOUT" &&
       (current.state !== "AWAIT_CONFIRMATIONS" || await hasAllConfirmations(db, versionId, round.id))) return false;
   const { rows: [expired] } = await db.query<VersionRow>(
-    `update public.negotiation_versions set state = 'EXPIRED', reason_code = $2
+    `update public.negotiation_versions set state = 'EXPIRED', reason_code = $2::public.negotiation_version_reason
      where id = $1 and clock_timestamp() >= case
-       when $2 = 'CONFIRMATION_TIMEOUT' then confirm_by else rep_approve_by end returning *`, [versionId, reason],
+       when $2::text = 'CONFIRMATION_TIMEOUT' then confirm_by else rep_approve_by end returning *`, [versionId, reason],
   );
   if (!expired) return false;
   await db.query("update public.confirmation_rounds set state = 'CLOSED' where id = $1", [round.id]);
