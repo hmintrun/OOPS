@@ -54,7 +54,7 @@ export default function DraftPage() {
   const round = trade.data?.round;
   const voting = trade.data?.voting;
   const voteForbidden = trade.data?.voteForbidden ?? false;
-  const isVotingOffer = Boolean(voting) || Boolean(buyer?.draftOpen && buyer?.permissions?.editLine === false);
+  const isVotingOffer = Boolean(voting) || voteForbidden || Boolean(buyer?.draftOpen && buyer?.permissions?.editLine === false);
   const closedOfferState = buyer && !buyer.draftOpen && !version ? "EXPIRED" : undefined;
   useRoundRefresh(version?.state === "AWAIT_CONFIRMATIONS" && !trade.loading && !trade.busy, trade.refresh);
   const versionPath = `${path}/versions/${version?.version}`;

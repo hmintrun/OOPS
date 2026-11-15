@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { Button, Card, CardTitle } from "@/components/ui";
-import { contractList, contractQuery } from "@/contracts/orders";
+import { contractList, type Contract } from "@/contracts/orders";
 import { apiFetch } from "@/lib/api-client";
 import { dateTime, useTrade, vnd } from "../trade/trade-client";
 import { TradeStatus } from "../trade/TradeStatus";
@@ -17,20 +17,43 @@ const toneClasses = {
   sky: "bg-sky-tint text-navy-600",
 } as const;
 
+const orderTabs = [
+  { key: "all", label: "Tất cả", states: [] },
+  { key: "commitments", label: "Ký và thanh toán", states: ["AWAIT_COMMITMENTS", "AWAIT_DEPOSIT", "AWAIT_PAYMENT"] },
+  { key: "handoff", label: "Bàn giao", states: ["AWAIT_HANDOFF", "AWAIT_APPROVAL"] },
+  { key: "completed", label: "Hoàn tất", states: ["SETTLING", "COMPLETED"] },
+  { key: "review", label: "Đối soát / Đã hủy", states: ["NEEDS_REVIEW", "CANCELED"] },
+];
+
+const pageSize = 12;
+
 export default function OrdersPage() {
-  const [cursors, setCursors] = useState<string[]>([]);
   const [role, setRole] = useState("");
-  const [state, setState] = useState("");
-  const cursor = cursors.at(-1);
-  const load = useCallback(() => {
-    const filters = contractQuery.parse({ role: role || undefined, state: state || undefined, cursor });
-    const query = new URLSearchParams();
-    if (filters.role) query.set("role", filters.role);
-    if (filters.state) query.set("state", filters.state);
-    if (filters.cursor) query.set("cursor", filters.cursor);
-    return apiFetch(`/api/v1/contracts?${query}`, { schema: contractList });
-  }, [cursor, role, state]);
+  const [activeTab, setActiveTab] = useState(orderTabs[0].key);
+  const [page, setPage] = useState(0);
+  const load = useCallback(async () => {
+    const orders: Contract[] = [];
+    const query = new URLSearchParams({ limit: "50" });
+    const seenCursors = new Set<string>();
+    if (role) query.set("role", role);
+    do {
+      const result = await apiFetch(`/api/v1/contracts?${query}`, { schema: contractList });
+      orders.push(...result.items);
+      if (!result.nextCursor) return orders;
+      if (seenCursors.has(result.nextCursor)) throw new Error("Không tải được trang đơn tiếp theo. Vui lòng thử lại.");
+      seenCursors.add(result.nextCursor);
+      query.set("cursor", result.nextCursor);
+    } while (true);
+  }, [role]);
   const trade = useTrade(load);
+  const orders = trade.data ?? [];
+  const tabs = orderTabs.map(tab => ({
+    ...tab,
+    orders: tab.states.length ? orders.filter(order => tab.states.includes(order.state)) : orders,
+  }));
+  const filteredOrders = tabs.find(tab => tab.key === activeTab)?.orders ?? [];
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(filteredOrders.length / pageSize) - 1));
+  const displayedOrders = filteredOrders.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
   return <AppShell title="Đơn hàng" subtitle="Theo dõi đơn, bàn giao và thanh toán." illustration="parcel" bare>
     <div className="ui-stack">
       <Card className="overflow-hidden border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-sky-50 shadow-sm">
@@ -63,27 +86,26 @@ export default function OrdersPage() {
         <label className="grid gap-1">Vai trò
           <select className="rounded-input border border-line p-2" value={role} onChange={event => {
             setRole(event.target.value);
-            setCursors([]);
+            setPage(0);
           }}>
             <option value="">Tất cả vai trò</option>
             <option value="buyer">Đơn mua</option>
             <option value="seller">Đơn bán</option>
           </select>
         </label>
-        <label className="grid gap-1">Trạng thái
-          <select className="rounded-input border border-line p-2" value={state} onChange={event => {
-            setState(event.target.value);
-            setCursors([]);
-          }}>
-            <option value="">Tất cả trạng thái</option>
-            {Object.entries(orderStates).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </label>
       </Card>
       <TradeStatus {...trade} retry={() => void trade.refresh()} />
       {trade.data && <>
-        {trade.data.items.length === 0 ? <Card className="ui-status-card"><p>Chưa có đơn hàng ở trang này.</p></Card> : <div className="ui-card-grid">
-          {trade.data.items.map(order => <Card key={order.contractId} className="flex flex-col items-start gap-3">
+        <div role="group" aria-label="Lọc theo tiến độ" className="flex flex-wrap gap-2">
+          {tabs.map(tab => (
+            <Button key={tab.key} full={false} variant={tab.key === activeTab ? "primary" : "secondary"}
+              aria-pressed={tab.key === activeTab} onClick={() => { setActiveTab(tab.key); setPage(0); }}>
+              {tab.label} <span>{tab.orders.length}</span>
+            </Button>
+          ))}
+        </div>
+        {displayedOrders.length === 0 ? <Card className="ui-status-card"><p>Chưa có đơn hàng ở trang này.</p></Card> : <div className="ui-card-grid">
+          {displayedOrders.map(order => <Card key={order.contractId} className="flex flex-col items-start gap-3">
             <div className="flex w-full flex-wrap items-start justify-between gap-2">
               <CardTitle as="h2" className="ui-card__title--flush">Đơn {order.contractId.slice(0, 8).toUpperCase()}</CardTitle>
               <span className={`rounded-pill px-3 py-1 text-sm font-bold ${toneClasses[orderStateTones[order.state]]}`}>{orderStates[order.state]}</span>
@@ -97,11 +119,9 @@ export default function OrdersPage() {
           </Card>)}
         </div>}
         <div className="ui-actions">
-          {cursor && <Button variant="secondary" full={false} disabled={trade.loading} onClick={() => setCursors(current => current.slice(0, -1))}>Trang trước</Button>}
-          {trade.data.nextCursor && <Button variant="secondary" full={false} disabled={trade.loading} onClick={() => {
-            const next = trade.data?.nextCursor;
-            if (next) setCursors(current => [...current, next]);
-          }}>Trang sau</Button>}
+          {currentPage > 0 && <Button variant="secondary" full={false} onClick={() => setPage(currentPage - 1)}>Trang trước</Button>}
+          {(currentPage + 1) * pageSize < filteredOrders.length &&
+            <Button variant="secondary" full={false} onClick={() => setPage(currentPage + 1)}>Trang sau</Button>}
         </div>
       </>}
     </div>
