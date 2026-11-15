@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SHELL_NAV_ITEMS } from "@/components/app-shell";
 import { Button, Card, CardTitle, IconTile, MaterialSymbol, ScreenHeader } from "@/components/ui";
 import { NavigationFrame } from "@/components/ui/BottomNav";
@@ -11,13 +11,59 @@ import { FEED_PAGE_SIZE, FeedPagination } from "@/app/feed/FeedPagination";
 import { OfferModalWidget, type OfferSubmitData } from "@/app/feed/OfferModalWidget";
 import { FamilyStatusWidget, readFamilyStatus, type FamilyStatusData } from "@/app/groups/FamilyStatusWidget";
 import { PwaInstallCard } from "@/components/pwa";
-import { toLocalInputValue } from "@/app/campaigns/_shared/dates";
+import { formatDateTime, toLocalInputValue } from "@/app/campaigns/_shared/dates";
 import type { CatalogItem, DemandItem } from "@/contracts/foundation";
 import { scenario } from "./scenario";
 import { OrderDemo, getDemoOrderStatus } from "./OrderDemo";
 import { SAMPLE_DEMANDS } from "./sampleDemands";
 
 type Tab = "groups" | "feed" | "orders" | "me";
+
+type CampaignDraft = { name: string; collectUntil: string; needBy: string; location: string };
+const campaignDraftKey = "oops_demo_campaign_draft";
+
+type CampaignCartItem = { name: string; quantity: number; unit: string };
+
+function CampaignHouseholdCart({ items }: { items: CampaignCartItem[] }) {
+  return (
+    <section className="grid gap-2 rounded-input bg-emerald-50 p-3 text-sm text-navy-900">
+      <h3 className="font-bold">Giỏ của nhà mình</h3>
+      <dl className="grid gap-1">
+        {items.map(item => (
+          <div key={item.name} className="flex flex-wrap justify-between gap-x-3">
+            <dt>{item.name}</dt>
+            <dd className="font-bold">{item.quantity} {item.unit}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+const earlierCampaigns = [
+  {
+    id: "rain-kit",
+    name: "Bổ sung nhu yếu phẩm sau mưa lớn",
+    needBy: "2026-11-14T10:00:00+07:00",
+    items: [{ name: "Nước sạch 20L", quantity: 8, householdQuantity: 3, unit: "bình" }, { name: "Mì tôm thùng", quantity: 4, householdQuantity: 1, unit: "thùng" }],
+  },
+  {
+    id: "power-kit",
+    name: "Đồ dự phòng khi mất điện",
+    needBy: "2026-11-12T18:00:00+07:00",
+    items: [{ name: "Đèn pin sạc", quantity: 5, householdQuantity: 2, unit: "cái" }, { name: "Túi y tế sơ cứu", quantity: 3, householdQuantity: 1, unit: "túi" }],
+  },
+];
+
+function defaultCampaignDraft(): CampaignDraft {
+  const now = Date.now();
+  return {
+    name: "Đợt gom nhu yếu phẩm 72 giờ",
+    collectUntil: toLocalInputValue(new Date(now + 24 * 60 * 60 * 1000)),
+    needBy: toLocalInputValue(new Date(now + 72 * 60 * 60 * 1000)),
+    location: "Sảnh chính Chung cư Skyview, P. 22, Q. Bình Thạnh",
+  };
+}
 
 type ReliefItemDef = {
   id: string;
@@ -238,9 +284,11 @@ export function OopsDemo() {
   const [itemQuantities, setItemQuantities] = useState<Record<string, number>>({});
   const [saved, setSaved] = useState(false);
   const [isCampaignManageOpen, setIsCampaignManageOpen] = useState(false);
-  const [campaignNeedBy, setCampaignNeedBy] = useState("");
+  const [isCampaignListOpen, setIsCampaignListOpen] = useState(false);
+  const [earlierCampaignId, setEarlierCampaignId] = useState<string>();
+  const [campaignDraft, setCampaignDraft] = useState<CampaignDraft>();
+  const [campaignSaved, setCampaignSaved] = useState(false);
   const [campaignError, setCampaignError] = useState("");
-  const publishButton = useRef<HTMLButtonElement>(null);
 
   // Phân trang Feed demo
   const [currentPage, setCurrentPage] = useState(1);
@@ -252,8 +300,9 @@ export function OopsDemo() {
 
   // Widget Chào hàng tương tác
   const [selectedDemand, setSelectedDemand] = useState<DemandItem | null>(null);
-  const [publishedDemands, setPublishedDemands] = useState<Array<{ item: DemandItem; category: CatalogItem["category"]; price: number }>>([]);
+  const [publishedDemands, setPublishedDemands] = useState<Array<{ item: DemandItem; category: CatalogItem["category"]; price: number; householdQuantity: number }>>([]);
   const phase = publishedDemands.length ? "published" : "draft";
+  const earlierCampaign = earlierCampaigns.find(campaign => campaign.id === earlierCampaignId);
 
   // Lọc các mặt hàng dựa vào nhu cầu đã chọn trong Hiện trạng gia đình
   const rawNeeds = familyStatus.priorityNeeds && familyStatus.priorityNeeds.length > 0
@@ -269,18 +318,29 @@ export function OopsDemo() {
   const currentSuggested = currentDef.calcSuggested(people);
   const currentStock = itemStocks[currentKey] ?? 0;
   const currentWanted = itemQuantities[currentKey] ?? Math.max(1, currentSuggested - currentStock);
-  const currentShares = [currentWanted, ...currentDef.defaultOtherHouseholds];
-  const currentTotal = currentShares.reduce((sum, share) => sum + share, 0);
+  const campaignItems = activeKeys.map(key => {
+    const definition = RELIEF_ITEM_DEFS[key];
+    const wanted = itemQuantities[key] ?? Math.max(1, definition.calcSuggested(people) - (itemStocks[key] ?? 0));
+    const target = wanted + definition.defaultOtherHouseholds.reduce((sum, amount) => sum + amount, 0);
+    return { key, definition, target, wanted };
+  });
+  const campaignSummary = phase === "published"
+    ? publishedDemands.map(({ item }) => ({ key: item.demandItemId, name: item.name, quantity: item.target, unit: item.unit }))
+    : campaignItems.map(({ key, definition, target }) => ({ key, name: definition.shortName, quantity: target, unit: definition.unit }));
 
   useEffect(() => {
     const status = readFamilyStatus();
     setFamilyStatus(status);
     setPeople(status.members);
+    try {
+      const stored = JSON.parse(localStorage.getItem(campaignDraftKey) ?? "null");
+      if (stored && ["name", "collectUntil", "needBy", "location"].every(key => typeof stored[key] === "string")) {
+        setCampaignDraft(stored);
+      }
+    } catch {
+      // The demo can still be used without local storage.
+    }
   }, []);
-
-  useEffect(() => {
-    if (saved && phase === "draft") publishButton.current?.focus();
-  }, [saved, phase]);
 
   function changeTab(nextTab: Tab) {
     setTab(nextTab);
@@ -299,7 +359,11 @@ export function OopsDemo() {
     setOrders(INITIAL_DEMO_ORDERS);
     setSelectedOrderId(null);
     setOrderFilterTab("all");
-    setCampaignNeedBy("");
+    setCampaignDraft(undefined);
+    setCampaignSaved(false);
+    setIsCampaignListOpen(false);
+    setEarlierCampaignId(undefined);
+    try { localStorage.removeItem(campaignDraftKey); } catch { /* Storage may be unavailable. */ }
     setCampaignError("");
     setPublishedDemands([]);
     changeTab("groups");
@@ -341,23 +405,21 @@ export function OopsDemo() {
     setSaved(false);
   }, []);
 
-  function showPublishedDemands(): boolean {
+  function showPublishedDemands(draft = campaignDraft): boolean {
     if (phase === "draft") {
-      const deadline = campaignNeedBy ? new Date(campaignNeedBy) : new Date(Date.now() + 72 * 60 * 60 * 1000);
+      const deadline = new Date((draft ?? defaultCampaignDraft()).needBy);
       if (!Number.isFinite(deadline.getTime()) || deadline.getTime() <= Date.now()) {
         setCampaignError("Chọn hạn cần hàng trong tương lai.");
-        setIsCampaignManageOpen(true);
+        openCampaignEditor(false);
         return false;
       }
       const needBy = deadline.toISOString();
-      setPublishedDemands(activeKeys.map((key, index) => {
-        const definition = RELIEF_ITEM_DEFS[key];
+      setPublishedDemands(campaignItems.map(({ key, definition, target, wanted }, index) => {
         const fixtureSuffix = String(100 + index).padStart(12, "0");
-        const wanted = itemQuantities[key] ?? Math.max(1, definition.calcSuggested(people) - (itemStocks[key] ?? 0));
-        const target = wanted + definition.defaultOtherHouseholds.reduce((sum, amount) => sum + amount, 0);
         return {
           category: key === "water" ? "WATER" : key === "food" || key === "cans" ? "FOOD" : "ESSENTIALS",
           price: definition.price,
+          householdQuantity: wanted,
           item: {
             demandItemId: `10000000-0000-4000-8000-${fixtureSuffix}`,
             campaignId: "c0000000-0000-4000-8000-000000000100",
@@ -378,6 +440,14 @@ export function OopsDemo() {
     setCurrentPage(1);
     changeTab("feed");
     return true;
+  }
+
+  function openCampaignEditor(clearError = true) {
+    setCampaignDraft(current => current ?? defaultCampaignDraft());
+    if (clearError) setCampaignError("");
+    setCampaignSaved(false);
+    setIsCampaignListOpen(false);
+    setIsCampaignManageOpen(true);
   }
 
   const demands = [...publishedDemands, ...SAMPLE_DEMANDS];
@@ -457,14 +527,14 @@ export function OopsDemo() {
                 <div className="ui-group-campaign p-3 rounded-2xl bg-gradient-to-br from-emerald-50/70 via-sky-50/50 to-amber-50/40 border border-emerald-100">
                   <div className="flex items-center justify-between">
                     <strong className="text-sm font-extrabold text-navy-900">
-                      {phase === "draft" ? "Đợt gom #01 · Ứng phó lụt bão" : "Đợt gom #01 · Đã đăng bảng tin"}
+                      {campaignDraft?.name ?? "Đợt gom nhu yếu phẩm 72 giờ"}
                     </strong>
                     <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-200">
                       {phase === "draft" ? "⚡ Mở gom 72h" : "Đang chờ chào hàng"}
                     </span>
                   </div>
                   <span className="text-xs text-navy-600 mt-1 block">
-                    Cần hàng trước 18:00, 16/11 · Hạn đóng giỏ: 12:00, 16/11
+                    {campaignDraft ? `Đóng giỏ ${formatDateTime(campaignDraft.collectUntil)} · Cần hàng ${formatDateTime(campaignDraft.needBy)}` : "Lịch gom mặc định trong 72 giờ"}
                   </span>
 
                   {/* Thanh tiến độ gom giỏ của các hộ (Capsule style học từ Finch/Camp app) */}
@@ -490,13 +560,17 @@ export function OopsDemo() {
                   </div>
                 </div>
 
+                <div className="mt-3 flex items-center justify-between gap-2 rounded-input bg-sky-tint px-3 py-2 text-sm text-navy-900">
+                  <span>{earlierCampaigns[0].name}</span>
+                  <span className="shrink-0 text-xs font-bold text-green-700">Đã đăng</span>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setIsCampaignManageOpen(true)}
+                  onClick={() => setIsCampaignListOpen(true)}
                   className="ui-btn ui-btn--primary ui-btn--full mt-3 flex items-center justify-center gap-1.5"
                 >
                   <MaterialSymbol name="tune" size={18} />
-                  Quản lý đợt gom
+                  Xem các đợt gom
                 </button>
               </Card>
 
@@ -541,188 +615,6 @@ export function OopsDemo() {
               </Card>
             </div>
 
-            {/* 3. Bộ chọn mặt hàng gom chung (đồng bộ từ Hiện trạng gia đình) */}
-            <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs">
-              <div className="flex items-center justify-between mb-2.5">
-                <span className="text-xs font-extrabold text-navy-800 flex items-center gap-1.5">
-                  <MaterialSymbol name="checklist" size={17} className="text-emerald-700" />
-                  Mặt hàng cần chuẩn bị trước lũ (theo Hiện trạng):
-                </span>
-                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                  {activeKeys.length} danh mục
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {activeKeys.map((key) => {
-                  const def = RELIEF_ITEM_DEFS[key] || RELIEF_ITEM_DEFS.water;
-                  const isSelected = currentKey === key;
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => {
-                        setActiveItemKey(key);
-                        setSaved(false);
-                      }}
-                      className={`demo-relief-pill ${isSelected ? "demo-relief-pill--active" : ""}`}
-                    >
-                      <MaterialSymbol name={def.icon} size={16} />
-                      {def.shortName}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* 4. Hai thẻ giỏ nhà mình & giỏ của nhóm */}
-            <div className="ui-card-grid ui-card-grid--split demo-cart-grid">
-              <Card className="demo-stack demo-family-form">
-                <div className="demo-heading">
-                  <img
-                    src={currentDef.imgSrc}
-                    alt=""
-                    className="h-12 w-12 rounded-2xl object-cover shadow-xs border border-line flex-none"
-                  />
-                  <div>
-                    <CardTitle as="h2">Giỏ của nhà mình</CardTitle>
-                    <p>{currentDef.name}</p>
-                  </div>
-                </div>
-
-                {/* Chip hiển thị quy mô hộ - KHÔNG hỏi lại số người */}
-                <div className="flex items-center justify-between p-2.5 rounded-2xl bg-sky-50 border border-sky-100 text-xs font-bold text-navy-800">
-                  <span className="flex items-center gap-1.5 text-sky-700">
-                    <MaterialSymbol name="family_restroom" size={16} />
-                    Quy mô gia đình:
-                  </span>
-                  <span className="bg-white px-2.5 py-0.5 rounded-xl border border-sky-200 text-navy-900 font-extrabold">
-                    {people} người (theo Hiện trạng gia đình)
-                  </span>
-                </div>
-
-                <div className="demo-fields">
-                  <label>
-                    <IconTile icon="inventory_2" tone="amber" />
-                    <span>Đang có sẵn tại nhà</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={999}
-                      value={currentStock}
-                      disabled={phase !== "draft"}
-                      onChange={(event) => {
-                        const val = Math.max(0, event.target.valueAsNumber || 0);
-                        setItemStocks(prev => ({ ...prev, [currentKey]: val }));
-                        setSaved(false);
-                      }}
-                    />
-                  </label>
-                  <label>
-                    <IconTile icon="shopping_basket" tone="green" />
-                    <span>Số lượng muốn đặt ({currentDef.unit})</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={999}
-                      value={currentWanted}
-                      disabled={phase !== "draft"}
-                      onChange={(event) => {
-                        const val = Math.max(1, event.target.valueAsNumber || 1);
-                        setItemQuantities(prev => ({ ...prev, [currentKey]: val }));
-                        setSaved(false);
-                      }}
-                    />
-                  </label>
-                </div>
-
-                <div className="demo-recommendation">
-                  <div className="flex items-center gap-2.5 w-full">
-                    <span className="flex-none p-1.5 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center shadow-2xs">
-                      <MaterialSymbol name="health_and_safety" size={20} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-black text-amber-950">
-                          Khuyến nghị chuẩn 72h trước lũ ({people} người):
-                        </span>
-                        <strong>{currentSuggested} {currentDef.unit}</strong>
-                      </div>
-                      <span className="text-[11px] text-amber-900 font-semibold block mt-0.5">
-                        {currentDef.suggestedDesc(people)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <Button disabled={phase !== "draft" || saved} onClick={() => setSaved(true)}>
-                  {saved ? `Đã lưu giỏ (${currentDef.shortName})` : `Lưu giỏ ${currentDef.shortName}`}
-                </Button>
-              </Card>
-
-              <Card className="demo-stack demo-group-card">
-                <div className="demo-heading">
-                  <IconTile icon="groups" tone="green" />
-                  <div>
-                    <CardTitle as="h2">Giỏ của nhóm</CardTitle>
-                    <p>{scenario.group} · Gom chung 3 hộ</p>
-                  </div>
-                </div>
-
-                <div className="demo-group-total">
-                  <div>
-                    <strong>{currentTotal} {currentDef.unit}</strong>
-                    <p>Tổng nhu cầu món {currentDef.shortName}</p>
-                  </div>
-                  <img src={currentDef.imgSrc} alt="" width={64} height={64} className="h-16 w-16 rounded-xl object-cover" />
-                </div>
-
-                <dl className="demo-group-shares">
-                  <div>
-                    <dt>Nhà mình</dt>
-                    <dd>{currentWanted} {currentDef.unit}</dd>
-                  </div>
-                  <div>
-                    <dt>Hai hộ còn lại</dt>
-                    <dd>{currentShares.slice(1).reduce((a, b) => a + b, 0)} {currentDef.unit}</dd>
-                  </div>
-                </dl>
-
-                {/* Danh sách tổng hợp toàn bộ các món trong đợt */}
-                <div className="p-3 rounded-2xl bg-white border border-slate-200 text-xs space-y-1.5 shadow-2xs">
-                  <span className="font-bold text-navy-700 block">Tổng hợp toàn bộ đợt gom (3 hộ):</span>
-                  {activeKeys.map((k) => {
-                    const def = RELIEF_ITEM_DEFS[k] || RELIEF_ITEM_DEFS.water;
-                    const stockVal = itemStocks[k] ?? 0;
-                    const myQ = itemQuantities[k] ?? Math.max(1, def.calcSuggested(people) - stockVal);
-                    const grpTotal = myQ + def.defaultOtherHouseholds.reduce((a, b) => a + b, 0);
-                    return (
-                      <div key={k} className="flex justify-between items-center text-navy-800">
-                        <span>{def.shortName}:</span>
-                        <strong className="text-emerald-800">{grpTotal} {def.unit}</strong>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <p className="demo-note" role="status">
-                  {saved
-                    ? phase === "draft"
-                      ? "Giỏ đã lưu. Đăng nhu cầu để các nhà cung cấp chào giá."
-                      : "Nhu cầu đã đăng. Bạn có thể xem trên Bảng tin."
-                    : "Lưu giỏ của nhà mình để hoàn tất đợt gom."}
-                </p>
-
-                <Button
-                  ref={publishButton}
-                  disabled={!saved}
-                  onClick={() => {
-                    showPublishedDemands();
-                  }}
-                >
-                  {phase === "draft" ? "Đăng nhu cầu sang Bảng tin" : "Xem nhu cầu đã đăng"}
-                </Button>
-              </Card>
-            </div>
           </div>
         )}
 
@@ -912,65 +804,268 @@ export function OopsDemo() {
         {tab === "me" && <PwaInstallCard />}
       </div>
 
-      {/* Widget Quản lý đợt gom (Dành cho Đại diện nhóm · User 1) */}
-      {isCampaignManageOpen && (
-        <WidgetDialog title="Quản lý đợt gom (Đại diện: User 1)" icon="campaign" onClose={() => setIsCampaignManageOpen(false)}>
-          <div className="space-y-3.5 p-1 text-xs">
-            <div className="p-3 rounded-2xl bg-amber-50/90 border border-amber-200">
-              <span className="font-extrabold text-navy-900 block mb-0.5">Vai trò: Đại diện nhóm (User 1)</span>
-              <p className="text-navy-600 leading-relaxed">
-                Bạn có quyền điều chỉnh thời gian nhận hàng, theo dõi giỏ của 5 hộ và chốt đợt gom để gửi lên Bảng tin công khai.
-              </p>
+      {isCampaignListOpen && (
+        <WidgetDialog title="Các đợt gom" icon="campaign" onClose={() => {
+          setIsCampaignListOpen(false);
+          setEarlierCampaignId(undefined);
+        }}>
+          {earlierCampaign ? (
+            <div className="grid gap-3">
+              <div>
+                <h3 className="font-bold text-navy-900">{earlierCampaign.name}</h3>
+                <p className="text-sm text-navy-600">Đã đăng · Cần trước {formatDateTime(earlierCampaign.needBy)}</p>
+              </div>
+              <CampaignHouseholdCart items={earlierCampaign.items.map(item => ({ ...item, quantity: item.householdQuantity }))} />
+              <h3 className="font-bold text-navy-900">Tổng nhu cầu của nhóm</h3>
+              <dl className="grid gap-2 rounded-input bg-sky-tint p-3 text-sm text-navy-900">
+                {earlierCampaign.items.map(item => (
+                  <div key={item.name} className="flex flex-wrap justify-between gap-x-3">
+                    <dt>{item.name}</dt>
+                    <dd className="font-bold">{item.quantity} {item.unit}</dd>
+                  </div>
+                ))}
+              </dl>
+              <Button variant="secondary" onClick={() => setEarlierCampaignId(undefined)}>Về danh sách đợt gom</Button>
             </div>
+          ) : (
+            <ul className="grid gap-2">
+              <li>
+                <button type="button" className="ui-group-campaign w-full text-start" onClick={() => openCampaignEditor()}>
+                  <strong>{campaignDraft?.name ?? "Đợt gom nhu yếu phẩm 72 giờ"}</strong>
+                  <span>{phase === "draft" ? "Đang chuẩn bị" : "Đã đăng"}{campaignDraft && ` · Cần trước ${formatDateTime(campaignDraft.needBy)}`}</span>
+                </button>
+              </li>
+              {earlierCampaigns.map(campaign => (
+                <li key={campaign.id}>
+                  <button type="button" className="ui-group-campaign w-full text-start" onClick={() => setEarlierCampaignId(campaign.id)}>
+                    <strong>{campaign.name}</strong>
+                    <span>Đã đăng · Cần trước {formatDateTime(campaign.needBy)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </WidgetDialog>
+      )}
+
+      {/* Widget Quản lý đợt gom (Dành cho Đại diện nhóm · User 1) */}
+      {isCampaignManageOpen && campaignDraft && (
+        <WidgetDialog title="Quản lý đợt gom" icon="campaign" onClose={() => setIsCampaignManageOpen(false)}>
+          <div className="grid gap-4">
+            {phase === "draft" ? (
+              <section className="grid gap-3" aria-label="Giỏ của đợt gom">
+              {/* 3. Bộ chọn mặt hàng gom chung (đồng bộ từ Hiện trạng gia đình) */}
+              <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs">
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-xs font-extrabold text-navy-800 flex items-center gap-1.5">
+                    <MaterialSymbol name="checklist" size={17} className="text-emerald-700" />
+                    Mặt hàng của đợt gom
+                  </span>
+                  <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    {activeKeys.length} danh mục
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {activeKeys.map((key) => {
+                    const def = RELIEF_ITEM_DEFS[key] || RELIEF_ITEM_DEFS.water;
+                    const isSelected = currentKey === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setActiveItemKey(key)}
+                        aria-pressed={isSelected}
+                        className={`demo-relief-pill ${isSelected ? "demo-relief-pill--active" : ""}`}
+                      >
+                        <MaterialSymbol name={def.icon} size={16} />
+                        {def.shortName}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Giỏ của nhà mình */}
+              <div>
+                <Card className="demo-stack demo-family-form">
+                  <div className="demo-heading">
+                    <img
+                      src={currentDef.imgSrc}
+                      alt=""
+                      className="h-12 w-12 rounded-2xl object-cover shadow-xs border border-line flex-none"
+                    />
+                    <div>
+                      <CardTitle as="h2">Giỏ của nhà mình</CardTitle>
+                      <p>{currentDef.name}</p>
+                    </div>
+                  </div>
+
+                  {/* Chip hiển thị quy mô hộ - KHÔNG hỏi lại số người */}
+                  <div className="flex items-center justify-between p-2.5 rounded-2xl bg-sky-50 border border-sky-100 text-xs font-bold text-navy-800">
+                    <span className="flex items-center gap-1.5 text-sky-700">
+                      <MaterialSymbol name="family_restroom" size={16} />
+                      Quy mô gia đình:
+                    </span>
+                    <span className="bg-white px-2.5 py-0.5 rounded-xl border border-sky-200 text-navy-900 font-extrabold">
+                      {people} người (theo Hiện trạng gia đình)
+                    </span>
+                  </div>
+
+                  <div className="demo-fields">
+                    <label>
+                      <IconTile icon="inventory_2" tone="amber" />
+                      <span>Đang có sẵn tại nhà</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={999}
+                        value={currentStock}
+                        disabled={phase !== "draft"}
+                        onChange={(event) => {
+                          const val = Math.max(0, event.target.valueAsNumber || 0);
+                          setItemStocks(prev => ({ ...prev, [currentKey]: val }));
+                          setSaved(false);
+                        }}
+                      />
+                    </label>
+                    <label>
+                      <IconTile icon="shopping_basket" tone="green" />
+                      <span>Số lượng muốn đặt ({currentDef.unit})</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={999}
+                        value={currentWanted}
+                        disabled={phase !== "draft"}
+                        onChange={(event) => {
+                          const val = Math.max(1, event.target.valueAsNumber || 1);
+                          setItemQuantities(prev => ({ ...prev, [currentKey]: val }));
+                          setSaved(false);
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="demo-recommendation">
+                    <div className="flex items-center gap-2.5 w-full">
+                      <span className="flex-none p-1.5 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center shadow-2xs">
+                        <MaterialSymbol name="health_and_safety" size={20} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-amber-950">
+                            Khuyến nghị chuẩn 72h trước lũ ({people} người):
+                          </span>
+                          <strong>{currentSuggested} {currentDef.unit}</strong>
+                        </div>
+                        <span className="text-[11px] text-amber-900 font-semibold block mt-0.5">
+                          {currentDef.suggestedDesc(people)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button disabled={phase !== "draft" || saved} onClick={() => setSaved(true)}>
+                    {saved ? "Đã lưu giỏ" : "Lưu giỏ"}
+                  </Button>
+                </Card>
+                </div>
+              </section>
+            ) : (
+              <CampaignHouseholdCart items={publishedDemands.map(({ item, householdQuantity }) => ({ name: item.name, quantity: householdQuantity, unit: item.unit }))} />
+            )}
+          <form className="grid gap-4 text-sm" onChange={() => {
+            setCampaignSaved(false);
+            setCampaignError("");
+          }} onSubmit={event => {
+            event.preventDefault();
+            const fields = new FormData(event.currentTarget);
+            const draft = {
+              name: String(fields.get("name") ?? "").trim(),
+              collectUntil: String(fields.get("collectUntil") ?? ""),
+              needBy: String(fields.get("needBy") ?? ""),
+              location: String(fields.get("location") ?? "").trim(),
+            };
+            const collectUntil = new Date(draft.collectUntil).getTime();
+            const needBy = new Date(draft.needBy).getTime();
+            if (!draft.name || !draft.location) {
+              setCampaignError("Nhập tên đợt gom và điểm nhận hàng.");
+              return;
+            }
+            if (!Number.isFinite(collectUntil) || !Number.isFinite(needBy) || collectUntil >= needBy || needBy <= Date.now()) {
+              setCampaignError("Chọn hạn cần hàng trong tương lai và sau hạn đóng giỏ.");
+              return;
+            }
+            setCampaignDraft(draft);
+            try { localStorage.setItem(campaignDraftKey, JSON.stringify(draft)); } catch { /* Keep the draft in this session. */ }
+            const submitter = (event.nativeEvent as SubmitEvent).submitter;
+            if (submitter instanceof HTMLButtonElement && submitter.value === "publish") {
+              if (showPublishedDemands(draft)) setIsCampaignManageOpen(false);
+            } else {
+              setCampaignSaved(true);
+            }
+          }}>
+            <fieldset disabled={phase !== "draft"} className="demo-campaign-fields grid min-w-0 gap-3">
+              <legend className="sr-only">Thông tin đợt gom</legend>
 
             <label className="block font-bold text-navy-900">
               Tên đợt gom
               <input
                 type="text"
-                defaultValue="Đợt gom nhu yếu phẩm khẩn cấp 72h · Cụm Skyview"
-                className="w-full mt-1 p-2 rounded-xl border border-slate-200 text-xs text-navy-900 font-semibold"
+                name="name"
+                required
+                defaultValue={campaignDraft.name}
               />
             </label>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <label className="block font-bold text-navy-900">
-                Hạn chót các hộ đóng giỏ
+                Hạn đóng giỏ
                 <input
-                  type="text"
-                  defaultValue="12:00, 16/11/2026"
-                  className="w-full mt-1 p-2 rounded-xl border border-slate-200 text-xs text-navy-900"
+                  type="datetime-local"
+                  name="collectUntil"
+                  required
+                  defaultValue={campaignDraft.collectUntil}
                 />
               </label>
               <label className="block font-bold text-navy-900">
-                Hạn cần nhận hàng
+                Hạn cần hàng
                 <input
                   type="datetime-local"
-                  value={campaignNeedBy}
-                  onChange={event => {
-                    setCampaignNeedBy(event.target.value);
-                    setCampaignError("");
-                  }}
-                  min={toLocalInputValue(new Date())}
-                  disabled={phase !== "draft"}
-                  className="w-full mt-1 p-2 rounded-xl border border-slate-200 text-xs text-navy-900"
+                  name="needBy"
+                  required
+                  defaultValue={campaignDraft.needBy}
                 />
               </label>
             </div>
 
             <label className="block font-bold text-navy-900">
-              Địa điểm giao nhận tập trung
-              <input
-                type="text"
-                defaultValue="Sảnh chính Chung cư Skyview, P. 22, Q. Bình Thạnh"
-                className="w-full mt-1 p-2 rounded-xl border border-slate-200 text-xs text-navy-900"
+              Điểm nhận hàng
+              <textarea
+                name="location"
+                rows={2}
+                required
+                defaultValue={campaignDraft.location}
               />
             </label>
 
-            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
-              <span className="font-bold text-navy-800 block">Tiến độ góp giỏ (3/5 hộ đã chốt):</span>
+            </fieldset>
+            <section className="grid gap-2 rounded-input bg-emerald-50 p-3 text-navy-900">
+              <h3 className="font-bold">Tổng nhu cầu của nhóm</h3>
+              <dl className="grid gap-1">
+                {campaignSummary.map(({ key, name, quantity, unit }) => (
+                  <div key={key} className="flex flex-wrap justify-between gap-x-3">
+                    <dt>{name}</dt>
+                    <dd className="font-bold">{quantity} {unit}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+            <details className="p-3 rounded-input bg-sky-tint space-y-2">
+              <summary className="cursor-pointer font-bold text-navy-900">{saved || phase === "published" ? "3" : "2"}/5 hộ đã lưu giỏ</summary>
               <div className="flex items-center justify-between text-navy-700">
                 <span>Nguyễn Văn An (Bạn):</span>
-                <strong className="text-emerald-700">Đã chốt giỏ cá nhân</strong>
+                <strong>{saved || phase === "published" ? "Đã lưu giỏ" : "Chưa lưu giỏ"}</strong>
               </div>
               <div className="flex items-center justify-between text-navy-700">
                 <span>Trần Thị Bình:</span>
@@ -984,27 +1079,25 @@ export function OopsDemo() {
                 <span>Phạm Minh Đức &amp; Vũ Thanh Hà:</span>
                 <em>Chưa hoàn tất chọn giỏ</em>
               </div>
-            </div>
+            </details>
 
             {campaignError && <p role="alert" className="font-bold text-danger">{campaignError}</p>}
-            <div className="pt-2 flex items-center gap-2">
-              <Button
-                variant="ghost"
-                full={false}
-                className="shrink-0 min-w-[5.5rem]"
-                onClick={() => setIsCampaignManageOpen(false)}
-              >
-                Đóng
-              </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  if (showPublishedDemands()) setIsCampaignManageOpen(false);
-                }}
-              >
-                {phase === "draft" ? "Chốt đợt & Đăng lên Bảng tin" : "Xem trên Bảng tin"}
-              </Button>
-            </div>
+            {campaignSaved && <p role="status" className="font-bold text-green-700">Đã lưu chỉnh sửa. Đợt gom vẫn là bản nháp.</p>}
+            {phase === "draft" ? (
+              <div className="grid grid-cols-2 gap-2">
+                <Button type="submit" value="save" variant="secondary" className="px-2">Lưu chỉnh sửa</Button>
+                <Button type="submit" value="publish" className="px-2">Chốt và đăng</Button>
+              </div>
+            ) : (
+              <Button onClick={() => {
+                if (showPublishedDemands()) setIsCampaignManageOpen(false);
+              }}>Xem trên Bảng tin</Button>
+            )}
+            <Button variant="ghost" onClick={() => {
+              setIsCampaignManageOpen(false);
+              setIsCampaignListOpen(true);
+            }}>Về danh sách đợt gom</Button>
+          </form>
           </div>
         </WidgetDialog>
       )}
