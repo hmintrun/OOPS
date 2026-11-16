@@ -34,12 +34,15 @@ const blankLine = { stockQty: "0", needQty: "0" };
 const parseQuantity = (value: string) => /^\d+$/.test(value) ? Number(value) : NaN;
 
 async function loadCampaign(id: string): Promise<Data> {
-  const profile = await getMe();
-  if (!profile.groupId) throw new Error("Bạn chưa tham gia nhóm.");
-  const group = await getGroup(profile.groupId);
-  const campaign = group.campaigns.find(item => item.campaignId === id);
-  if (!campaign) throw new Error("Không tìm thấy đợt gom trong nhóm của bạn.");
-  const [catalog, cart, needs] = await Promise.all([
+  const context = getMe().then(async profile => {
+    if (!profile.groupId) throw new Error("Bạn chưa tham gia nhóm.");
+    const group = await getGroup(profile.groupId);
+    const campaign = group.campaigns.find(item => item.campaignId === id);
+    if (!campaign) throw new Error("Không tìm thấy đợt gom trong nhóm của bạn.");
+    return { campaign, isRep: group.repId === profile.userId };
+  });
+  const [groupContext, catalog, cart, needs] = await Promise.all([
+    context,
     getCatalog(),
     getCart(id).catch(error => {
       if (error instanceof ApiError && error.status === 404) return null;
@@ -47,7 +50,7 @@ async function loadCampaign(id: string): Promise<Data> {
     }),
     getNeeds(id),
   ]);
-  return { campaign, catalog: catalog.items, cart, needs, isRep: group.repId === profile.userId };
+  return { ...groupContext, catalog: catalog.items, cart, needs };
 }
 
 export function CampaignDetail({ campaignId }: { campaignId: string }) {
@@ -89,7 +92,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     retry.current = undefined;
   }
 
-  async function action(fingerprint: string, success: string, run: (key: string) => Promise<unknown>) {
+  async function action<T>(fingerprint: string, success: string, run: (key: string) => Promise<T>, apply?: (result: T) => void) {
     if (busy.current) return;
     if (retry.current?.body !== fingerprint) retry.current = { body: fingerprint, key: newIdempotencyKey() };
     const { key } = retry.current;
@@ -99,10 +102,11 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     setError("");
     setWalletNotReady(false);
     try {
-      await run(key);
+      const result = await run(key);
       retry.current = undefined;
       setNotice(success);
-      setReload(value => value + 1);
+      if (apply) apply(result);
+      else setReload(value => value + 1);
     } catch (error) {
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
         retry.current = undefined;
@@ -140,7 +144,13 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         return { skuId: item.skuId, stockQty: parseQuantity(line.stockQty), needQty: parseQuantity(line.needQty) };
       }).filter(line => line.stockQty !== 0 || line.needQty !== 0),
     };
-    void action(`save:${JSON.stringify(body)}`, "Đã lưu giỏ.", key => putCart(campaignId, body, key));
+    void action(`save:${JSON.stringify(body)}`, "Đã lưu giỏ.", key => putCart(campaignId, body, key),
+      cart?.state === "CONFIRMED" ? undefined : savedCart => {
+        setData(previous => previous && { ...previous, cart: savedCart });
+        setDraft(toDraft(savedCart));
+        setDirty(false);
+      },
+    );
   }
 
   return (

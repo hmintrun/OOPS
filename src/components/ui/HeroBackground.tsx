@@ -21,6 +21,7 @@ function HeroLayer({ name }: { name: keyof typeof layers }) {
       alt=""
       aria-hidden="true"
       loading={name === "family" ? "eager" : "lazy"}
+      fetchPriority={name === "family" ? "auto" : "low"}
       decoding="async"
     />
   );
