@@ -11,7 +11,6 @@ export type FamilyStatusData = {
   elderly: number;
   housingType: "kienco" | "bankienco" | "cap4" | "vungtrung";
   incomeLevel: "low" | "medium" | "high";
-  priorityNeeds: string[];
   notes: string;
 };
 
@@ -22,7 +21,6 @@ const DEFAULT_FAMILY_STATUS: FamilyStatusData = {
   elderly: 1,
   housingType: "kienco",
   incomeLevel: "medium",
-  priorityNeeds: ["water", "food"],
   notes: "Tầng 5, có người cao tuổi cần trữ nước sạch sẵn.",
 };
 
@@ -146,7 +144,6 @@ function FamilyStatusModalWidget({
   const [elderly, setElderly] = useState<number | "">(data.elderly);
   const [housingType, setHousingType] = useState<FamilyStatusData["housingType"]>(data.housingType);
   const [incomeLevel, setIncomeLevel] = useState<FamilyStatusData["incomeLevel"]>(data.incomeLevel);
-  const [priorityNeeds, setPriorityNeeds] = useState<string[]>(data.priorityNeeds);
   const [notes, setNotes] = useState(data.notes);
 
   const handleMemberChange = (raw: string) => {
@@ -158,12 +155,6 @@ function FamilyStatusModalWidget({
     if (!isNaN(val)) {
       setMembers(Math.min(30, Math.max(0, val)));
     }
-  };
-
-  const toggleNeed = (need: string) => {
-    setPriorityNeeds((prev) =>
-      prev.includes(need) ? prev.filter((n) => n !== need) : [...prev, need],
-    );
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -179,7 +170,6 @@ function FamilyStatusModalWidget({
       elderly: finalElderly,
       housingType,
       incomeLevel,
-      priorityNeeds,
       notes,
     });
   };
@@ -213,26 +203,6 @@ function FamilyStatusModalWidget({
             {Object.entries(HOUSING_LABELS).map(([key, option]) => <option key={key} value={key}>{option.label}</option>)}
           </select>
         </label>
-        <fieldset>
-          <legend>Cần chuẩn bị gì?</legend>
-          <div className="family-editor__choices">
-            {[
-              { id: "water", label: "Nước sạch", icon: "water_drop" },
-              { id: "food", label: "Mì và lương khô", icon: "restaurant" },
-              { id: "cans", label: "Đồ hộp", icon: "inventory_2" },
-              { id: "med", label: "Đồ y tế", icon: "medical_services" },
-              { id: "power", label: "Đèn pin", icon: "flashlight_on" },
-            ].map(item => {
-              const checked = priorityNeeds.includes(item.id);
-              return (
-                <button type="button" key={item.id} aria-pressed={checked} onClick={() => toggleNeed(item.id)}>
-                  <MaterialSymbol name={checked ? "check" : item.icon} size={18} />
-                  {item.label}
-                </button>
-              );
-            })}
-          </div>
-        </fieldset>
         <p className="family-editor__estimate">
           <MaterialSymbol name="water_drop" size={20} />
           Ước tính cho 72 giờ <strong>{waterLitres} lít nước</strong>

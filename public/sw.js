@@ -16,6 +16,9 @@ self.addEventListener("activate", event => {
     await Promise.all(keys
       .filter(key => key.startsWith(CACHE_PREFIX) && key !== OFFLINE_CACHE)
       .map(key => caches.delete(key)));
+    if (self.registration.navigationPreload) {
+      await self.registration.navigationPreload.enable().catch(() => {});
+    }
     await self.clients.claim();
   })());
 });
@@ -26,7 +29,10 @@ self.addEventListener("fetch", event => {
   if (request.method !== "GET" || request.mode !== "navigate" ||
       url.origin !== self.location.origin || /^\/api(?:\/|$)/.test(url.pathname)) return;
 
-  event.respondWith(fetch(request).catch(async () => {
+  event.respondWith((async () => {
+    const preloaded = await event.preloadResponse?.catch(() => undefined);
+    return preloaded ?? fetch(request);
+  })().catch(async () => {
     const cache = await caches.open(OFFLINE_CACHE);
     return await cache.match(OFFLINE_URL) ?? Response.error();
   }));

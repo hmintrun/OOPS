@@ -20,8 +20,12 @@ import { ApiError, getCatalog, getFeed, type FeedFilters } from "@/lib/api-clien
 import { DemandCard, demandCategoryVisual } from "./DemandCard";
 import { FEED_PAGE_SIZE, FeedPagination } from "./FeedPagination";
 import { WidgetDialog } from "@/components/ui/WidgetDialog";
-import { OffersPanel } from "@/app/trade/needs/OffersPanel";
+import dynamic from "next/dynamic";
 import "./feed.css";
+
+const OffersPanel = dynamic(() => import("@/app/trade/needs/OffersPanel").then(module => module.OffersPanel), {
+  loading: () => <p role="status">Đang tải…</p>,
+});
 
 type Category = CatalogItem["category"];
 type AppliedFilters = { category: Category | ""; district: string; ward: string };

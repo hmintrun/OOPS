@@ -3,7 +3,7 @@ import { Card } from "@/components/ui";
 
 export default function GroupsLoading() {
   return (
-    <AppShell title="Nhóm của tôi" icon={{ icon: "groups", tone: "green" }} familyBackground bare>
+    <AppShell title="Nhóm của tôi" icon={{ icon: "groups", tone: "green" }} bare>
       <Card>
         <p role="status" className="mb-4 text-body text-navy-600">Đang tải nhóm…</p>
         <div aria-hidden="true" className="grid gap-3 motion-safe:animate-pulse">

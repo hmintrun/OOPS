@@ -8,6 +8,7 @@ import {
   newIdempotencyKey, publishCampaign, putCart, type PutCartBody,
 } from "@/lib/api-client";
 import { Button, Card, CardTitle } from "@/components/ui";
+import { readFamilyStatus } from "@/app/groups/FamilyStatusWidget";
 import { CartSuggestion } from "./CartSuggestion";
 import { formatDateTime, isPast } from "../_shared/dates";
 import { Banner, CampaignStateChip, CartStateChip, INPUT_CLASS, LinkButton, LoadingState } from "../_shared/ui";
@@ -19,9 +20,9 @@ type Draft = {
   lines: Record<string, { stockQty: string; needQty: string }>;
 };
 
-function toDraft(cart: Cart | null): Draft {
+function toDraft(cart: Cart | null, defaultHouseholdSize = 1): Draft {
   return {
-    householdSize: String(cart?.householdSize ?? 1),
+    householdSize: String(cart?.householdSize ?? defaultHouseholdSize),
     supportRequested: cart?.supportRequested ?? false,
     lines: Object.fromEntries((cart?.lines ?? []).map(line => [
       line.skuId, { stockQty: String(line.stockQty), needQty: String(line.needQty) },
@@ -33,12 +34,15 @@ const blankLine = { stockQty: "0", needQty: "0" };
 const parseQuantity = (value: string) => /^\d+$/.test(value) ? Number(value) : NaN;
 
 async function loadCampaign(id: string): Promise<Data> {
-  const profile = await getMe();
-  if (!profile.groupId) throw new Error("Bạn chưa tham gia nhóm.");
-  const group = await getGroup(profile.groupId);
-  const campaign = group.campaigns.find(item => item.campaignId === id);
-  if (!campaign) throw new Error("Không tìm thấy đợt gom trong nhóm của bạn.");
-  const [catalog, cart, needs] = await Promise.all([
+  const context = getMe().then(async profile => {
+    if (!profile.groupId) throw new Error("Bạn chưa tham gia nhóm.");
+    const group = await getGroup(profile.groupId);
+    const campaign = group.campaigns.find(item => item.campaignId === id);
+    if (!campaign) throw new Error("Không tìm thấy đợt gom trong nhóm của bạn.");
+    return { campaign, isRep: group.repId === profile.userId };
+  });
+  const [groupContext, catalog, cart, needs] = await Promise.all([
+    context,
     getCatalog(),
     getCart(id).catch(error => {
       if (error instanceof ApiError && error.status === 404) return null;
@@ -46,7 +50,7 @@ async function loadCampaign(id: string): Promise<Data> {
     }),
     getNeeds(id),
   ]);
-  return { campaign, catalog: catalog.items, cart, needs, isRep: group.repId === profile.userId };
+  return { ...groupContext, catalog: catalog.items, cart, needs };
 }
 
 export function CampaignDetail({ campaignId }: { campaignId: string }) {
@@ -70,7 +74,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     void loadCampaign(campaignId).then(value => {
       if (!active) return;
       setData(value);
-      setDraft(toDraft(value.cart));
+      setDraft(toDraft(value.cart, readFamilyStatus().members));
       setDirty(false);
     }).catch((error: unknown) => {
       if (!active) return;
@@ -88,7 +92,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     retry.current = undefined;
   }
 
-  async function action(fingerprint: string, success: string, run: (key: string) => Promise<unknown>) {
+  async function action<T>(fingerprint: string, success: string, run: (key: string) => Promise<T>, apply?: (result: T) => void) {
     if (busy.current) return;
     if (retry.current?.body !== fingerprint) retry.current = { body: fingerprint, key: newIdempotencyKey() };
     const { key } = retry.current;
@@ -98,10 +102,11 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     setError("");
     setWalletNotReady(false);
     try {
-      await run(key);
+      const result = await run(key);
       retry.current = undefined;
       setNotice(success);
-      setReload(value => value + 1);
+      if (apply) apply(result);
+      else setReload(value => value + 1);
     } catch (error) {
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
         retry.current = undefined;
@@ -139,7 +144,13 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         return { skuId: item.skuId, stockQty: parseQuantity(line.stockQty), needQty: parseQuantity(line.needQty) };
       }).filter(line => line.stockQty !== 0 || line.needQty !== 0),
     };
-    void action(`save:${JSON.stringify(body)}`, "Đã lưu giỏ.", key => putCart(campaignId, body, key));
+    void action(`save:${JSON.stringify(body)}`, "Đã lưu giỏ.", key => putCart(campaignId, body, key),
+      cart?.state === "CONFIRMED" ? undefined : savedCart => {
+        setData(previous => previous && { ...previous, cart: savedCart });
+        setDraft(toDraft(savedCart));
+        setDirty(false);
+      },
+    );
   }
 
   return (
@@ -165,7 +176,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
       )}
       {notice && <p role="status">{notice}</p>}
       <Card>
-        <CardTitle>Giỏ của hộ</CardTitle>
+        <CardTitle>Giỏ của nhà mình</CardTitle>
         {cart && <CartStateChip state={cart.state} />}
         <form className="grid gap-3" onSubmit={event => { event.preventDefault(); save(); }}>
           <label className="grid gap-1">
@@ -179,25 +190,41 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               onChange={event => edit(value => ({ ...value, supportRequested: event.target.checked }))} />
             Cần giá hỗ trợ
           </label>
+          <p className="text-sm text-navy-600">Số lượng muốn đặt · Nhập 0 cho món bạn không mua.</p>
           {catalog.map(item => (
-            <fieldset key={item.skuId} className="grid grid-cols-2 gap-2" disabled={!editable || saving}>
-              <legend className="font-bold">{item.name} ({item.unit})</legend>
-              {([["stockQty", "Đang có"], ["needQty", "Còn thiếu"]] as const).map(([field, label]) => (
-                <label className="grid gap-1" key={field}>
-                  {label}
-                  <input className={INPUT_CLASS} type="number" min={0} max={2147483647} step={1} required
-                    value={(draft.lines[item.skuId] ?? blankLine)[field]}
-                    onChange={event => edit(value => ({
-                      ...value,
-                      lines: {
-                        ...value.lines,
-                        [item.skuId]: { ...(value.lines[item.skuId] ?? blankLine), [field]: event.target.value },
-                      },
-                    }))} />
+            <label key={item.skuId} className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3 rounded-input bg-sky-tint p-2">
+              <span>{item.name} ({item.unit})</span>
+              <input className={INPUT_CLASS} type="number" min={0} max={2147483647} step={1} inputMode="numeric" required
+                disabled={!editable || saving}
+                value={(draft.lines[item.skuId] ?? blankLine).needQty}
+                onChange={event => {
+                  const needQty = event.target.value;
+                  edit(value => ({
+                    ...value,
+                    lines: { ...value.lines, [item.skuId]: { ...blankLine, ...value.lines[item.skuId], needQty } },
+                  }));
+                }} />
+            </label>
+          ))}
+          {editable && <details className="rounded-input border border-line p-3">
+            <summary className="cursor-pointer font-semibold">Số lượng nhà đang có</summary>
+            <div className="mt-2 grid gap-2">
+              {catalog.map(item => (
+                <label key={item.skuId} className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3">
+                  <span>{item.name} ({item.unit})</span>
+                  <input className={INPUT_CLASS} type="number" min={0} max={2147483647} step={1} inputMode="numeric" required
+                    disabled={saving} value={(draft.lines[item.skuId] ?? blankLine).stockQty}
+                    onChange={event => {
+                      const stockQty = event.target.value;
+                      edit(value => ({
+                        ...value,
+                        lines: { ...value.lines, [item.skuId]: { ...blankLine, ...value.lines[item.skuId], stockQty } },
+                      }));
+                    }} />
                 </label>
               ))}
-            </fieldset>
-          ))}
+            </div>
+          </details>}
           {editable && <Button type="submit" loading={saving}>Lưu giỏ</Button>}
         </form>
         {editable && <CartSuggestion campaignId={campaignId} householdSize={parseQuantity(draft.householdSize)}
