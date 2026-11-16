@@ -41,7 +41,11 @@ export const putCartInput = z.strictObject({
   version: count,
 });
 export const confirmCartInput = z.strictObject({ version: count });
-export const cartAiInput = z.strictObject({ text: nonBlank.max(4_000), householdSize: positiveCount.optional() });
+export const cartAiInput = z.strictObject({
+  text: z.string().max(4_000).optional().default(""),
+  householdSize: positiveCount.optional(),
+  days: z.number().int().min(1).max(365).optional().default(3),
+});
 export const cartAiResult = z.strictObject({
   draft: z.strictObject({
     householdSize: positiveCount.optional(),
@@ -49,6 +53,7 @@ export const cartAiResult = z.strictObject({
       skuId: uuid, stockQty: count.optional(), needQty: count.optional(),
     }).refine(line => line.stockQty !== undefined || line.needQty !== undefined)),
   }),
+  encouragement: z.string().optional(),
   unresolved: z.array(z.string()),
   ruleRefs: z.array(z.string()),
 });

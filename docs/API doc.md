@@ -160,7 +160,7 @@ type ConfirmationRound = {
 | `POST /groups/{id}/campaigns`<br>Đại diện | {collectUntil, needBy, supportRequested?}. Kiểm tra thời điểm hiện tại < collectUntil < needBy. | 201 Campaign ở DRAFT. |
 | `GET /catalog`<br>Đã đăng nhập | category? | 200 {items: [{skuId, name, category, unit}]}. |
 | `GET /campaigns/{id}/cart` và `PUT /campaigns/{id}/cart`<br>Hộ trong nhóm | PUT {householdSize, supportRequested, lines: [{skuId, stockQty, needQty}], version}. version = 0 để tạo. householdSize > 0, stockQty ≥ 0, needQty ≥ 0. | 200 Cart. PUT lưu DRAFT. 409 nếu version cũ, đã đăng hoặc đã tới hạn gom. 422 nếu số lượng sai. |
-| `POST /campaigns/{id}/cart/ai`<br>Hộ trong nhóm | {text, householdSize?}. Chỉ trong thời gian gom. Trích dữ liệu, đối chiếu SKU và áp quy tắc nếu đủ đầu vào. | 200 {draft, unresolved, ruleRefs}. 409 nếu đã đóng gom. 503 khi AI lỗi. Hộ tiếp tục nhập tay. |
+| `POST /campaigns/{id}/cart/ai`<br>Hộ trong nhóm | {text?, householdSize?, days?}. Chỉ trong thời gian gom. Trích dữ liệu, mặc định các sản phẩm chưa nêu là chưa có (`stockQty = 0`), đối chiếu SKU và suy luận lượng theo ngữ cảnh hoặc áp quy tắc theo số ngày dự trữ (`days`, mặc định 3 ngày), kèm 1 câu động viên ngắn. | 200 {draft, encouragement?, unresolved, ruleRefs}. 409 nếu đã đóng gom. 503 khi AI lỗi. Hộ tiếp tục nhập tay. |
 | `POST /campaigns/{id}/cart/confirm`<br>Chủ giỏ | {version}. Đợt còn DRAFT, chưa tới collectUntil và ví đã xác minh, đủ quyền Fuji. | 200 Cart ở CONFIRMED. 409 nếu version cũ hoặc đã đóng gom. `409 WALLET_NOT_READY` giữ giỏ đã lưu để hộ xử lý ví rồi thử lại. 503 khi dịch vụ kiểm quyền Fuji không sẵn sàng. |
 
 ## Nhu cầu, đề nghị và xác nhận hợp đồng
