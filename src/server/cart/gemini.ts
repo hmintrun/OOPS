@@ -2,15 +2,15 @@ import "server-only";
 import { z } from "zod";
 import { cartAiInput, cartAiResult, type CatalogItem } from "@/contracts/foundation";
 import { requiredEnv } from "../config";
-import { unavailable } from "../errors";
+import { ApiFailure, unavailable } from "../errors";
 
 const quantity = z.number().int().min(0).max(2_147_483_647);
 const extracted = z.strictObject({
   householdSize: quantity.min(1).nullable(),
   items: z.array(z.strictObject({
     skuId: z.string().nullable(),
-    label: z.string().min(1).max(200),
-    unit: z.string().max(80).nullable(),
+    label: z.string().trim().min(1).max(200),
+    unit: z.string().trim().max(80).nullable(),
     stockQty: quantity.nullable(),
     needQty: quantity.nullable(),
   })).max(100),
@@ -21,7 +21,37 @@ const providerResult = z.object({
     content: z.object({ parts: z.array(z.object({ text: z.string().optional(), thought: z.boolean().optional() })) }),
   })).min(1),
 });
-const { $schema: _dialect, ...responseSchema } = z.toJSONSchema(extracted);
+
+const nullableIntSchema = (minimum: number) => ({
+  anyOf: [{ type: "integer", minimum, maximum: 2_147_483_647 }, { type: "null" }],
+});
+const nullableStringSchema = {
+  anyOf: [{ type: "string" }, { type: "null" }],
+};
+// Keep responseJsonSchema within Gemini's supported JSON Schema subset (no maxItems/minLength/maxLength).
+export const geminiResponseSchema = {
+  type: "object",
+  properties: {
+    householdSize: nullableIntSchema(1),
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          skuId: nullableStringSchema,
+          label: { type: "string" },
+          unit: nullableStringSchema,
+          stockQty: nullableIntSchema(0),
+          needQty: nullableIntSchema(0),
+        },
+        required: ["skuId", "label", "unit", "stockQty", "needQty"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["householdSize", "items"],
+  additionalProperties: false,
+} as const;
 
 export async function draftFromGemini(input: z.output<typeof cartAiInput>, catalog: CatalogItem[]) {
   const key = requiredEnv("GEMINI_API_KEY");
@@ -43,17 +73,23 @@ export async function draftFromGemini(input: z.output<typeof cartAiInput>, catal
         contents: [{ parts: [{ text: JSON.stringify({ text: input.text, catalog }) }] }],
         generationConfig: {
           responseMimeType: "application/json",
-          responseJsonSchema: responseSchema,
+          responseJsonSchema: geminiResponseSchema,
         },
       }),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(15_000),
       cache: "no-store",
     });
-    if (!response.ok) throw unavailable();
+    if (!response.ok) {
+      console.error("OOPS Gemini API error", { status: response.status, model });
+      throw unavailable();
+    }
     const { candidates: [candidate] } = providerResult.parse(await response.json());
     const output = candidate.content.parts.filter(part => !part.thought).map(part => part.text ?? "").join("");
     result = extracted.parse(JSON.parse(output));
-  } catch {
+  } catch (error) {
+    if (!(error instanceof ApiFailure)) {
+      console.error("OOPS Gemini failure", { name: error instanceof Error ? error.name : "UnknownError" });
+    }
     throw unavailable();
   }
 
@@ -78,7 +114,7 @@ export async function draftFromGemini(input: z.output<typeof cartAiInput>, catal
       ...(item.needQty !== null && { needQty: item.needQty }),
     });
   }
-  const householdSize = input.householdSize ?? result.householdSize ?? undefined;
+  const householdSize = result.householdSize ?? input.householdSize ?? undefined;
   if (householdSize === undefined) unresolved.add("Số người trong hộ");
   return cartAiResult.parse({ draft: { householdSize, lines }, unresolved: [...unresolved], ruleRefs: [] });
 }
