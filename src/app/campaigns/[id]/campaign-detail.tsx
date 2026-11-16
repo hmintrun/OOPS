@@ -8,6 +8,7 @@ import {
   newIdempotencyKey, publishCampaign, putCart, type PutCartBody,
 } from "@/lib/api-client";
 import { Button, Card, CardTitle } from "@/components/ui";
+import { readFamilyStatus } from "@/app/groups/FamilyStatusWidget";
 import { CartSuggestion } from "./CartSuggestion";
 import { formatDateTime, isPast } from "../_shared/dates";
 import { Banner, CampaignStateChip, CartStateChip, INPUT_CLASS, LinkButton, LoadingState } from "../_shared/ui";
@@ -19,9 +20,9 @@ type Draft = {
   lines: Record<string, { stockQty: string; needQty: string }>;
 };
 
-function toDraft(cart: Cart | null): Draft {
+function toDraft(cart: Cart | null, defaultHouseholdSize = 1): Draft {
   return {
-    householdSize: String(cart?.householdSize ?? 1),
+    householdSize: String(cart?.householdSize ?? defaultHouseholdSize),
     supportRequested: cart?.supportRequested ?? false,
     lines: Object.fromEntries((cart?.lines ?? []).map(line => [
       line.skuId, { stockQty: String(line.stockQty), needQty: String(line.needQty) },
@@ -70,7 +71,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     void loadCampaign(campaignId).then(value => {
       if (!active) return;
       setData(value);
-      setDraft(toDraft(value.cart));
+      setDraft(toDraft(value.cart, readFamilyStatus().members));
       setDirty(false);
     }).catch((error: unknown) => {
       if (!active) return;
@@ -165,7 +166,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
       )}
       {notice && <p role="status">{notice}</p>}
       <Card>
-        <CardTitle>Giỏ của hộ</CardTitle>
+        <CardTitle>Giỏ của nhà mình</CardTitle>
         {cart && <CartStateChip state={cart.state} />}
         <form className="grid gap-3" onSubmit={event => { event.preventDefault(); save(); }}>
           <label className="grid gap-1">
@@ -179,25 +180,41 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               onChange={event => edit(value => ({ ...value, supportRequested: event.target.checked }))} />
             Cần giá hỗ trợ
           </label>
+          <p className="text-sm text-navy-600">Số lượng muốn đặt · Nhập 0 cho món bạn không mua.</p>
           {catalog.map(item => (
-            <fieldset key={item.skuId} className="grid grid-cols-2 gap-2" disabled={!editable || saving}>
-              <legend className="font-bold">{item.name} ({item.unit})</legend>
-              {([["stockQty", "Đang có"], ["needQty", "Còn thiếu"]] as const).map(([field, label]) => (
-                <label className="grid gap-1" key={field}>
-                  {label}
-                  <input className={INPUT_CLASS} type="number" min={0} max={2147483647} step={1} required
-                    value={(draft.lines[item.skuId] ?? blankLine)[field]}
-                    onChange={event => edit(value => ({
-                      ...value,
-                      lines: {
-                        ...value.lines,
-                        [item.skuId]: { ...(value.lines[item.skuId] ?? blankLine), [field]: event.target.value },
-                      },
-                    }))} />
+            <label key={item.skuId} className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3 rounded-input bg-sky-tint p-2">
+              <span>{item.name} ({item.unit})</span>
+              <input className={INPUT_CLASS} type="number" min={0} max={2147483647} step={1} inputMode="numeric" required
+                disabled={!editable || saving}
+                value={(draft.lines[item.skuId] ?? blankLine).needQty}
+                onChange={event => {
+                  const needQty = event.target.value;
+                  edit(value => ({
+                    ...value,
+                    lines: { ...value.lines, [item.skuId]: { ...blankLine, ...value.lines[item.skuId], needQty } },
+                  }));
+                }} />
+            </label>
+          ))}
+          {editable && <details className="rounded-input border border-line p-3">
+            <summary className="cursor-pointer font-semibold">Số lượng nhà đang có</summary>
+            <div className="mt-2 grid gap-2">
+              {catalog.map(item => (
+                <label key={item.skuId} className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3">
+                  <span>{item.name} ({item.unit})</span>
+                  <input className={INPUT_CLASS} type="number" min={0} max={2147483647} step={1} inputMode="numeric" required
+                    disabled={saving} value={(draft.lines[item.skuId] ?? blankLine).stockQty}
+                    onChange={event => {
+                      const stockQty = event.target.value;
+                      edit(value => ({
+                        ...value,
+                        lines: { ...value.lines, [item.skuId]: { ...blankLine, ...value.lines[item.skuId], stockQty } },
+                      }));
+                    }} />
                 </label>
               ))}
-            </fieldset>
-          ))}
+            </div>
+          </details>}
           {editable && <Button type="submit" loading={saving}>Lưu giỏ</Button>}
         </form>
         {editable && <CartSuggestion campaignId={campaignId} householdSize={parseQuantity(draft.householdSize)}

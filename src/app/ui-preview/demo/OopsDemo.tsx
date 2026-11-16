@@ -72,8 +72,7 @@ type ReliefItemDef = {
   unit: string;
   icon: string;
   imgSrc: string;
-  calcSuggested: (members: number) => number;
-  suggestedDesc: (members: number) => string;
+  calcSuggested: (members: number, days: number) => number;
   defaultOtherHouseholds: number[];
   price: number;
 };
@@ -86,8 +85,7 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     unit: "bình",
     icon: "water_drop",
     imgSrc: "/assets/water-bottles.jpg",
-    calcSuggested: (m) => Math.max(1, Math.ceil((m * 6) / 20)),
-    suggestedDesc: (m) => `${m * 6}L nước uống theo chuẩn 72h`,
+    calcSuggested: (members, days) => Math.ceil(members * days * 2 / 20),
     defaultOtherHouseholds: [2, 3],
     price: 50000,
   },
@@ -98,8 +96,7 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     unit: "thùng",
     icon: "restaurant",
     imgSrc: "/assets/groceries-box.jpg",
-    calcSuggested: (m) => Math.max(1, Math.ceil((m * 9) / 30)),
-    suggestedDesc: (m) => `${m * 9} bữa ăn sẵn cho 72 giờ`,
+    calcSuggested: (members, days) => Math.ceil(members * days * 3 / 30),
     defaultOtherHouseholds: [1, 2],
     price: 115000,
   },
@@ -110,8 +107,7 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     unit: "hộp",
     icon: "inventory_2",
     imgSrc: "/assets/groceries-box.jpg",
-    calcSuggested: (m) => Math.max(2, m * 2),
-    suggestedDesc: (m) => `Lương thực hộp dinh dưỡng 72h`,
+    calcSuggested: (members, days) => Math.ceil(members * days * 2 / 3),
     defaultOtherHouseholds: [4, 6],
     price: 35000,
   },
@@ -123,7 +119,6 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     icon: "medical_services",
     imgSrc: "/assets/groceries-box.jpg",
     calcSuggested: () => 1,
-    suggestedDesc: () => "Băng gạc, hạ sốt, sát trùng",
     defaultOtherHouseholds: [1, 1],
     price: 85000,
   },
@@ -135,11 +130,81 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     icon: "flashlight_on",
     imgSrc: "/assets/groceries-box.jpg",
     calcSuggested: () => 1,
-    suggestedDesc: () => "Chiếu sáng khi mất điện",
     defaultOtherHouseholds: [1, 1],
     price: 65000,
   },
 };
+
+const reliefItems = Object.values(RELIEF_ITEM_DEFS);
+const demoQuantity = (value?: string) => Math.min(999, Math.max(0, Math.trunc(Number(value) || 0)));
+
+function DemoCampaignCart({ people, quantities, saved, onChange, onSave }: {
+  people: number;
+  quantities: Record<string, string>;
+  saved: boolean;
+  onChange: (quantities: Record<string, string>) => void;
+  onSave: () => void;
+}) {
+  const [days, setDays] = useState("3");
+  const [stocks, setStocks] = useState<Record<string, string>>({});
+  const [suggestion, setSuggestion] = useState<Record<string, string>>();
+  const duration = Number(days);
+  const validDuration = Number.isInteger(duration) && duration >= 1 && duration <= 365;
+
+  return (
+    <Card className="grid gap-3">
+      <div>
+        <CardTitle as="h3">Giỏ của nhà mình</CardTitle>
+        <p className="text-sm text-navy-600">{people} người · Nhập 0 cho món bạn không mua.</p>
+      </div>
+      {reliefItems.map(item => (
+        <label key={item.id} className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-3 rounded-input bg-sky-tint p-2">
+          <span className="flex min-w-0 items-center gap-2 text-sm">
+            <img src={item.imgSrc} alt="" width={36} height={36} className="shrink-0 rounded-lg" />
+            <span>{item.name} ({item.unit})</span>
+          </span>
+          <input type="number" min={0} max={999} step={1} inputMode="numeric"
+            className="min-h-11 w-full rounded-input border border-line bg-white px-2 text-base text-navy-900"
+            value={quantities[item.id] ?? "0"}
+            onChange={event => onChange({ ...quantities, [item.id]: event.target.value })} />
+        </label>
+      ))}
+      <details className="rounded-input bg-amber-tint p-3">
+        <summary className="cursor-pointer font-bold">Gợi ý dự trữ mẫu</summary>
+        <div className="mt-3 grid gap-3 text-sm">
+          <label className="grid gap-1">Số ngày cần dự trữ
+            <input type="number" min={1} max={365} step={1} inputMode="numeric"
+              className="min-h-11 w-full rounded-input border border-line bg-white px-2 text-base"
+              value={days} onChange={event => { setDays(event.target.value); setSuggestion(undefined); }} />
+          </label>
+          <fieldset className="grid gap-2">
+            <legend className="font-semibold">Số lượng đang có</legend>
+            {reliefItems.map(item => (
+              <label key={item.id} className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-2">
+                {item.shortName} ({item.unit})
+                <input type="number" min={0} max={999} step={1} inputMode="numeric"
+                  className="min-h-11 w-full rounded-input border border-line bg-white px-2 text-base"
+                  value={stocks[item.id] ?? "0"} onChange={event => {
+                    setStocks(current => ({ ...current, [item.id]: event.target.value }));
+                    setSuggestion(undefined);
+                  }} />
+              </label>
+            ))}
+          </fieldset>
+          <Button variant="secondary" disabled={!validDuration} onClick={() => setSuggestion(Object.fromEntries(
+            reliefItems.map(item => [item.id, String(demoQuantity(String(item.calcSuggested(people, duration) - demoQuantity(stocks[item.id]))))]),
+          ))}>Tạo gợi ý</Button>
+          {suggestion && <>
+            <p role="status">Gợi ý mẫu tính cho {people} người trong {duration} ngày và trừ số lượng nhà đã có. Nước và thực phẩm tăng theo số ngày. Đèn pin và túi y tế tính theo hộ.</p>
+            <ul className="grid gap-1">{reliefItems.map(item => <li key={item.id}>{item.shortName} · {suggestion[item.id]} {item.unit}</li>)}</ul>
+            <Button onClick={() => { onChange(suggestion); setSuggestion(undefined); }}>Sử dụng gợi ý</Button>
+          </>}
+        </div>
+      </details>
+      <Button disabled={saved} onClick={onSave}>{saved ? "Đã lưu giỏ" : "Lưu giỏ"}</Button>
+    </Card>
+  );
+}
 
 const formatVnd = (num: number) => num.toLocaleString("vi-VN") + " đ";
 
@@ -277,11 +342,8 @@ const INITIAL_DEMO_ORDERS: DemoOrderItem[] = [
 
 export function OopsDemo() {
   const [tab, setTab] = useState<Tab>("groups");
-  const [familyStatus, setFamilyStatus] = useState<FamilyStatusData>(() => readFamilyStatus());
   const [people, setPeople] = useState(() => readFamilyStatus().members);
-  const [activeItemKey, setActiveItemKey] = useState<string>("water");
-  const [itemStocks, setItemStocks] = useState<Record<string, number>>({});
-  const [itemQuantities, setItemQuantities] = useState<Record<string, number>>({});
+  const [itemQuantities, setItemQuantities] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [isCampaignManageOpen, setIsCampaignManageOpen] = useState(false);
   const [isCampaignListOpen, setIsCampaignListOpen] = useState(false);
@@ -304,23 +366,9 @@ export function OopsDemo() {
   const phase = publishedDemands.length ? "published" : "draft";
   const earlierCampaign = earlierCampaigns.find(campaign => campaign.id === earlierCampaignId);
 
-  // Lọc các mặt hàng dựa vào nhu cầu đã chọn trong Hiện trạng gia đình
-  const rawNeeds = familyStatus.priorityNeeds && familyStatus.priorityNeeds.length > 0
-    ? familyStatus.priorityNeeds.filter(k => RELIEF_ITEM_DEFS[k])
-    : ["water"];
-  const activeKeys = rawNeeds.length > 0 ? rawNeeds : ["water"];
-
-  // Đảm bảo item đang chọn luôn nằm trong danh sách active
-  const currentKey = activeKeys.includes(activeItemKey) ? activeItemKey : activeKeys[0];
-  const currentDef = RELIEF_ITEM_DEFS[currentKey] || RELIEF_ITEM_DEFS.water;
-
-  // Tính toán số lượng cho mặt hàng đang chọn
-  const currentSuggested = currentDef.calcSuggested(people);
-  const currentStock = itemStocks[currentKey] ?? 0;
-  const currentWanted = itemQuantities[currentKey] ?? Math.max(1, currentSuggested - currentStock);
-  const campaignItems = activeKeys.map(key => {
-    const definition = RELIEF_ITEM_DEFS[key];
-    const wanted = itemQuantities[key] ?? Math.max(1, definition.calcSuggested(people) - (itemStocks[key] ?? 0));
+  const campaignItems = reliefItems.map(definition => {
+    const key = definition.id;
+    const wanted = demoQuantity(itemQuantities[key]);
     const target = wanted + definition.defaultOtherHouseholds.reduce((sum, amount) => sum + amount, 0);
     return { key, definition, target, wanted };
   });
@@ -330,7 +378,6 @@ export function OopsDemo() {
 
   useEffect(() => {
     const status = readFamilyStatus();
-    setFamilyStatus(status);
     setPeople(status.members);
     try {
       const stored = JSON.parse(localStorage.getItem(campaignDraftKey) ?? "null");
@@ -349,9 +396,7 @@ export function OopsDemo() {
 
   function reset() {
     const status = readFamilyStatus();
-    setFamilyStatus(status);
     setPeople(status.members);
-    setItemStocks({});
     setItemQuantities({});
     setSaved(false);
     setCurrentPage(1);
@@ -400,9 +445,7 @@ export function OopsDemo() {
   }
 
   const handleFamilyStatusChange = useCallback((newStatus: FamilyStatusData) => {
-    setFamilyStatus(newStatus);
     setPeople(newStatus.members);
-    setSaved(false);
   }, []);
 
   function showPublishedDemands(draft = campaignDraft): boolean {
@@ -549,12 +592,12 @@ export function OopsDemo() {
                   </div>
 
                   <div className="flex flex-wrap gap-1 mt-2">
-                    {activeKeys.map((k) => (
+                    {reliefItems.map((item) => (
                       <span
-                        key={k}
+                        key={item.id}
                         className="text-[10px] font-bold bg-white px-2 py-0.5 rounded-md border border-line text-navy-700 shadow-2xs"
                       >
-                        {RELIEF_ITEM_DEFS[k]?.shortName || k}
+                        {item.shortName}
                       </span>
                     ))}
                   </div>
@@ -853,124 +896,12 @@ export function OopsDemo() {
         <WidgetDialog title="Quản lý đợt gom" icon="campaign" onClose={() => setIsCampaignManageOpen(false)}>
           <div className="grid gap-4">
             {phase === "draft" ? (
-              <section className="grid gap-3" aria-label="Giỏ của đợt gom">
-              {/* 3. Bộ chọn mặt hàng gom chung (đồng bộ từ Hiện trạng gia đình) */}
-              <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs">
-                <div className="flex items-center justify-between mb-2.5">
-                  <span className="text-xs font-extrabold text-navy-800 flex items-center gap-1.5">
-                    <MaterialSymbol name="checklist" size={17} className="text-emerald-700" />
-                    Mặt hàng của đợt gom
-                  </span>
-                  <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                    {activeKeys.length} danh mục
-                  </span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {activeKeys.map((key) => {
-                    const def = RELIEF_ITEM_DEFS[key] || RELIEF_ITEM_DEFS.water;
-                    const isSelected = currentKey === key;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setActiveItemKey(key)}
-                        aria-pressed={isSelected}
-                        className={`demo-relief-pill ${isSelected ? "demo-relief-pill--active" : ""}`}
-                      >
-                        <MaterialSymbol name={def.icon} size={16} />
-                        {def.shortName}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Giỏ của nhà mình */}
-              <div>
-                <Card className="demo-stack demo-family-form">
-                  <div className="demo-heading">
-                    <img
-                      src={currentDef.imgSrc}
-                      alt=""
-                      className="h-12 w-12 rounded-2xl object-cover shadow-xs border border-line flex-none"
-                    />
-                    <div>
-                      <CardTitle as="h2">Giỏ của nhà mình</CardTitle>
-                      <p>{currentDef.name}</p>
-                    </div>
-                  </div>
-
-                  {/* Chip hiển thị quy mô hộ - KHÔNG hỏi lại số người */}
-                  <div className="flex items-center justify-between p-2.5 rounded-2xl bg-sky-50 border border-sky-100 text-xs font-bold text-navy-800">
-                    <span className="flex items-center gap-1.5 text-sky-700">
-                      <MaterialSymbol name="family_restroom" size={16} />
-                      Quy mô gia đình:
-                    </span>
-                    <span className="bg-white px-2.5 py-0.5 rounded-xl border border-sky-200 text-navy-900 font-extrabold">
-                      {people} người (theo Hiện trạng gia đình)
-                    </span>
-                  </div>
-
-                  <div className="demo-fields">
-                    <label>
-                      <IconTile icon="inventory_2" tone="amber" />
-                      <span>Đang có sẵn tại nhà</span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={999}
-                        value={currentStock}
-                        disabled={phase !== "draft"}
-                        onChange={(event) => {
-                          const val = Math.max(0, event.target.valueAsNumber || 0);
-                          setItemStocks(prev => ({ ...prev, [currentKey]: val }));
-                          setSaved(false);
-                        }}
-                      />
-                    </label>
-                    <label>
-                      <IconTile icon="shopping_basket" tone="green" />
-                      <span>Số lượng muốn đặt ({currentDef.unit})</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={999}
-                        value={currentWanted}
-                        disabled={phase !== "draft"}
-                        onChange={(event) => {
-                          const val = Math.max(1, event.target.valueAsNumber || 1);
-                          setItemQuantities(prev => ({ ...prev, [currentKey]: val }));
-                          setSaved(false);
-                        }}
-                      />
-                    </label>
-                  </div>
-
-                  <div className="demo-recommendation">
-                    <div className="flex items-center gap-2.5 w-full">
-                      <span className="flex-none p-1.5 rounded-xl bg-amber-400 text-amber-950 flex items-center justify-center shadow-2xs">
-                        <MaterialSymbol name="health_and_safety" size={20} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black text-amber-950">
-                            Khuyến nghị chuẩn 72h trước lũ ({people} người):
-                          </span>
-                          <strong>{currentSuggested} {currentDef.unit}</strong>
-                        </div>
-                        <span className="text-[11px] text-amber-900 font-semibold block mt-0.5">
-                          {currentDef.suggestedDesc(people)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Button disabled={phase !== "draft" || saved} onClick={() => setSaved(true)}>
-                    {saved ? "Đã lưu giỏ" : "Lưu giỏ"}
-                  </Button>
-                </Card>
-                </div>
-              </section>
+              <DemoCampaignCart people={people} quantities={itemQuantities} saved={saved}
+                onChange={quantities => { setItemQuantities(quantities); setSaved(false); }}
+                onSave={() => {
+                  setItemQuantities(Object.fromEntries(campaignItems.map(({ key, wanted }) => [key, String(wanted)])));
+                  setSaved(true);
+                }} />
             ) : (
               <CampaignHouseholdCart items={publishedDemands.map(({ item, householdQuantity }) => ({ name: item.name, quantity: householdQuantity, unit: item.unit }))} />
             )}
