@@ -102,7 +102,7 @@ describe("draftFromGemini", () => {
     expect(sent.generationConfig.responseJsonSchema).toEqual(geminiResponseSchema);
   });
 
-  it("recommends all 3 SKUs with 72h Be Ready norms when user asks generally with nothing in stock", async () => {
+  it("recommends water and rice with 72h Be Ready norms when user asks generally without mentioning batteries", async () => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
     vi.stubEnv("GEMINI_MODEL", "gemini-3.5-flash-lite");
     vi.stubGlobal("fetch", mockGeminiResponse({
@@ -131,11 +131,10 @@ describe("draftFromGemini", () => {
       lines: [
         { skuId: waterSkuId, stockQty: 0, needQty: 24 },
         { skuId: riceSkuId, stockQty: 0, needQty: 4 },
-        { skuId: batterySkuId, stockQty: 0, needQty: 4 },
       ],
     });
     expect(result.unresolved).toEqual([]);
-    expect(result.ruleRefs).toHaveLength(3);
+    expect(result.ruleRefs).toHaveLength(2);
     expect(result.encouragement).toBeTruthy();
   });
 
@@ -177,7 +176,7 @@ describe("draftFromGemini", () => {
     expect(result.ruleRefs).toHaveLength(2);
   });
 
-  it("defaults all catalog products to stockQty 0 and scales by reserve days when text is empty", async () => {
+  it("defaults water and rice to stockQty 0 and scales by reserve days when text is empty, skipping unmentioned batteries", async () => {
     const provider = vi.fn();
     vi.stubGlobal("fetch", provider);
 
@@ -189,11 +188,10 @@ describe("draftFromGemini", () => {
       lines: [
         { skuId: waterSkuId, stockQty: 0, needQty: 48 },
         { skuId: riceSkuId, stockQty: 0, needQty: 8 },
-        { skuId: batterySkuId, stockQty: 0, needQty: 8 },
       ],
     });
     expect(result.unresolved).toEqual([]);
-    expect(result.ruleRefs).toHaveLength(3);
+    expect(result.ruleRefs).toHaveLength(2);
     expect(result.encouragement).toBeTruthy();
   });
 
@@ -224,11 +222,10 @@ describe("draftFromGemini", () => {
       lines: [
         { skuId: waterSkuId, stockQty: 0, needQty: 40 },
         { skuId: riceSkuId, stockQty: 0, needQty: 7 },
-        { skuId: batterySkuId, stockQty: 0, needQty: 8 },
       ],
     });
     expect(result.unresolved).toEqual([]);
-    expect(result.ruleRefs).toHaveLength(3);
+    expect(result.ruleRefs).toHaveLength(2);
     expect(result.encouragement).toBeTruthy();
   });
 
@@ -255,10 +252,69 @@ describe("draftFromGemini", () => {
 
     const result = await draftFromGemini({ text: "Có 2 thùng nước, gợi ý thêm giúp tôi" }, catalog);
     expect(result.draft).toEqual({
-      lines: [{ skuId: batterySkuId, stockQty: 0, needQty: 4 }],
+      lines: [],
     });
     expect(result.unresolved).toEqual(["nước", "Số người trong hộ"]);
-    expect(result.ruleRefs).toHaveLength(1);
+    expect(result.ruleRefs).toHaveLength(0);
+  });
+
+  it("recommends batteries when user explicitly mentions power outage or batteries, and scales urgent need higher than normal", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-3.5-flash-lite");
+
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: 4,
+              days: null,
+              recommendAll: true,
+              nothingInStock: true,
+              urgency: "URGENT",
+              encouragement: "Bạn đừng lo, OOPS sẽ cùng bà con chuẩn bị ngay phần lương thực và nước uống dự phòng đầy đủ cho gia đình.",
+              items: [],
+            }),
+          }],
+        },
+      }],
+    }));
+    const urgentResult = await draftFromGemini(
+      { text: "Tôi đói mấy bữa nay rồi, cứu tôi với", householdSize: 4, days: 3 },
+      catalog,
+    );
+    expect(urgentResult.draft.lines).toEqual([
+      { skuId: waterSkuId, stockQty: 0, needQty: 36 },
+      { skuId: riceSkuId, stockQty: 0, needQty: 6 },
+    ]);
+
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: 4,
+              days: null,
+              recommendAll: false,
+              nothingInStock: true,
+              urgency: "NORMAL",
+              items: [
+                { skuId: batterySkuId, label: "Pin AA", unit: null, stockQty: 0, needQty: null },
+              ],
+            }),
+          }],
+        },
+      }],
+    }));
+    const batteryResult = await draftFromGemini(
+      { text: "Nhà hay mất điện, hết pin rồi", householdSize: 4, days: 3 },
+      catalog,
+    );
+    expect(batteryResult.draft.lines).toEqual([
+      { skuId: batterySkuId, stockQty: 0, needQty: 4 },
+    ]);
   });
 
   it("marks duplicate SKUs or missing householdSize unresolved while defaulting omitted stockQty to 0", async () => {

@@ -45,11 +45,20 @@ export function findCartNormRule(item: CatalogItem): CartNormRule | undefined {
   return undefined;
 }
 
+export type UrgencyLevel = "NORMAL" | "ELEVATED" | "URGENT";
+
+const URGENCY_MULTIPLIER: Record<UrgencyLevel, number> = {
+  NORMAL: 1,
+  ELEVATED: 1.25,
+  URGENT: 1.5,
+};
+
 export function computeRecommendedNeed(
   item: CatalogItem,
   householdSize: number | undefined,
   stockQty: number | null,
   days = 3,
+  urgency: UrgencyLevel = "NORMAL",
 ): { needQty: number; ruleRef: string } | undefined {
   const rule = findCartNormRule(item);
   if (!rule) return undefined;
@@ -83,6 +92,10 @@ export function computeRecommendedNeed(
       ? Math.min(MAX_QUANTITY, (householdSize ?? 1) * Math.ceil((rule.qty * reserveDays) / 3))
       : Math.min(MAX_QUANTITY, Math.ceil((rule.qty * reserveDays) / 3));
     label = reserveDays === 3 ? rule.label : `${rule.label} (${reserveDays} ngày)`;
+  }
+
+  if (urgency !== "NORMAL" && (item.category === "WATER" || item.category === "FOOD")) {
+    target = Math.min(MAX_QUANTITY, Math.ceil(target * URGENCY_MULTIPLIER[urgency]));
   }
 
   const needQty = Math.max(0, target - knownStock);

@@ -7,11 +7,13 @@ import { computeRecommendedNeed } from "./norms";
 
 const quantity = z.number().int().min(0).max(2_147_483_647);
 const DEFAULT_ENCOURAGEMENT = "Bạn đừng lo, OOPS đã chuẩn bị sẵn gợi ý nhu yếu phẩm để nhà mình yên tâm dự trữ cùng nhóm.";
+const urgencyLevel = z.enum(["NORMAL", "ELEVATED", "URGENT"]);
 const extracted = z.strictObject({
   householdSize: quantity.min(1).nullable(),
   days: z.number().int().min(1).max(365).nullable().optional().default(null),
   recommendAll: z.boolean().optional().default(false),
   nothingInStock: z.boolean().optional().default(false),
+  urgency: urgencyLevel.optional().default("NORMAL"),
   encouragement: z.string().trim().max(300).nullable().optional().default(null),
   items: z.array(z.strictObject({
     skuId: z.string().nullable(),
@@ -44,6 +46,7 @@ export const geminiResponseSchema = {
     days: nullableIntSchema(1, 365),
     recommendAll: { type: "boolean" },
     nothingInStock: { type: "boolean" },
+    urgency: { type: "string", enum: ["NORMAL", "ELEVATED", "URGENT"] },
     encouragement: nullableStringSchema,
     items: {
       type: "array",
@@ -63,7 +66,7 @@ export const geminiResponseSchema = {
       },
     },
   },
-  required: ["householdSize", "days", "recommendAll", "nothingInStock", "encouragement", "items"],
+  required: ["householdSize", "days", "recommendAll", "nothingInStock", "urgency", "encouragement", "items"],
   additionalProperties: false,
 } as const;
 
@@ -78,6 +81,7 @@ export async function draftFromGemini(input: z.input<typeof cartAiInput>, catalo
       days: null,
       recommendAll: true,
       nothingInStock: true,
+      urgency: "NORMAL",
       encouragement: DEFAULT_ENCOURAGEMENT,
       items: [],
     };
@@ -92,20 +96,25 @@ export async function draftFromGemini(input: z.input<typeof cartAiInput>, catalo
         headers: { "content-type": "application/json", "x-goog-api-key": key },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: [
-            "Trích xuất và suy luận giỏ nhu yếu phẩm từ văn bản tiếng Việt và ngữ cảnh JSON đầu vào (text, householdSize, days, catalog).",
+            "Trích xuất, đánh giá mức độ cấp thiết và suy luận giỏ nhu yếu phẩm từ văn bản tiếng Việt và ngữ cảnh JSON đầu vào (text, householdSize, days, catalog).",
             "Chuẩn tham khảo theo ngày của app (mốc 72 giờ = 3 ngày): Nước uống = 2 chai/người/ngày (6 chai/người cho 3 ngày), Gạo = ~0,33 kg/người/ngày (1 kg/người cho 3 ngày), Pin AA = 4 viên/hộ mỗi 3 ngày.",
             "Lấy householdSize nếu được nói rõ trong text, hoặc null để app dùng householdSize đầu vào.",
             "Lấy days (1..365) nếu người dùng nêu rõ số ngày cần dự trữ trong text (vd '5 ngày', '1 tuần' = 7), hoặc null để app dùng days đầu vào.",
-            "Đặt recommendAll = true khi người dùng hỏi gợi ý chung cả giỏ, xin giúp chuẩn bị, hoặc nói nhà chưa có gì / hết sạch đồ.",
-            "Đặt nothingInStock = true khi người dùng nói nhà chưa có gì / hết sạch đồ.",
-            "encouragement: luôn viết đúng 1 câu động viên ngắn gọn, ấm áp, trấn an bằng tiếng Việt phù hợp với tâm lý người dân trước thiên tai và sát với hoàn cảnh người dùng vừa chia sẻ (ví dụ: 'Bạn đừng lo, OOPS sẽ cùng bạn và hàng xóm chuẩn bị đủ lương thực, nước uống cho những ngày tới.'); không hứa hẹn cứu hộ, tiền bạc hay điều ngoài phạm vi gom nhu yếu phẩm.",
+            "Phân tích mức độ cần (urgency):",
+            "- NORMAL: hết đồ hoặc chuẩn bị bình thường (vd 'tôi hết nước, đồ ăn rồi, cần thêm nước, gạo').",
+            "- ELEVATED: nhu cầu cao hơn bình thường (vd 'ăn nhiều', 'nhà có trẻ nhỏ/người bệnh', 'dùng nước tắm rửa').",
+            "- URGENT: tình trạng thiếu đói/khát kéo dài, khẩn cấp, cầu cứu (vd 'tôi đói mấy bữa nay rồi, cứu tôi với', 'nhịn đói mấy ngày', 'kiệt sức'). Khi URGENT, đặt recommendAll = true để đề xuất đầy đủ cả nước uống và gạo ở mức cao hơn bình thường (~1.5x chuẩn ngày, bổ sung thêm phần bù đắp những ngày đã thiếu).",
+            "Đặt recommendAll = true khi người dùng hỏi gợi ý chung cả giỏ, xin giúp chuẩn bị, nói nhà chưa có gì / hết sạch đồ, hoặc đang ở mức URGENT.",
+            "Đặt nothingInStock = true khi người dùng nói nhà chưa có gì / hết sạch đồ / đói khát không còn gì.",
+            "QUAN TRỌNG VỀ PIN: Nếu người dùng KHÔNG nhắc tới pin, đèn pin, sạc hoặc mất điện/cúp điện thì coi như họ KHÔNG cần pin — tuyệt đối KHÔNG thêm Pin AA vào items.",
+            "encouragement: luôn viết đúng 1 câu động viên ngắn gọn, ấm áp, trấn an bằng tiếng Việt phù hợp với tâm lý người dân trước thiên tai và sát với mức độ khẩn cấp người dùng vừa chia sẻ (ví dụ: 'Bạn đừng lo, OOPS sẽ cùng bạn và hàng xóm chuẩn bị đủ lương thực, nước uống cho những ngày tới.'); không hứa hẹn cứu hộ, tiền bạc hay điều ngoài phạm vi gom nhu yếu phẩm.",
             "Với từng món liên quan trong text: chỉ gán skuId có trong catalog khi khớp duy nhất.",
             "Nếu người dùng nêu đơn vị của một số lượng thì giữ đúng đơn vị đó vào unit (không tự quy đổi đơn vị khác như thùng, bao); nếu không nêu đơn vị và AI tự suy luận theo đơn vị chuẩn của catalog thì để unit = null hoặc đúng unit của catalog.",
             "stockQty: lượng đang có theo người dùng nêu (nếu nói hết/không có thì 0; nếu không nêu thì null).",
             "needQty: lượng CẦN MUA THÊM (đã trừ stockQty nếu có).",
             "- Nếu người dùng nêu rõ số lượng cần mua thêm: điền đúng số đó, estimated = false, reason = null.",
-            "- Nếu người dùng nêu nhu cầu/ngữ cảnh bổ sung hoặc đặc thù (ví dụ: dùng nước để tắm/vệ sinh/nấu ăn, có trẻ nhỏ/người bệnh, hay mất điện cần thêm pin...): HÃY TỰ SUY LUẬN và ước lượng needQty hợp lý theo đơn vị của catalog (dựa trên householdSize và số ngày dự trữ days, trừ đi stockQty nếu có), đặt estimated = true và giải thích ngắn gọn cách ước lượng bằng tiếng Việt trong reason.",
-            "- Nếu người dùng chỉ nêu lượng đang có/hết đồ hoặc chỉ hỏi gợi ý chung theo số ngày mà không có ngữ cảnh đặc thù và không nói rõ lượng cần mua: để needQty = null, estimated = false, reason = null để app áp định mức chuẩn theo days.",
+            "- Nếu người dùng nêu mức độ thiếu đói/khẩn cấp (URGENT) hoặc nhu cầu đặc thù (tắm rửa, ăn nhiều, trẻ nhỏ...): HÃY TỰ SUY LUẬN và ước lượng needQty cao hơn mức chuẩn cho phù hợp thực tế theo đơn vị của catalog (dựa trên householdSize và days, trừ đi stockQty nếu có), đặt estimated = true và giải thích ngắn gọn trong reason.",
+            "- Nếu người dùng chỉ nêu lượng đang có/hết đồ bình thường (NORMAL) mà không có ngữ cảnh đặc thù và không nói rõ số lượng cần mua: để needQty = null, estimated = false, reason = null để app áp định mức chuẩn theo days.",
           ].join("\n") }] },
           contents: [{
             parts: [{
@@ -188,7 +197,7 @@ export async function draftFromGemini(input: z.input<typeof cartAiInput>, catalo
       continue;
     }
 
-    const recommended = computeRecommendedNeed(sku, householdSize, effectiveStock, days);
+    const recommended = computeRecommendedNeed(sku, householdSize, effectiveStock, days, result.urgency);
     if (recommended) {
       ruleRefs.add(recommended.ruleRef);
       lines.push({
@@ -207,8 +216,10 @@ export async function draftFromGemini(input: z.input<typeof cartAiInput>, catalo
   if (shouldRecommendAll) {
     for (const sku of catalog) {
       if (handledSkus.has(sku.skuId)) continue;
+      // Treat unmentioned non-food/water essentials (e.g. batteries) as not needed.
+      if (sku.category === "ESSENTIALS") continue;
       const effectiveStock = 0;
-      const recommended = computeRecommendedNeed(sku, householdSize, effectiveStock, days);
+      const recommended = computeRecommendedNeed(sku, householdSize, effectiveStock, days, result.urgency);
       if (!recommended) continue;
       ruleRefs.add(recommended.ruleRef);
       lines.push({
