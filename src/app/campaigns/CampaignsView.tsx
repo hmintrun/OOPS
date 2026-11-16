@@ -34,7 +34,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
   const closed = campaign.state === "DRAFT" && isPast(campaign.collectUntil);
   return (
     <li>
-      <Link href={`/campaigns/${campaign.campaignId}`} className="block">
+      <Link href={`/campaigns/${campaign.campaignId}`} prefetch={false} className="block">
         <Card className="flex items-center gap-[12px]">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-[8px]">

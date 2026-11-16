@@ -9,9 +9,13 @@ import {
 } from "@/lib/api-client";
 import { Button, Card, CardTitle } from "@/components/ui";
 import { readFamilyStatus } from "@/app/groups/FamilyStatusWidget";
-import { CartSuggestion } from "./CartSuggestion";
+import dynamic from "next/dynamic";
 import { formatDateTime, isPast } from "../_shared/dates";
 import { Banner, CampaignStateChip, CartStateChip, INPUT_CLASS, LinkButton, LoadingState } from "../_shared/ui";
+
+const CartSuggestion = dynamic(() => import("./CartSuggestion").then(module => module.CartSuggestion), {
+  loading: () => <LoadingState />,
+});
 
 type Data = { campaign: Campaign; catalog: CatalogItem[]; cart: Cart | null; needs: Needs; isRep: boolean };
 type Draft = {
@@ -63,6 +67,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [walletNotReady, setWalletNotReady] = useState(false);
+  const [suggestionOpenedFor, setSuggestionOpenedFor] = useState<string>();
   const busy = useRef(false);
   const retry = useRef<{ body: string; key: string } | undefined>(undefined);
 
@@ -227,7 +232,11 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
           </details>}
           {editable && <Button type="submit" loading={saving}>Lưu giỏ</Button>}
         </form>
-        {editable && <CartSuggestion campaignId={campaignId} householdSize={parseQuantity(draft.householdSize)}
+        {editable && <details className="mt-4 rounded-input border border-line p-3" onToggle={event => {
+          if (event.currentTarget.open) setSuggestionOpenedFor(campaignId);
+        }}>
+          <summary className="cursor-pointer font-bold">Gợi ý giỏ bằng AI</summary>
+          {suggestionOpenedFor === campaignId && <CartSuggestion campaignId={campaignId} householdSize={parseQuantity(draft.householdSize)}
           catalog={catalog} disabled={saving} onApply={suggestion => edit(current => {
             const lines = { ...current.lines };
             for (const line of suggestion.lines) {
@@ -240,6 +249,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
             return { ...current, lines, householdSize: suggestion.householdSize === undefined
               ? current.householdSize : String(suggestion.householdSize) };
           })} />}
+        </details>}
         {editable && cart?.state === "DRAFT" && (
           <Button className="mt-2" disabled={dirty || saving}
             onClick={() => void action(`confirm:${cart.version}`, "Đã xác nhận giỏ.", key => confirmCart(campaignId, cart.version, key))}>

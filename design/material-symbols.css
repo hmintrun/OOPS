@@ -18,3 +18,22 @@
   -webkit-font-smoothing: antialiased;
   font-variation-settings: "FILL" 0, "wght" 500, "GRAD" 0, "opsz" 24;
 }
+
+/* Animation xoay mượt mà cho icon trạng thái tải / progress_activity */
+.material-symbols-rounded.ui-spin,
+.material-symbols-rounded.animate-spin,
+.material-symbols-rounded[data-icon="progress_activity"] {
+  display: inline-block;
+  animation: ui-spin 800ms linear infinite;
+  transform-origin: 50% 50%;
+  vertical-align: middle;
+}
+
+@keyframes ui-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

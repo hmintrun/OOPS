@@ -131,9 +131,13 @@ export function Banner({
 
 export function LoadingState({ label = "Đang tải…" }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center gap-[10px] py-[24px] text-body text-navy-600">
-      <MaterialSymbol name="progress_activity" size={22} />
-      {label}
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex items-center justify-center gap-[10px] py-[24px] text-body text-navy-700"
+    >
+      <MaterialSymbol name="progress_activity" size={22} className="ui-spin text-emerald-700 animate-spin" />
+      <span className="font-medium">{label}</span>
     </div>
   );
 }

@@ -15,9 +15,14 @@ export function MaterialSymbol({
   className = "",
   label,
 }: MaterialSymbolProps) {
+  const isSpin =
+    name === "progress_activity" ||
+    className.includes("animate-spin") ||
+    className.includes("ui-spin");
   return (
     <span
-      className={`material-symbols-rounded ${className}`.trim()}
+      data-icon={name}
+      className={`material-symbols-rounded ${isSpin ? "ui-spin" : ""} ${className}`.trim()}
       style={{
         fontSize: size ? `${size}px` : undefined,
         fontVariationSettings: `"FILL" ${filled ? 1 : 0}, "wght" 500, "GRAD" 0, "opsz" 24`,

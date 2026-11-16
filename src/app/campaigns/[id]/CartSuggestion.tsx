@@ -63,9 +63,7 @@ export function CartSuggestion({ campaignId, householdSize, catalog, disabled, o
     }
   }
 
-  return <details className="mt-4 rounded-input border border-line p-3">
-    <summary className="cursor-pointer font-bold">Gợi ý giỏ bằng AI</summary>
-    <div className="mt-3 grid gap-3">
+  return <div className="mt-3 grid gap-3">
       <label className="grid gap-1">Số ngày cần dự trữ
         <input className={INPUT_CLASS} type="number" min={1} max={365} step={1} inputMode="numeric"
           value={days} disabled={pending || disabled}
@@ -92,6 +90,5 @@ export function CartSuggestion({ campaignId, householdSize, catalog, disabled, o
           setResult(undefined);
         }}>Sử dụng gợi ý</Button>}
       </>}
-    </div>
-  </details>;
+  </div>;
 }

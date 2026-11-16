@@ -74,6 +74,20 @@ export default function Page() {
           </Card>
 
           <Card>
+            <CardTitle>Trạng thái tải (Loading State & Animation)</CardTitle>
+            <div className="flex flex-col gap-3 py-2">
+              <div className="flex items-center justify-center gap-3 rounded-card bg-emerald-50/70 p-4 border border-emerald-100">
+                <MaterialSymbol name="progress_activity" size={24} className="ui-spin text-emerald-700" />
+                <span className="font-semibold text-navy-800">Đang tải…</span>
+              </div>
+              <div className="flex items-center justify-center gap-2 py-2 text-body text-navy-600">
+                <MaterialSymbol name="progress_activity" size={20} className="ui-spin text-emerald-600" />
+                <span>Đang đồng bộ dữ liệu với Fuji…</span>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
             <CardTitle>Icon tile theo tông</CardTitle>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               <IconTile icon="groups" tone="sky" />
