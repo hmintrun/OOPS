@@ -7,6 +7,7 @@ import { Button, Card, CardTitle } from "@/components/ui";
 import type { Campaign, Group } from "@/contracts/foundation";
 import { ApiError, createCampaign, getGroup, getMe } from "@/lib/api-client";
 import {
+  campaignDisplayState,
   defaultCollectUntil,
   defaultNeedBy,
   formatDateTime,
@@ -31,26 +32,29 @@ type LoadState =
   | { phase: "error"; message: string };
 
 function CampaignCard({ campaign }: { campaign: Campaign }) {
-  const closed = campaign.state === "DRAFT" && isPast(campaign.collectUntil);
+  const displayState = campaignDisplayState(campaign);
+  const isPastCampaign = displayState === "EXPIRED" || displayState === "PUBLISHED";
   return (
     <li>
-      <Link href={`/campaigns/${campaign.campaignId}`} className="block">
-        <Card className="flex items-center gap-[12px]">
+      <Link href={`/campaigns/${campaign.campaignId}`} prefetch={false} className="block">
+        <Card
+          className={`ui-campaign-status flex items-center gap-[12px] ${
+            isPastCampaign ? "bg-slate-100 border border-slate-200 text-slate-700" : ""
+          }`}
+          data-campaign-status={displayState}
+        >
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-[8px]">
-              <CampaignStateChip state={campaign.state} />
-              {closed && (
-                <span className="text-small text-danger">Đã hết hạn gom</span>
-              )}
+              <CampaignStateChip state={displayState} />
             </div>
-            <p className="mt-[6px] text-body">
+            <p className={`mt-[6px] text-body ${isPastCampaign ? "text-slate-800" : ""}`}>
               Gom đến <strong>{formatDateTime(campaign.collectUntil)}</strong>
             </p>
-            <p className="text-body text-navy-600">
+            <p className={`text-body ${isPastCampaign ? "text-slate-500" : "text-navy-600"}`}>
               Cần hàng trước {formatDateTime(campaign.needBy)}
             </p>
           </div>
-          <span className="material-symbols-rounded flex-none text-[24px] text-navy-600">
+          <span className={`material-symbols-rounded flex-none text-[24px] ${isPastCampaign ? "text-slate-400" : "text-navy-600"}`}>
             chevron_right
           </span>
         </Card>

@@ -40,6 +40,20 @@ export function isPast(value: string | null | undefined, now = Date.now()): bool
   return Number.isFinite(time) && time <= now;
 }
 
+export function campaignDisplayState({ state, collectUntil }: {
+  state: "DRAFT" | "PUBLISHED";
+  collectUntil: string | null;
+}) {
+  if (state === "PUBLISHED") return "PUBLISHED";
+  return isPast(collectUntil) ? "EXPIRED" : "COLLECTING";
+}
+
+export const CAMPAIGN_STATUS_LABEL = {
+  COLLECTING: "Đang gom",
+  EXPIRED: "Đã hết hạn gom",
+  PUBLISHED: "Đã đăng",
+};
+
 /** Mặc định gợi ý: gom đến 17:00 ngày mai. */
 export function defaultCollectUntil(now = new Date()): Date {
   const date = new Date(now);

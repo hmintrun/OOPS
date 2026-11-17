@@ -8,14 +8,12 @@ import { cartAiInput, cartAiResult, type CatalogItem } from "@/contracts/foundat
 import { ApiError, apiFetch, newIdempotencyKey } from "@/lib/api-client";
 import { INPUT_CLASS } from "../_shared/ui";
 
-type Suggestion = z.infer<typeof cartAiResult>["draft"];
-
 export function CartSuggestion({ campaignId, householdSize, catalog, disabled, onApply }: {
   campaignId: string;
   householdSize: number;
   catalog: CatalogItem[];
   disabled: boolean;
-  onApply: (draft: Suggestion) => void;
+  onApply: (quantities: Record<string, string>) => void;
 }) {
   const router = useRouter();
   const [text, setText] = useState("");
@@ -29,6 +27,9 @@ export function CartSuggestion({ campaignId, householdSize, catalog, disabled, o
     const item = catalog.find(entry => entry.skuId === line.skuId);
     return item ? [{ line, item }] : [];
   }) ?? [];
+  const suggestedQuantities = Object.fromEntries(suggestions.flatMap(({ line }) =>
+    line.needQty === undefined ? [] : [[line.skuId, String(line.needQty)]],
+  ));
   const duration = Number(days);
   const validDuration = Number.isInteger(duration) && duration >= 1 && duration <= 365;
   async function suggest() {
@@ -63,9 +64,7 @@ export function CartSuggestion({ campaignId, householdSize, catalog, disabled, o
     }
   }
 
-  return <details className="mt-4 rounded-input border border-line p-3">
-    <summary className="cursor-pointer font-bold">Gợi ý giỏ bằng AI</summary>
-    <div className="mt-3 grid gap-3">
+  return <div className="mt-3 grid gap-3">
       <label className="grid gap-1">Số ngày cần dự trữ
         <input className={INPUT_CLASS} type="number" min={1} max={365} step={1} inputMode="numeric"
           value={days} disabled={pending || disabled}
@@ -73,7 +72,7 @@ export function CartSuggestion({ campaignId, householdSize, catalog, disabled, o
       </label>
       <label className="grid gap-1">Nhà mình đang có gì và cần thêm gì?
         <textarea className={INPUT_CLASS} maxLength={3900} value={text} disabled={pending || disabled}
-          placeholder="Ví dụ: Nhà có 3 chai nước, cần thêm 7 chai."
+          placeholder="Ví dụ: Nhà còn 3 chai nước và 1 kg gạo. Gợi ý lượng cần mua thêm."
           onChange={event => { setText(event.target.value); setResult(undefined); setError(""); }} />
       </label>
       <Button variant="secondary" loading={pending} disabled={disabled || !validDuration || !text.trim()} onClick={() => void suggest()}>Tạo gợi ý</Button>
@@ -87,11 +86,10 @@ export function CartSuggestion({ campaignId, householdSize, catalog, disabled, o
           </li>)}
         </ul>}
         {result.unresolved.length > 0 && <p>Nhập tay các mục chưa xác định · {result.unresolved.join(", ")}</p>}
-        {suggestions.length > 0 && <Button disabled={disabled} onClick={() => {
-          onApply({ lines: suggestions.map(({ line }) => line) });
+        {Object.keys(suggestedQuantities).length > 0 && <Button disabled={disabled} onClick={() => {
+          onApply(suggestedQuantities);
           setResult(undefined);
         }}>Sử dụng gợi ý</Button>}
       </>}
-    </div>
-  </details>;
+  </div>;
 }
