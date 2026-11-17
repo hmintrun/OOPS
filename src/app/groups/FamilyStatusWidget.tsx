@@ -4,7 +4,6 @@ import { WidgetDialog } from "@/components/ui/WidgetDialog";
 import { useEffect, useState } from "react";
 import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
 import { defaultFamilyStatus, readFamilyStatus, saveFamilyStatus, type FamilyStatusData } from "@/lib/family-status";
-import { DRINKING_WATER_LITRES_PER_PERSON_PER_DAY } from "@/lib/water-reserve";
 
 const HOUSING_LABELS: Record<FamilyStatusData["housingType"], { label: string; icon: string; desc: string }> = {
   kienco: { label: "Nhà kiên cố", icon: "apartment", desc: "Chung cư / nhà lầu bê tông an toàn" },
@@ -50,8 +49,6 @@ export function FamilyStatusWidget({
     setTimeout(() => setShowSavedToast(false), 3000);
   };
 
-  const waterLitres72h = data.members * DRINKING_WATER_LITRES_PER_PERSON_PER_DAY * 3;
-
   return (
     <>
       {/* Toast thông báo lưu thành công */}
@@ -71,7 +68,7 @@ export function FamilyStatusWidget({
             </div>
             <div>
               <CardTitle as="h2" className="ui-card__title--flush">Hiện trạng gia đình</CardTitle>
-              <p className="family-status__subtitle">{data.members} người · Ước tính {waterLitres72h} lít nước uống / 72 giờ</p>
+              <p className="family-status__subtitle">{data.members} người</p>
             </div>
           </div>
 
@@ -140,9 +137,6 @@ function FamilyStatusModalWidget({
     });
   };
 
-  const activeMembers = typeof members === "number" && members > 0 ? members : 1;
-  const waterLitres = activeMembers * DRINKING_WATER_LITRES_PER_PERSON_PER_DAY * 3;
-
   return (
     <WidgetDialog title="Hiện trạng gia đình" icon="family_restroom" onClose={onClose}>
       <form className="family-editor" onSubmit={handleSubmit}>
@@ -169,10 +163,6 @@ function FamilyStatusModalWidget({
             {Object.entries(HOUSING_LABELS).map(([key, option]) => <option key={key} value={key}>{option.label}</option>)}
           </select>
         </label>
-        <p className="family-editor__estimate">
-          <MaterialSymbol name="water_drop" size={20} />
-          Ước tính cho 72 giờ <strong>{waterLitres} lít nước uống</strong>
-        </p>
         <details className="family-editor__more">
           <summary>Thông tin thêm (tùy chọn)</summary>
           <div className="family-editor__people">
