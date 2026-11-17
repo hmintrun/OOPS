@@ -2,7 +2,6 @@
 
 import { createBrowserClient } from "@supabase/ssr";
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import { resolveLoginNext } from "@/lib/login-next";
@@ -326,16 +325,6 @@ export function LoginForm() {
           clearPasswords();
           setState({ kind: "idle" });
         }}>{register ? "Quay lại đăng nhập" : "Tạo tài khoản mới"}</Button>
-
-        <div className="login-demo">
-          <Link
-            href="/ui-preview/demo"
-            className="login-demo__link"
-          >
-            <MaterialSymbol name="play_circle" size={22} />
-            Thử OOPS với dữ liệu mẫu
-          </Link>
-        </div>
 
       </form>
 

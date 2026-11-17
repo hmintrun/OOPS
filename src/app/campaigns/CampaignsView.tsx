@@ -33,13 +33,13 @@ type LoadState =
 
 function CampaignCard({ campaign }: { campaign: Campaign }) {
   const displayState = campaignDisplayState(campaign);
-  const isPastCampaign = displayState === "EXPIRED" || displayState === "PUBLISHED";
+  const isPublished = displayState === "PUBLISHED";
   return (
     <li>
       <Link href={`/campaigns/${campaign.campaignId}`} prefetch={false} className="block">
         <Card
           className={`ui-campaign-status flex items-center gap-[12px] ${
-            isPastCampaign ? "bg-slate-100 border border-slate-200 text-slate-700" : ""
+            isPublished ? "bg-slate-100 border border-slate-200 text-slate-700" : ""
           }`}
           data-campaign-status={displayState}
         >
@@ -47,14 +47,14 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
             <div className="flex flex-wrap items-center gap-[8px]">
               <CampaignStateChip state={displayState} />
             </div>
-            <p className={`mt-[6px] text-body ${isPastCampaign ? "text-slate-800" : ""}`}>
+            <p className={`mt-[6px] text-body ${isPublished ? "text-slate-800" : ""}`}>
               Gom đến <strong>{formatDateTime(campaign.collectUntil)}</strong>
             </p>
-            <p className={`text-body ${isPastCampaign ? "text-slate-500" : "text-navy-600"}`}>
+            <p className={`text-body ${isPublished ? "text-slate-500" : ""}`}>
               Cần hàng trước {formatDateTime(campaign.needBy)}
             </p>
           </div>
-          <span className={`material-symbols-rounded flex-none text-[24px] ${isPastCampaign ? "text-slate-400" : "text-navy-600"}`}>
+          <span className={`material-symbols-rounded flex-none text-[24px] ${isPublished ? "text-slate-400" : ""}`}>
             chevron_right
           </span>
         </Card>
