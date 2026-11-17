@@ -39,14 +39,23 @@ export function InviteForm({ groupId, members }: { groupId: string; members: Mem
             {members.map(member => <option key={member.userId} value={member.userId}>Mời {member.displayName} làm đại diện</option>)}
           </select>
         </label>
-        <Button type="submit" loading={pending}>Tạo liên kết dùng một lần</Button>
+        <Button type="submit" loading={pending}>{target ? "Tạo lời mời làm đại diện" : "Lấy liên kết và mã nhóm"}</Button>
         {error && <p role="alert" className="text-danger">{error}</p>}
         {invite && (
-          <label className="grid gap-1">
-            Sao chép liên kết trước {formatDateTime(invite.expiresAt)}
-            <input className="h-control rounded-input border border-line px-3" value={invite.inviteUrl} readOnly
-              onFocus={event => event.currentTarget.select()} />
-          </label>
+          <>
+            <label className="grid gap-1">
+              {"expiresAt" in invite ? `Sao chép liên kết trước ${formatDateTime(invite.expiresAt)}` : "Liên kết mời vào nhóm"}
+              <input className="h-control w-full min-w-0 rounded-input border border-line px-3" value={invite.inviteUrl} readOnly
+                onFocus={event => event.currentTarget.select()} />
+            </label>
+            {"joinCode" in invite && (
+              <label className="grid gap-1">
+                Mã nhóm
+                <input className="h-control w-full min-w-0 rounded-input border border-line px-3 font-mono" value={invite.joinCode} readOnly
+                  onFocus={event => event.currentTarget.select()} />
+              </label>
+            )}
+          </>
         )}
       </form>
     </Card>

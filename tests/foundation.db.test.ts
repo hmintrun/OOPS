@@ -560,24 +560,39 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     }
   });
 
-  it("makes idempotency atomic and a JOIN token usable by only one account", async () => {
+  it("shares a stable JOIN code across accounts and keeps targeted invites one-time", async () => {
     const [rep, first, second] = await Promise.all([newUser(), newUser(), newUser()]);
     const id = await newGroup(rep);
 
-    const issued = await makeInvite(rep, id, undefined, "invite-replay");
+    const [issued, issuedAgain] = await Promise.all([
+      makeInvite(rep, id, undefined, "invite-replay"),
+      makeInvite(rep, id, undefined, "invite-other-request"),
+    ]);
+    expect(issued).toEqual(issuedAgain);
+    expect(issued).toMatchObject({ joinCode: issued.token });
+    expect(issued.token).toMatch(/^[A-Z0-9]{8}$/);
     expect(await makeInvite(rep, id, undefined, "invite-replay")).toEqual(issued);
-    const expired = await makeInvite(rep, id);
+    expect((await call(getMe, first)).status).toBe(200);
+    const targeted = await call(postInvite, rep, { id, method: "POST", body: { kind: "JOIN", targetUserId: first } });
+    expect(targeted.status).toBe(201);
+    const expired = invite.parse(targeted.data);
+    const expiredToken = new URL(expired.inviteUrl).searchParams.get("token")!;
     await transaction(client => client.query(
       "update public.invites set expires_at = clock_timestamp() - interval '1 second' where id = $1", [expired.inviteId],
     ));
-    expect((await accept(first, expired.token)).status).toBe(409);
-    const joined = await Promise.all([accept(first, issued.token), accept(second, issued.token)]);
-    expect(joined.map(result => result.status).sort()).toEqual([200, 409]);
-    const newRep = joined[0].status === 200 ? first : second;
+    expect((await accept(first, expiredToken)).status).toBe(409);
+    expect((await accept(first, "00000000")).status).toBe(409);
+    const joined = await Promise.all([accept(first, issued.token), accept(second, issued.token.toLowerCase())]);
+    expect(joined.map(result => result.status)).toEqual([200, 200]);
+    for (const result of joined) expect(membership.parse(result.data)).toMatchObject({ groupId: id, role: "MEMBER" });
+    expect((await accept(first, issued.token)).status).toBe(409);
+    const newRep = first;
     const roleInvite = await makeInvite(rep, id, newRep);
     expect((await accept(rep, roleInvite.token)).status).toBe(409);
     expect(membership.parse((await accept(newRep, roleInvite.token)).data).role).toBe("REP");
+    expect((await accept(newRep, roleInvite.token)).status).toBe(409);
     expect(group.parse((await call(getGroup, rep, { id })).data).repId).toBe(newRep);
+    expect(await makeInvite(newRep, id)).toEqual(issued);
     expect((await call(postInvite, rep, {
       id, method: "POST", body: { kind: "JOIN" }, key: "invite-replay",
     })).status).toBe(403);
