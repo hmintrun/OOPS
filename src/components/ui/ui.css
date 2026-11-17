@@ -360,6 +360,23 @@
 }
 .ui-group-campaign:hover { text-decoration: underline; }
 
+.ui-campaign-status[data-campaign-status="COLLECTING"] {
+  background: #e8f5ed;
+  border: 1px solid #bce3cb;
+  color: #0b3d2c;
+}
+.ui-campaign-status[data-campaign-status="PUBLISHED"] {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+}
+.ui-campaign-status[data-campaign-status="EXPIRED"] {
+  background: #e2e8f0;
+  border: 1px solid #cbd5e1;
+  color: #64748b;
+  opacity: 0.88;
+}
+
 @media (width >= 40rem) {
   .ui-app-page { --oops-space-screen: 24px; --oops-space-page-top: 24px; }
   .ui-app-page .ui-screen-header { padding-bottom: 24px; }
