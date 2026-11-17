@@ -60,8 +60,9 @@ export function Chip({
 
 export function CampaignStateChip({ state }: { state: keyof typeof CAMPAIGN_STATUS_LABEL }) {
   const icons = { COLLECTING: "edit_note", EXPIRED: "schedule", PUBLISHED: "check_circle" };
+  const tones = { COLLECTING: "green", EXPIRED: "rose", PUBLISHED: "neutral" } as const;
   return (
-    <Chip tone={state === "COLLECTING" ? "green" : "neutral"} icon={icons[state]}>
+    <Chip tone={tones[state]} icon={icons[state]}>
       {CAMPAIGN_STATUS_LABEL[state]}
     </Chip>
   );
