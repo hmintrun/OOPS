@@ -54,7 +54,15 @@ export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
           </ul>
         </Card>
         {isRepresentative && <InviteForm groupId={data.groupId} members={data.members.filter(member => member.role !== "REP")} />}
-        <LeaveGroupButton groupId={data.groupId} isRepresentative={isRepresentative} />
+        {isRepresentative && data.members.length === 1 && (
+          <Link href="/join" className="ui-btn ui-btn--secondary ui-btn--full">
+            <MaterialSymbol name="group_add" className="ui-btn__icon" />
+            Tham gia nhóm qua lời mời
+          </Link>
+        )}
+        {(!isRepresentative || data.members.length > 1) && (
+          <LeaveGroupButton groupId={data.groupId} isRepresentative={isRepresentative} />
+        )}
       </div>
     </AppShell>
   );

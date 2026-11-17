@@ -23,6 +23,5 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
       </AppShell>
     );
   }
-  if (!result.group) notFound();
   return <GroupDetail data={result.group} userId={result.userId} />;
 }

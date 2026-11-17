@@ -14,14 +14,31 @@ Tài khoản đại diện seed là `oops-dev-household-1@example.test`. Hộ c�
 
 ## Thử luồng trên giao diện
 
-1. Mở `/` để vào ứng dụng. Đăng nhập bằng tài khoản demo tại `/login`.
-2. Tại **Nhóm của tôi**, đại diện xem thành viên, tạo lời mời hoặc mở **Quản lý đợt gom**. Người nhận mở liên kết mời và đăng nhập nếu cần. Người chưa có nhóm cũng có thể chọn **Tham gia nhóm** rồi dán liên kết mời.
+1. Mở `/` để vào ứng dụng. Đăng nhập tại `/login`, hoặc chọn **Tạo tài khoản mới** (`/login?mode=signup`). Nhập tên, email và hai ô mật khẩu. Nếu Supabase yêu cầu xác nhận, mở link mới nhất trong email; màn chờ có nút gửi lại và quay về đăng nhập. Nếu Supabase trả phiên ngay, app mở nhóm trực tiếp. Liên kết mời được giữ xuyên suốt đăng ký/xác nhận/đăng nhập.
+2. Tại **Nhóm của tôi**, đại diện xem thành viên, tạo lời mời hoặc mở **Quản lý đợt gom**. Người nhận mở liên kết mời và đăng nhập nếu cần, hoặc chọn **Tham gia nhóm qua lời mời** từ nhóm riêng rồi dán liên kết.
 3. Mở một đợt. Hộ điền **Đang có** và **Còn thiếu**, lưu giỏ rồi xác nhận. Đại diện xem tổng đã xác nhận và **Đăng nhu cầu** trước hạn cần hàng.
 4. Dùng một phiên người bán để mở **Feed** và tìm bài vừa đăng. Trang **Tài khoản** hiển thị hồ sơ, liên hệ riêng và trạng thái ví từ API.
 
 Mở `/ui-preview` để xem các component thiết kế. Phần ví trong bản này hiển thị dữ liệu của backend nền. Giao dịch Fuji thuộc mốc tích hợp tiếp theo.
 
 Các bảng nghiệp vụ không mở trực tiếp cho browser. Giữ thông tin kết nối DB, secret Auth và secret lời mời ở server. Lời mời trả link `/join?token=…` cho frontend và lưu hash token ở DB.
+
+## Cấu hình email đăng ký
+
+Khi đăng ký, chọn phường/xã/đặc khu tại TP.HCM trong mục **Nơi sinh sống**. Tài khoản chưa vào nhóm nào có nhóm riêng ngay khi mở trang Nhóm hoặc Tài khoản và có thể tạo liên kết mời. Nhu cầu lưu vị trí của đại diện tại thời điểm đăng để lọc Feed. Áp hai migration vị trí ngày 17/11/2026 trước khi chạy bản này. [Nguồn dữ liệu và hợp đồng vị trí](docs/locations.md)
+
+Trong Supabase **Authentication → URL Configuration**, đặt **Site URL** theo `APP_URL` và thêm URL callback của từng môi trường vào **Redirect URLs**. Local có thể dùng `http://localhost:3000/**`; môi trường triển khai cần cho phép `/login/confirm` cùng query `next` và `sb_flow_id`. Dùng cùng hostname khi mở app và đăng ký. Kiểm tra Email provider cho phép đăng ký.
+
+Callback hỗ trợ cả link mặc định có `code`/`sb_flow_id` (PKCE, cần trình duyệt đã đăng ký) và link có `token_hash` (`type=email` hoặc `signup`). Để xác nhận trên trình duyệt/thiết bị khác, có thể cấu hình **Confirm signup** email template:
+
+```html
+<h2>Xác nhận tài khoản OOPS</h2>
+<p><a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email">Xác nhận email</a></p>
+```
+
+Template này dùng URL do OOPS gửi khi `signUp`/`resend`, luôn có `?next=…`, nên giữ được lời mời. Link mặc định vẫn được hỗ trợ nếu chưa đổi template. Link chỉ dùng một lần; khi hết hạn hoặc mở sai trình duyệt, app cho đăng nhập lại hoặc gửi lại email, không tự bỏ qua xác nhận.
+
+Để mở đăng ký cho email ngoài danh sách được Supabase cho phép, cấu hình **custom SMTP** và kiểm tra giới hạn gửi. Nếu gặp `email_address_not_authorized`, cần sửa cấu hình gửi email của project; thay form hoặc tắt thông báo lỗi không giải quyết được. Tham khảo [Supabase password Auth](https://supabase.com/docs/guides/auth/passwords), [redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls), [custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp).
 
 ## Kiểm thử
 
@@ -31,6 +48,7 @@ Các bảng nghiệp vụ không mở trực tiếp cho browser. Giữ thông ti
 | `npm test` | Fixture, validation và công thức lượng. Suite DB mặc định bỏ qua khi chưa chọn DB test. |
 | `npm run test:db` | Handler và PostgreSQL thật, với danh tính Auth giả lập. Đặt `OOPS_TEST_DATABASE_URL` trỏ đến DB test đã áp migration và có danh mục từ `supabase/seed.sql`. Suite tạo dữ liệu riêng, kiểm khóa và dọn theo ID sau khi chạy. |
 | `npm run test:auth` | Đăng nhập Supabase dev bằng tài khoản demo, kiểm tra `Set-Cookie` khi làm mới phiên trên `/`, `/groups`, `/groups/[id]` và `/api/v1/me`, rồi dùng cookie mới gọi API nhóm và Feed của app local. |
+| `npm run test:registration` | App local đang chạy với Supabase dev. Tạo hai tài khoản tạm để kiểm xác nhận, đăng nhập, nhóm mặc định, mời, tham gia, rời nhóm và lọc Feed theo vị trí đại diện. Dọn tài khoản và nhóm thử sau khi chạy. Cần `OOPS_DEV_PROJECT_REF`, `SUPABASE_SECRET_KEY` và `DATABASE_URL`. Email được xác nhận bằng link thử từ `admin.generateLink`. |
 
 `test:db` hỗ trợ PostgreSQL thử nghiệm trên loopback có bảng `auth.users` và các role Supabase, hoặc project Supabase dev được xác nhận bằng `OOPS_DEV_PROJECT_REF`. Với Supabase dev, suite dùng secret Auth để tạo và xóa tài khoản test tạm thời.
 

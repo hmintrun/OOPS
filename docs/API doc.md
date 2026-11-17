@@ -4,6 +4,8 @@ Hợp đồng API cho web và worker của [OOPS MVP](requirements.md). Xem [Sch
 
 ## Quy ước
 
+Cập nhật 17/11/2026: hồ sơ/nhóm hỗ trợ `location`, nhu cầu thêm `provinceCode?`, Feed thêm bộ lọc `province`. Xem [hợp đồng vị trí và tương thích dữ liệu cũ](locations.md#hợp-đồng-và-dữ-liệu).
+
 - Đường dẫn HTTP trong các bảng dùng tiền tố `/api/v1`.
 - API dùng JSON, trừ upload bằng chứng qua `multipart/form-data`. API web xác thực phiên Supabase qua cookie bảo mật và nhận request cùng origin.
 - ID là UUID. Thời gian theo ISO 8601 có múi giờ. Trường JSON dùng camelCase, enum viết hoa và `?` biểu thị trường có thể vắng mặt.
@@ -152,13 +154,12 @@ type ConfirmationRound = {
 
 | Endpoint và quyền | Dữ liệu vào | Phản hồi |
 | --- | --- | --- |
-| `GET /me` và `PATCH /me`<br>Đã đăng nhập | Supabase Auth quản lý phiên. PATCH {contactPrivate}. | 200 {userId, groupId?, wallet?: {address, verificationState}, confirmationEligible, contactPrivate?}. verificationState là PENDING, VERIFIED hoặc FAILED. confirmationEligible còn phụ thuộc chính sách Fuji. |
+| `GET /me` và `PATCH /me`<br>Đã đăng nhập | Cấp nhóm riêng nếu tài khoản chưa có nhóm. PATCH nhận `contactPrivate`, `location` hoặc cả hai. | 200 {userId, groupId, location?, wallet?: {address, verificationState}, confirmationEligible, contactPrivate?}. verificationState là PENDING, VERIFIED hoặc FAILED. confirmationEligible còn phụ thuộc chính sách Fuji. |
 | `POST /wallet/link`<br>Chủ phiên | {address, proofTx, nonce}. GET /wallet/challenge cấp nonce một lần và expiresAt. Fuji ghi hash thử thách gắn với ví. | 202 {verificationState}. GET /me cho biết kết quả. 422 nếu bằng chứng sai. Khi lưu thay đổi ví, 409 `ACTIVE_COMMITMENT` nếu còn nghĩa vụ theo [G-09](OOPS-Spec.md#66-rời-nhóm-và-đổi-ví-g-09). |
-| `POST /groups`<br>Người chưa có nhóm | {name, districtCode, wardCode, pickupPrivate?}. Người tạo xác nhận nhận vai trò đại diện khi gửi. | 201 {groupId, membershipId, role}. 409 nếu đã có nhóm. |
 | `GET /groups/{id}`<br>Thành viên | id là groupId. | 200 {groupId, repId, members, campaigns: Campaign[]}. Ẩn điểm nhận cụ thể với hộ chưa chốt. |
 | `POST /groups/{id}/leave`<br>Thành viên tự rời | {}. Xem [G-09](OOPS-Spec.md#66-rời-nhóm-và-đổi-ví-g-09). | 200 {groupId, membershipId, leftAt}. 409 `REP_TRANSFER_REQUIRED`, `ACTIVE_COMMITMENT` hoặc `PUBLISHED_NEED_ACTIVE`. 404 nếu người gọi không còn là thành viên. |
 | `POST /groups/{id}/invites`<br>Đại diện | {kind: JOIN hoặc REP, targetUserId?}. REP bắt buộc có targetUserId đang trong nhóm. | 201 {inviteId, inviteUrl, expiresAt}. |
-| `POST /invites/accept`<br>Người được mời | {token}. JOIN cần chưa có nhóm. REP kiểm tra đúng tài khoản đích. | 200 {groupId, membershipId, role}. 409 nếu link hết hạn, đã dùng hoặc không còn hợp lệ. |
+| `POST /invites/accept`<br>Người được mời | {token}. JOIN áp dụng cho tài khoản chưa có nhóm hoặc là đại diện duy nhất của nhóm đã xong đợt gom và nghĩa vụ. REP kiểm tra đúng tài khoản đích. | 200 {groupId, membershipId, role}. 409 nếu lời mời hoặc điều kiện chuyển nhóm không hợp lệ. |
 | `POST /groups/{id}/campaigns`<br>Đại diện | {collectUntil, needBy, supportRequested?}. Kiểm tra thời điểm hiện tại < collectUntil < needBy. | 201 Campaign ở DRAFT. |
 | `GET /catalog`<br>Đã đăng nhập | category? | 200 {items: [{skuId, name, category, unit}]}. |
 | `GET /campaigns/{id}/cart` và `PUT /campaigns/{id}/cart`<br>Hộ trong nhóm | PUT {householdSize, supportRequested, lines: [{skuId, stockQty, needQty}], version}. version = 0 để tạo. householdSize > 0, stockQty ≥ 0, needQty ≥ 0. | 200 Cart. PUT lưu DRAFT. 409 nếu version cũ, đã đăng hoặc đã tới hạn gom. 422 nếu số lượng sai. |

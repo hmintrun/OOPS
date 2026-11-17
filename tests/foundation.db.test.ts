@@ -4,7 +4,6 @@ import { createClient } from "@supabase/supabase-js";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { apiError, campaign, cart, cartAiResult, feed, group, invite, leftGroup, me, membership, needs, publishResult } from "@/contracts/foundation";
 import { GET as getMe, PATCH as patchMe } from "@/app/api/v1/me/route";
-import { POST as postGroup } from "@/app/api/v1/groups/route";
 import { GET as getGroup } from "@/app/api/v1/groups/[id]/route";
 import { POST as postInvite } from "@/app/api/v1/groups/[id]/invites/route";
 import { POST as postLeave } from "@/app/api/v1/groups/[id]/leave/route";
@@ -69,7 +68,6 @@ const authFetch = globalThis.fetch.bind(globalThis);
 const users: string[] = [];
 const district = "OOPS_TEST_" + randomUUID();
 const dateIn = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
-const groupInput = { name: "Nhóm kiểm thử", districtCode: district, wardCode: "WARD", pickupPrivate: "private" };
 const origin = "http://localhost:3000";
 type Handler = (request: Request, context: { params: Promise<{ id?: string; version?: string }> }) => Promise<Response>;
 
@@ -114,7 +112,14 @@ async function newUser() {
 }
 
 async function newGroup(userId: string) {
-  return membership.parse((await call(postGroup, userId, { method: "POST", body: groupInput })).data).groupId;
+  const profile = me.parse((await call(getMe, userId)).data);
+  expect(profile.groupId).toBeDefined();
+  // Fixture for the old district-based Feed query and cleanup of its campaigns.
+  await transaction(client => client.query(
+    "update public.groups set district_code = $1, ward_code = 'WARD', pickup_private = 'private' where id = $2",
+    [district, profile.groupId],
+  ));
+  return profile.groupId!;
 }
 
 async function makeInvite(rep: string, id: string, target?: string, key?: string) {
@@ -327,6 +332,13 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
         await client.query(`delete from public.invites where group_id in ${groups}`, [district]);
         await client.query(`delete from public.memberships where group_id in ${groups}`, [district]);
         await client.query("delete from public.groups where district_code = $1", [district]);
+        // Groups provisioned when test users open /me or leave a group.
+        const soloGroups = "(select group_id from public.memberships where user_id = any($1::uuid[]))";
+        await client.query("delete from public.invites where group_id in " + soloGroups, [users]);
+        const { rows: solo } = await client.query<{ group_id: string }>(
+          "delete from public.memberships where user_id = any($1::uuid[]) returning group_id", [users],
+        );
+        await client.query("delete from public.groups where id = any($1::uuid[])", [solo.map(row => row.group_id)]);
         await client.query("delete from public.audit_events where actor_id = any($1::uuid[])", [users]);
         await client.query("delete from public.idempotency_keys where actor_id = any($1::uuid[])", [users]);
         await client.query("delete from public.wallets where user_id = any($1::uuid[])", [users]);
@@ -525,12 +537,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
 
   it("makes idempotency atomic and a JOIN token usable by only one account", async () => {
     const [rep, first, second] = await Promise.all([newUser(), newUser(), newUser()]);
-    const options = { method: "POST", body: groupInput, key: "same-key", path: "/api/v1/groups" };
-    const [one, replay] = await Promise.all([call(postGroup, rep, options), call(postGroup, rep, options)]);
-    expect([one.status, replay.status]).toEqual([201, 201]);
-    expect(one.data).toEqual(replay.data);
-    expect((await call(postGroup, rep, { ...options, body: { ...groupInput, name: "Different" } })).status).toBe(409);
-    const id = membership.parse(one.data).groupId;
+    const id = await newGroup(rep);
 
     const issued = await makeInvite(rep, id, undefined, "invite-replay");
     expect(await makeInvite(rep, id, undefined, "invite-replay")).toEqual(issued);
@@ -599,11 +606,14 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
 
   it("prevents two active memberships when group creation races", async () => {
     const rep = await newUser();
-    const options = { method: "POST", body: groupInput };
-    const responses = await Promise.all([call(postGroup, rep, options), call(postGroup, rep, options)]);
-    expect(responses.map(result => result.status).sort()).toEqual([201, 409]);
-    const profile = me.parse((await call(getMe, rep)).data);
+    const [one, two] = await Promise.all([call(getMe, rep), call(getMe, rep)]);
+    expect([one.status, two.status]).toEqual([200, 200]);
+    const profile = me.parse(one.data);
     expect(profile.groupId).toBeDefined();
+    expect(me.parse(two.data).groupId).toBe(profile.groupId);
+    const data = group.parse((await call(getGroup, rep, { id: profile.groupId })).data);
+    expect(data.repId).toBe(rep);
+    expect(data.members).toHaveLength(1);
   });
 
   it("opens an offer and draft while enforcing roles, revisions and stock boundaries", async () => {

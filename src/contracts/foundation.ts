@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { userLocation } from "@/lib/locations";
 
 export const uuid = z.uuid().transform(value => value.toLowerCase());
 export const isoDateTime = z.iso.datetime({ offset: true });
@@ -11,7 +12,8 @@ export const memberRole = z.enum(["MEMBER", "REP"]);
 export const campaignState = z.enum(["DRAFT", "PUBLISHED"]);
 export const roundState = z.enum(["OPENING", "OPEN", "CONFIRMED", "CLOSED"]);
 
-export const patchMeInput = z.strictObject({ contactPrivate: z.string() });
+export const patchMeInput = z.strictObject({ contactPrivate: z.string().optional(), location: userLocation.optional() })
+  .refine(body => body.contactPrivate !== undefined || body.location !== undefined, "Cần thông tin để cập nhật.");
 export const evmAddress = z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Địa chỉ ví EVM không hợp lệ.");
 export const txHash = z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Mã giao dịch Fuji không hợp lệ.");
 export const bytes32Hex = z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Giá trị bytes32 không hợp lệ.");
@@ -20,9 +22,6 @@ export const walletLinkInput = z.strictObject({
   address: evmAddress,
   proofTx: txHash,
   nonce: uuid,
-});
-export const createGroupInput = z.strictObject({
-  name: nonBlank, districtCode: nonBlank, wardCode: nonBlank, pickupPrivate: z.string().optional(),
 });
 export const createInviteInput = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("JOIN"), targetUserId: uuid.optional() }),
@@ -70,6 +69,7 @@ export const cartAiResult = z.strictObject({
 export const publishInput = z.strictObject({});
 export const catalogQuery = z.strictObject({ category: category.optional() });
 export const feedQuery = z.strictObject({
+  province: z.string().regex(/^\d{2}$/).optional(),
   district: nonBlank.optional(),
   ward: nonBlank.optional(),
   category: category.optional(),
@@ -83,6 +83,7 @@ export const apiError = z.strictObject({
 });
 export const me = z.strictObject({
   userId: uuid,
+  location: userLocation.optional(),
   groupId: uuid.optional(),
   wallet: z.strictObject({
     address: z.string(), verificationState: walletVerificationState,
@@ -108,6 +109,7 @@ export const campaign = z.strictObject({
 });
 export const group = z.strictObject({
   groupId: uuid, repId: uuid, members: z.array(member), campaigns: z.array(campaign),
+  location: userLocation.optional(),
 });
 export const invite = z.strictObject({ inviteId: uuid, inviteUrl: z.url(), expiresAt: isoDateTime });
 export const catalogItem = z.strictObject({ skuId: uuid, name: z.string(), category, unit: z.string() });
@@ -128,6 +130,7 @@ export const demandItem = demandPreview.extend({
   demandItemId: uuid,
   campaignId: uuid,
   districtCode: z.string(),
+  provinceCode: z.string().regex(/^\d{2}$/).optional(),
   wardCode: z.string(),
   needBy: isoDateTime,
   pending: count,
