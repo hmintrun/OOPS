@@ -20,8 +20,15 @@ describe("official HCMC locations", () => {
     expect(patchMeInput.parse({ location })).toEqual({ location });
     for (const bad of [{ ...location, provinceCode: "01" }, { ...location, wardCode: "99999" }, { ...location, wardCode: "" }]) {
       expect(userLocation.safeParse(bad).success).toBe(false);
+      expect(patchMeInput.safeParse({ displayName: "Hộ mới", location: bad }).success).toBe(false);
     }
     expect(locationLabel("79", "26743")).toBe("Phường Bến Thành, Thành phố Hồ Chí Minh");
     expect(feedQuery.parse({ province: "79", ward: "26743" })).toEqual({ province: "79", ward: "26743" });
+  });
+  it("accepts a name-only update and rejects empty or oversized names", () => {
+    expect(patchMeInput.parse({ displayName: " Hộ mới " })).toEqual({ displayName: "Hộ mới" });
+    expect(patchMeInput.safeParse({ displayName: "  " }).success).toBe(false);
+    expect(patchMeInput.safeParse({ displayName: "a".repeat(81) }).success).toBe(false);
+    expect(patchMeInput.safeParse({}).success).toBe(false);
   });
 });

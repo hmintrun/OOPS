@@ -365,12 +365,37 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     }
   }, 180_000);
 
+  it("updates the signed-in profile without overwriting omitted fields", async () => {
+    const userId = await newUser();
+    const initial = me.parse((await call(getMe, userId)).data);
+    expect(initial.displayName).toBe("Hộ kiểm thử");
+    expect(initial.location).toBeUndefined();
+
+    const rename = await call(patchMe, userId, { method: "PATCH", body: { displayName: " Hộ Bến Thành " } });
+    expect(rename.status).toBe(200);
+    expect(me.parse(rename.data)).toEqual({ ...initial, displayName: "Hộ Bến Thành" });
+
+    const location = { provinceCode: "79", wardCode: "26743" };
+    const move = await call(patchMe, userId, { method: "PATCH", body: { location } });
+    expect(move.status).toBe(200);
+    const expected = { ...initial, displayName: "Hộ Bến Thành", location };
+    expect(me.parse(move.data)).toEqual(expected);
+
+    const invalid = await call(patchMe, userId, {
+      method: "PATCH", body: { displayName: "Tên khác", location: { ...location, wardCode: "99999" } },
+    });
+    expect(invalid.status).toBe(422);
+    expect(me.parse((await call(getMe, userId)).data)).toEqual(expected);
+    const membership = group.parse((await call(getGroup, userId, { id: initial.groupId })).data);
+    expect(membership.members).toEqual([expect.objectContaining({ userId, displayName: "Hộ Bến Thành" })]);
+  });
+
   it("publishes 12 confirmed units, protects private data, and paginates Feed", async () => {
     const [rep, ...others] = await Promise.all(Array.from({ length: 6 }, newUser));
     const buyerIds = [rep, ...others.slice(0, 4)];
     const outsider = others[4];
     expect((await call(getMe)).status).toBe(401);
-    expect(me.parse((await call(getMe, rep)).data)).toEqual({ userId: rep, confirmationEligible: false });
+    expect(me.parse((await call(getMe, rep)).data)).toMatchObject({ userId: rep, displayName: "Hộ kiểm thử", confirmationEligible: false });
     expect((await call(patchMe, rep, { method: "PATCH", origin: "https://elsewhere.test", body: { contactPrivate: "private" } })).status).toBe(403);
     expect(me.parse((await call(patchMe, rep, { method: "PATCH", body: { contactPrivate: "private" } })).data).contactPrivate).toBe("private");
 

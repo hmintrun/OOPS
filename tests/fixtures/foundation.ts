@@ -6,6 +6,7 @@ export const laterOfferScenario = { offered: 10, allocations: householdNeeds.sli
 
 export const representative: Me = {
   userId: "eced0276-59c8-4341-a214-91148a404111",
+  displayName: "Hộ demo 1",
   groupId: "abf6a08a-451a-497b-8afd-c633870f0a01",
   confirmationEligible: false,
 };

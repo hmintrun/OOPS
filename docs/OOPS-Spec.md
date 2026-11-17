@@ -110,7 +110,7 @@ Mười bước tương ứng với các mục dưới đây:
 | **Nhóm của tôi** | Nhóm riêng mặc định, vào bằng link, mời và xác nhận đại diện, danh sách hộ, hạn gom. Mỗi hộ quản lý giỏ của mình. | FR01, FR02 |
 | **Giỏ nhu yếu phẩm** | Chọn món hoặc mô tả bằng câu tự nhiên, sửa và lưu giỏ nháp. Hiện trạng thái ví và kiểm ví khi hộ bấm **Xác nhận giỏ đã lưu**. | FR01, FR02 |
 | **Nhu cầu của nhóm** | Tổng theo món, hạn cần hàng, nút đăng Feed, và với mỗi món: **đã giữ**, **đã nhận**, **còn thiếu**. | FR02 |
-| **Feed và gửi đề nghị** | Lọc theo quận/khu vực, phường, nhóm mặt hàng. Form chào có lượng, giá, khung giờ, điểm nhận; hiện tiền hàng và cọc dự kiến trước khi gửi. | FR02, FR03 |
+| **Feed và gửi đề nghị** | Lọc theo nhóm mặt hàng và chọn khu vực từ danh sách phường, xã, đặc khu. Form chào có lượng, giá, khung giờ, điểm nhận; hiện tiền hàng và cọc dự kiến trước khi gửi. | FR02, FR03 |
 | **Bỏ phiếu và xác nhận** | Hộ xem phần mua từ giỏ đã chốt và bấm Có hoặc Không. Người bán xem lượng đã gom để quyết định bán. Hộ có phần ký Fuji theo đúng phiên bản đã chốt. | FR03 |
 | **Đơn của tôi** | Cả đơn mua và đơn bán: cọc, tiền hàng, hạn nộp, lịch nhận, tiến độ, khoản chi/hoàn. Đơn 0đ bỏ bước nộp tiền hàng của hộ và vẫn hiển thị cọc cho người bán. | FR03, FR04 |
 | **Bàn giao** | Người bán báo sẵn sàng và tải bằng chứng; đại diện nhập lượng thực nhận; hai bên duyệt cùng biên nhận hoặc báo sự cố. | FR04 |

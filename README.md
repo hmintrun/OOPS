@@ -27,7 +27,7 @@ Các bảng nghiệp vụ không mở trực tiếp cho browser. Giữ thông ti
 
 Khi đăng ký, chọn phường/xã/đặc khu tại TP.HCM trong mục **Nơi sinh sống**. Tài khoản chưa vào nhóm nào có nhóm riêng ngay khi mở trang Nhóm hoặc Tài khoản và có thể tạo liên kết mời. Nhu cầu lưu vị trí của đại diện tại thời điểm đăng để lọc Feed. Áp hai migration vị trí ngày 17/11/2026 trước khi chạy bản này. [Nguồn dữ liệu và hợp đồng vị trí](docs/locations.md)
 
-Trong Supabase **Authentication → URL Configuration**, đặt **Site URL** theo `APP_URL` và thêm URL callback của từng môi trường vào **Redirect URLs**. Local có thể dùng `http://localhost:3000/**`; môi trường triển khai cần cho phép `/login/confirm` cùng query `next` và `sb_flow_id`. Dùng cùng hostname khi mở app và đăng ký. Kiểm tra Email provider cho phép đăng ký.
+Trong Supabase **Authentication → URL Configuration**, đặt **Site URL** là URL HTTPS của bản triển khai chính. Trong **Redirect URLs**, cho phép callback `/login/confirm` cùng query `next` và `sb_flow_id` của bản triển khai. Khi thử local, thêm `http://localhost:3000/**` hoặc `http://localhost:3001/**` cho đúng cổng đang chạy. Dùng cùng hostname khi mở app và đăng ký. Kiểm tra Email provider cho phép đăng ký.
 
 Callback hỗ trợ cả link mặc định có `code`/`sb_flow_id` (PKCE, cần trình duyệt đã đăng ký) và link có `token_hash` (`type=email` hoặc `signup`). Để xác nhận trên trình duyệt/thiết bị khác, có thể cấu hình **Confirm signup** email template:
 
