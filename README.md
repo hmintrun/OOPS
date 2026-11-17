@@ -15,13 +15,13 @@ Tài khoản đại diện seed là `oops-dev-household-1@example.test`. Hộ c�
 ## Thử luồng trên giao diện
 
 1. Mở `/` để vào ứng dụng. Đăng nhập tại `/login`, hoặc chọn **Tạo tài khoản mới** (`/login?mode=signup`). Nhập tên, email và hai ô mật khẩu. Nếu Supabase yêu cầu xác nhận, mở link mới nhất trong email; màn chờ có nút gửi lại và quay về đăng nhập. Nếu Supabase trả phiên ngay, app mở nhóm trực tiếp. Liên kết mời được giữ xuyên suốt đăng ký/xác nhận/đăng nhập.
-2. Tại **Nhóm của tôi**, đại diện xem thành viên, tạo lời mời hoặc mở **Quản lý đợt gom**. Người nhận mở liên kết mời và đăng nhập nếu cần, hoặc chọn **Tham gia nhóm qua lời mời** từ nhóm riêng rồi dán liên kết.
+2. Tại **Nhóm của tôi**, đại diện chọn **Lấy liên kết và mã nhóm**. Cùng một link hoặc mã 8 ký tự có thể chia sẻ cho nhiều hộ. Người nhận mở link hoặc chọn **Tham gia nhóm qua lời mời** rồi dán link hoặc nhập mã.
 3. Mở một đợt. Hộ điền **Đang có** và **Còn thiếu**, lưu giỏ rồi xác nhận. Đại diện xem tổng đã xác nhận và **Đăng nhu cầu** trước hạn cần hàng.
 4. Dùng một phiên người bán để mở **Feed** và tìm bài vừa đăng. Trang **Tài khoản** hiển thị hồ sơ, liên hệ riêng và trạng thái ví từ API.
 
 Mở `/ui-preview` để xem các component thiết kế. Phần ví trong bản này hiển thị dữ liệu của backend nền. Giao dịch Fuji thuộc mốc tích hợp tiếp theo.
 
-Các bảng nghiệp vụ không mở trực tiếp cho browser. Giữ thông tin kết nối DB, secret Auth và secret lời mời ở server. Lời mời trả link `/join?token=…` cho frontend và lưu hash token ở DB.
+Các bảng nghiệp vụ không mở trực tiếp cho browser. Giữ thông tin kết nối DB, secret Auth và secret lời mời ở server. Link dùng lại chứa mã nhóm ở `/join?token=…`. Lời mời một lần lưu hash token ở DB.
 
 ## Cấu hình email đăng ký
 

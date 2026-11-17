@@ -123,7 +123,10 @@ export const group = z.strictObject({
   groupId: uuid, repId: uuid, members: z.array(member), campaigns: z.array(campaign),
   location: userLocation.optional(),
 });
-export const invite = z.strictObject({ inviteId: uuid, inviteUrl: z.url(), expiresAt: isoDateTime });
+export const invite = z.union([
+  z.strictObject({ inviteId: uuid, inviteUrl: z.url(), joinCode: z.string().regex(/^[A-Z0-9]{8}$/) }),
+  z.strictObject({ inviteId: uuid, inviteUrl: z.url(), expiresAt: isoDateTime }),
+]);
 export const catalogItem = z.strictObject({ skuId: uuid, name: z.string(), category, unit: z.string() });
 export const catalog = z.strictObject({ items: z.array(catalogItem) });
 export const cart = z.strictObject({

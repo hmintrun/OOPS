@@ -1,8 +1,9 @@
 import "server-only";
-import { createHash, createHmac, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { z } from "zod";
 import type { Campaign, Group, Invite, Membership, createInviteInput } from "@/contracts/foundation";
+import { normalizeGroupJoinCode } from "@/lib/group-invite";
 import { appOrigin, requiredEnv } from "./config";
 import { ApiFailure, conflict, forbidden, invalid, notFound, unavailable } from "./errors";
 
@@ -143,12 +144,35 @@ function tokenHash(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
-type InviteMetadata = { inviteId: string; expiresAt: string };
+type JoinCodeInvite = { inviteId: string; joinCode: string };
+type InviteMetadata = JoinCodeInvite | { inviteId: string; expiresAt: string };
+type OneTimeInviteRow = { id: string; kind: InviteInput["kind"]; target_user_id: string | null };
+const joinCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export function inviteResponse(value: InviteMetadata): Invite {
   const url = new URL("/join", appOrigin());
-  url.searchParams.set("token", inviteToken(value.inviteId));
+  url.searchParams.set("token", "joinCode" in value ? value.joinCode : inviteToken(value.inviteId));
   return { ...value, inviteUrl: url.toString() };
+}
+
+async function getOrCreateJoinCode(client: PoolClient, groupId: string): Promise<JoinCodeInvite> {
+  // The route holds the group's row lock while it gets or creates the code.
+  const { rows: [existing] } = await client.query<JoinCodeInvite>(
+    'select id as "inviteId", code as "joinCode" from public.group_join_codes where group_id = $1',
+    [groupId],
+  );
+  if (existing) return existing;
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const code = Array.from({ length: 8 }, () => joinCodeAlphabet[randomInt(joinCodeAlphabet.length)]).join("");
+    const { rows: [created] } = await client.query<JoinCodeInvite>(
+      `insert into public.group_join_codes (group_id, code) values ($1, $2)
+       on conflict (code) do nothing returning id as "inviteId", code as "joinCode"`,
+      [groupId, code],
+    );
+    if (created) return created;
+  }
+  throw unavailable();
 }
 
 export async function createInvite(
@@ -159,7 +183,8 @@ export async function createInvite(
     if (target?.group_id !== groupId || target.role === "REP" || body.targetUserId === userId) {
       throw invalid("Người nhận vai trò phải là hộ đang hoạt động trong nhóm.");
     }
-  } else if (body.targetUserId) {
+  } else {
+    if (!body.targetUserId) return getOrCreateJoinCode(client, groupId);
     const exists = await client.query("select 1 from public.profiles where id = $1", [body.targetUserId]);
     if (!exists.rowCount) throw invalid("Không tìm thấy tài khoản được mời.");
   }
@@ -173,32 +198,39 @@ export async function createInvite(
 }
 
 export async function acceptInvite(client: PoolClient, userId: string, token: string): Promise<Membership> {
-  const hash = tokenHash(token);
-  const expired = () => conflict("Lời mời đã hết hạn, đã dùng hoặc không còn hợp lệ.");
+  const code = normalizeGroupJoinCode(token);
+  const hash = code ? undefined : tokenHash(token);
+  const invalidInvite = () => conflict(code ? "Mã mời không hợp lệ hoặc nhóm không còn nhận thành viên." : "Lời mời đã hết hạn, đã dùng hoặc không còn hợp lệ.");
   const { rows: [group] } = await client.query<{ group_id: string }>(
-    "select group_id from public.invites where token_hash = $1", [hash],
+    code ? "select group_id from public.group_join_codes where code = $1"
+      : "select group_id from public.invites where token_hash = $1",
+    [code ?? hash],
   );
-  if (!group) throw expired();
+  if (!group) throw invalidInvite();
   await lockUserMembership(client, userId);
   const beforeLock = await activeMembership(client, userId);
   const groupIds = new Set([group.group_id, ...(beforeLock ? [beforeLock.group_id] : [])]);
   // Switches between two groups must take their row locks in the same order.
   for (const id of [...groupIds].sort()) await lockGroup(client, id);
-  const { rows: [invite] } = await client.query<{ id: string; kind: InviteInput["kind"]; target_user_id: string | null }>(
-    `select id, kind, target_user_id from public.invites
-     where token_hash = $1 and used_at is null and expires_at > clock_timestamp() for update`,
-    [hash],
-  );
-  if (!invite || (invite.target_user_id && invite.target_user_id !== userId)) throw expired();
+  let invite: OneTimeInviteRow | undefined;
+  if (!code) {
+    const { rows: [oneTimeInvite] } = await client.query<OneTimeInviteRow>(
+      `select id, kind, target_user_id from public.invites
+       where token_hash = $1 and used_at is null and expires_at > clock_timestamp() for update`,
+      [hash],
+    );
+    if (!oneTimeInvite || (oneTimeInvite.target_user_id && oneTimeInvite.target_user_id !== userId)) throw invalidInvite();
+    invite = oneTimeInvite;
+  }
   const current = await activeMembership(client, userId);
 
   let member: MembershipRow;
-  if (invite.kind === "JOIN") {
+  if (invite?.kind !== "REP") {
     const destination = await client.query(
       "select 1 from public.memberships where group_id = $1 and role = 'REP' and left_at is null",
       [group.group_id],
     );
-    if (!destination.rowCount) throw expired();
+    if (!destination.rowCount) throw invalidInvite();
     if (current?.group_id === group.group_id) throw conflict("Bạn đã ở trong nhóm được mời.");
     if (current) {
       if (current.role !== "REP") throw conflict("Hãy rời nhóm hiện tại trước khi tham gia nhóm khác.");
@@ -217,7 +249,7 @@ export async function acceptInvite(client: PoolClient, userId: string, token: st
     );
     member = joined;
   } else {
-    if (current?.group_id !== group.group_id || current.role === "REP") throw expired();
+    if (current?.group_id !== group.group_id || current.role === "REP") throw invalidInvite();
     await client.query(
       "update public.memberships set role = 'MEMBER' where group_id = $1 and role = 'REP' and left_at is null",
       [group.group_id],
@@ -231,6 +263,6 @@ export async function acceptInvite(client: PoolClient, userId: string, token: st
       [userId, group.group_id],
     );
   }
-  await client.query("update public.invites set used_at = clock_timestamp() where id = $1", [invite.id]);
+  if (invite) await client.query("update public.invites set used_at = clock_timestamp() where id = $1", [invite.id]);
   return membershipDto(member);
 }
