@@ -3,6 +3,7 @@ import type { Group } from "@/contracts/foundation";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import { FamilyStatusWidget } from "./FamilyStatusWidget";
+import { ReceivingContactCard } from "./ReceivingContactCard";
 import { formatDateTime } from "./helpers";
 import { InviteForm } from "./[id]/invite-form";
 import { LeaveGroupButton } from "./[id]/leave-group-button";
@@ -14,6 +15,7 @@ export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
     <AppShell title="Nhóm của tôi" subtitle={`${data.members.length} hộ gia đình`} icon={{ icon: "groups", tone: "green" }} familyBackground bodyClassName="ui-stack" bare>
       <FamilyStatusWidget key={userId} userId={userId} />
       <div className="ui-card-grid">
+        {isRepresentative && <ReceivingContactCard key={userId} userId={userId} />}
         <Card>
           <div className="mb-3 flex items-center gap-3">
             <IconTile icon="shopping_basket" tone="amber" />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { z } from "zod";
 import { AppShell } from "@/components/app-shell";
@@ -25,9 +25,20 @@ const states: Record<z.infer<typeof draftVersion>["state"], string> = {
 export default function DraftPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const query = useSearchParams();
+  const requestedProposal = query.get("proposal");
+  const sourceNeed = query.get("need");
   const path = `/api/v1/drafts/${encodeURIComponent(id)}`;
   const load = useCallback(async () => {
-    const view = await apiFetch(path, { schema: z.union([draft, sellerDraftView]) });
+    let view;
+    try {
+      view = await apiFetch(path, { schema: z.union([draft, sellerDraftView]) });
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 404 || !requestedProposal) throw error;
+      const voting = await apiFetch(`/api/v1/offers/${encodeURIComponent(requestedProposal)}/vote`, { schema: offerVoting });
+      if (voting.draftId !== id) throw error;
+      return { view: undefined, round: undefined, voting, voteForbidden: false };
+    }
     const roundId = view.latestVersion?.roundId;
     let voteForbidden = false;
     const [round, voting] = await Promise.all([
@@ -46,7 +57,7 @@ export default function DraftPage() {
       }),
     ]);
     return { view, round, voting, voteForbidden };
-  }, [path]);
+  }, [path, requestedProposal, id]);
   const trade = useTrade(load);
   const view = trade.data?.view;
   const version = view?.latestVersion;
@@ -56,11 +67,22 @@ export default function DraftPage() {
   const voteForbidden = trade.data?.voteForbidden ?? false;
   const isVotingOffer = Boolean(voting) || voteForbidden || Boolean(buyer?.draftOpen && buyer?.permissions?.editLine === false);
   const closedOfferState = buyer && !buyer.draftOpen && !version ? "EXPIRED" : undefined;
-  useRoundRefresh(version?.state === "AWAIT_CONFIRMATIONS" && !trade.loading && !trade.busy, trade.refresh);
+  useRoundRefresh((version?.state === "AWAIT_CONFIRMATIONS" || Boolean(!view && voting?.open)) && !trade.loading && !trade.busy, trade.refresh);
   const versionPath = `${path}/versions/${version?.version}`;
   return <AppShell title="Thương lượng" illustration="basket" bare>
     <div className="grid gap-4">
       <TradeStatus {...trade} retry={() => void trade.refresh()} />
+      {trade.data && query.get("created") === "1" && <p role="status" className="rounded-input bg-green-100 p-3 font-semibold text-green-700">
+        Đã gửi đề nghị. Bạn có thể theo dõi phản hồi tại đây.
+      </p>}
+      {!view && voting && <Card className="grid gap-3">
+        <CardTitle as="h2">Theo dõi đề nghị</CardTitle>
+        <VotePanel proposalId={requestedProposal!} refreshSignal={voting.round}
+          onUpdated={() => void trade.refresh()} />
+        <Link className="ui-btn ui-btn--secondary" href={sourceNeed ? `/trade/needs/${encodeURIComponent(sourceNeed)}` : "/feed"}>
+          Xem đề nghị và lịch giao
+        </Link>
+      </Card>}
       {!view && trade.failure instanceof ApiError && trade.failure.status === 404 && (
         <Card className="grid gap-3">
           <p className="text-small text-navy-600">
@@ -147,7 +169,9 @@ export default function DraftPage() {
           const note = String(new FormData(event.currentTarget).get("note")).trim() || undefined;
           void trade.run(`seller:${version.version}:${action}:${note}`, key => apiFetch(`${versionPath}/seller-response`, {
             method: "POST", body: { action, note }, schema: draftVersion, idempotencyKey: key,
-          }));
+          }), result => {
+            if (result.contractId) router.push(`/orders/${result.contractId}`);
+          });
         }}>
           <label className="grid gap-1">Ghi chú phản hồi<input className={INPUT_CLASS} name="note" /></label>
           <div className="flex flex-wrap gap-2">

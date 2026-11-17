@@ -332,7 +332,30 @@
 }
 
 .feed-card__footer {
+  display: grid;
+  gap: 8px;
   margin-block-start: auto;
+}
+
+.ui-card.feed-card--support {
+  --feed-tint: var(--oops-sun-tint);
+  --feed-ink: var(--oops-amber-ink);
+  border: 2px solid color-mix(in srgb, var(--oops-sun-tint), var(--oops-amber-ink) 30%);
+}
+.feed-card--support .feed-card__support {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+}
+.feed-card__action.feed-card__gift {
+  grid-template-columns: auto minmax(0, 1fr);
+  background: var(--oops-jade);
+  border-color: var(--oops-jade);
+  color: var(--oops-surface);
+}
+.feed-card__action.feed-card__gift:is(:hover, :active) {
+  background: var(--oops-jade-dark);
 }
 
 .feed-card__action {

@@ -27,12 +27,12 @@ export function DemandCard({
 }: {
   item: DemandItem;
   category?: Category;
-  onOfferClick?: (item: DemandItem) => void;
+  onOfferClick?: (item: DemandItem, gift?: boolean) => void;
 }) {
   const name = item.name.toLowerCase();
   const fallbackCategory = name.includes("nước") ? "WATER" : /gạo|mì/.test(name) ? "FOOD" : "ESSENTIALS";
   const visual = demandCategoryVisual[category ?? fallbackCategory];
-  const fulfilled = Math.max(0, item.target - item.missing);
+  const fulfilled = item.supportRequested ? item.received : Math.max(0, item.target - item.missing);
   const pct = Math.min(100, Math.round((fulfilled / item.target) * 100));
   const action = (
     <>
@@ -43,7 +43,7 @@ export function DemandCard({
   );
 
   return (
-    <Card padding="flush" className={`feed-card feed-card--${visual.tone}`}>
+    <Card padding="flush" className={`feed-card feed-card--${visual.tone}${item.supportRequested ? " feed-card--support" : ""}`}>
       <div className="feed-card__scene">
         <span className="feed-card__category">
           <MaterialSymbol name={visual.icon} size={18} />
@@ -53,6 +53,10 @@ export function DemandCard({
       </div>
 
       <div className="feed-card__body">
+        {item.supportRequested && <span className="feed-card__support">
+          <MaterialSymbol name="volunteer_activism" size={18} />
+          Cần hỗ trợ
+        </span>}
         <div className="feed-card__header">
           <h3 className="text-title">{item.name}</h3>
           <span className="feed-card__state" data-state={item.state}>{stateLabel[item.state]}</span>
@@ -68,14 +72,16 @@ export function DemandCard({
             aria-valuenow={fulfilled}
             aria-valuemin={0}
             aria-valuemax={item.target}
-            aria-label="Tiến độ gom"
-            aria-valuetext={`Đã gom ${fulfilled} trên ${item.target} ${item.unit}`}
+            aria-label={item.supportRequested ? "Tiến độ nhận hỗ trợ" : "Tiến độ gom"}
+            aria-valuetext={`${item.supportRequested ? "Đã nhận" : "Đã gom"} ${fulfilled} trên ${item.target} ${item.unit}`}
             className="feed-card__track"
           >
             <div className="feed-card__progress" style={{ width: `${pct}%` }} />
           </div>
           <div className="feed-card__quantities">
-            <span>Đã gom {fulfilled} / {item.target} {item.unit}</span>
+            <span>{item.supportRequested ? "Đã nhận" : "Đã gom"} {fulfilled} / {item.target} {item.unit}</span>
+            {item.supportRequested && item.reserved > 0 && <span>Chờ giao {item.reserved} {item.unit}</span>}
+            {item.supportRequested && item.pending > 0 && <span>Chờ chốt {item.pending} {item.unit}</span>}
             {item.offerable !== item.missing && (
               <span>Có thể chốt thêm <strong>{item.offerable} {item.unit}</strong></span>
             )}
@@ -91,15 +97,16 @@ export function DemandCard({
             <MaterialSymbol name="location_on" size={16} />
             <span>{locationLabel(item.provinceCode, item.wardCode, item.districtCode)}</span>
           </p>
-          {item.supportRequested && (
-            <span className="feed-card__support">
-              <MaterialSymbol name="volunteer_activism" size={16} />
-              Cần trợ giá
-            </span>
-          )}
         </div>
 
         <div className="feed-card__footer">
+          {item.supportRequested && item.offerable > 0 && Date.parse(item.needBy) > Date.now() && (
+            onOfferClick ? <button type="button" onClick={() => onOfferClick(item, true)} className="feed-card__action feed-card__gift">
+              <MaterialSymbol name="volunteer_activism" size={18} /> Tặng hàng miễn phí
+            </button> : <Link href={`/trade/needs/${item.demandItemId}?intent=gift`} className="feed-card__action feed-card__gift">
+              <MaterialSymbol name="volunteer_activism" size={18} /> Tặng hàng miễn phí
+            </Link>
+          )}
           {onOfferClick ? (
             <button type="button" onClick={() => onOfferClick(item)} className="feed-card__action">
               {action}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Campaign, Cart, CatalogItem, Needs } from "@/contracts/foundation";
@@ -10,8 +10,10 @@ import {
 } from "@/lib/api-client";
 import { Button, Card, CardTitle } from "@/components/ui";
 import { defaultFamilyStatus, readSavedFamilyStatus } from "@/lib/family-status";
+import { ReceivingContactCard } from "@/app/groups/ReceivingContactCard";
+import { QuantityInput } from "@/components/ui/QuantityInput";
 import { campaignDisplayState, formatDateTime, isPast } from "../_shared/dates";
-import { Banner, CampaignStateChip, CartStateChip, INPUT_CLASS, LinkButton, LoadingState } from "../_shared/ui";
+import { Banner, CampaignStateChip, CartStateChip, LinkButton, LoadingState } from "../_shared/ui";
 
 const CartSuggestion = dynamic(() => import("./CartSuggestion").then(module => module.CartSuggestion), {
   loading: () => <LoadingState />,
@@ -63,6 +65,7 @@ async function loadCampaign(id: string): Promise<Data> {
 }
 
 export function CampaignDetail({ campaignId }: { campaignId: string }) {
+  const cartFormId = useId();
   const router = useRouter();
   const [data, setData] = useState<Data>();
   const [draft, setDraft] = useState<Draft>(toDraft(null));
@@ -191,30 +194,25 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
       <Card>
         <CardTitle>Giỏ của nhà mình</CardTitle>
         {cart && <CartStateChip state={cart.state} />}
-        <form className="grid gap-3" onSubmit={event => { event.preventDefault(); save(); }}>
+        <form id={cartFormId} className="grid gap-3" onSubmit={event => { event.preventDefault(); save(); }}>
           <p className="text-sm text-navy-600"><strong>{householdSize} người</strong> trong hộ</p>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={draft.supportRequested} disabled={!editable || saving}
               onChange={event => edit(value => ({ ...value, supportRequested: event.target.checked }))} />
-            Cần giá hỗ trợ
+            Cần hỗ trợ hoặc trợ giá
           </label>
           <p className="text-sm text-navy-600">Số lượng muốn đặt · Nhập 0 cho món bạn không mua.</p>
-          {catalog.map(item => (
-            <label key={item.skuId} className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3 rounded-input bg-sky-tint p-2">
-              <span>{item.name} ({item.unit})</span>
-              <input className={INPUT_CLASS} type="number" min={0} max={2147483647} step={1} inputMode="numeric" required
-                disabled={!editable || saving}
-                value={draft.quantities[item.skuId] ?? "0"}
-                onChange={event => {
-                  const needQty = event.target.value;
+          <div className="grid gap-3 sm:grid-cols-2">{catalog.map(item => (
+            <div key={item.skuId} className="min-w-0 rounded-input bg-sky-tint p-3">
+              <QuantityInput label={`${item.name} (${item.unit})`} disabled={!editable || saving}
+                value={draft.quantities[item.skuId] ?? "0"} onChange={needQty => {
                   edit(value => ({
                     ...value,
                     quantities: { ...value.quantities, [item.skuId]: needQty },
                   }));
                 }} />
-            </label>
-          ))}
-          {editable && <Button type="submit" loading={saving}>Lưu giỏ</Button>}
+            </div>
+          ))}</div>
         </form>
         {editable && <details className="mt-4 rounded-input border border-line p-3" onToggle={event => {
           if (event.currentTarget.open) setSuggestionOpenedFor(campaignId);
@@ -226,12 +224,16 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               quantities: { ...current.quantities, ...suggestedQuantities },
             }))} />}
         </details>}
-        {editable && cart?.state === "DRAFT" && (
+        {editable && <div className="ui-sticky-actions">
+          <Button type="submit" form={cartFormId} loading={saving}>Lưu giỏ</Button>
+          {dirty && <p className="text-small text-navy-600">Lưu thay đổi trước khi xác nhận giỏ.</p>}
+        {cart?.state === "DRAFT" && (
           <Button className="mt-2" disabled={dirty || saving}
             onClick={() => void action(`confirm:${cart.version}`, "Đã xác nhận giỏ.", key => confirmCart(campaignId, cart.version, key))}>
             Xác nhận giỏ đã lưu
           </Button>
         )}
+        </div>}
       </Card>
       <Card>
         <CardTitle>{needs.campaignState === "PUBLISHED" ? "Nhu cầu đã đăng" : "Nhu cầu đã xác nhận"}</CardTitle>
@@ -239,7 +241,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
           {needs.items.map(item => (
             <li key={item.skuId}>
               {item.name}: {item.target} {item.unit}
-              {"missing" in item && ` · Còn thiếu ${item.missing}`}
+              {"missing" in item && ` · Đã nhận ${item.received} · Chờ giao ${item.reserved} · Còn thiếu ${item.missing}`}
               {"demandItemId" in item && <div className="mt-2">
                 <LinkButton href={`/trade/needs/${item.demandItemId}`}>Xem đề nghị</LinkButton>
               </div>}
@@ -254,6 +256,9 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         )}
         {needs.campaignState === "PUBLISHED" && <LinkButton href="/feed">Xem nhu cầu đã đăng</LinkButton>}
       </Card>
+      {isRep && needs.items.some(item => item.supportRequested) && (
+        <ReceivingContactCard key={data.userId} userId={data.userId} />
+      )}
     </div>
   );
 }

@@ -1,5 +1,9 @@
 "use client";
 
+import { ReceivingContactDetails } from "@/components/ReceivingContactDetails";
+import { QuantityInput } from "@/components/ui/QuantityInput";
+import { ProgressCapsule } from "@/components/ui/ProgressCapsule";
+
 import { useCallback, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -90,7 +94,7 @@ export default function OrderPage() {
           )}
           {order.readyAt && <p>Cửa hàng đã báo sẵn sàng.</p>}
           {order.handoffPrivate && <p className="break-words">Điểm nhận · {order.handoffPrivate}</p>}
-          {order.repContact && <p className="break-words">Liên hệ đại diện · {order.repContact}</p>}
+          {order.repContact && <ReceivingContactDetails value={order.repContact} />}
         </Card>
         <Card className="grid gap-3">
           <CardTitle as="h2">Thu và quyết toán</CardTitle>
@@ -163,7 +167,19 @@ export default function OrderPage() {
             {proof?.id === evidenceId && <a href={proof.url} target="_blank" rel="noreferrer" className="underline">Mở ảnh · Hết hạn {dateTime(proof.expiresAt)}</a>}
           </div>)}
           {currentReceipt && <>
-            <p>Biên nhận {currentReceipt.version} · Thực nhận {currentReceipt.lines.reduce((sum, line) => sum + line.receivedQty, 0)} đơn vị</p>
+            <ProgressCapsule value={currentReceipt.lines.reduce((sum, line) => sum + line.receivedQty, 0)}
+              total={order.allocations.reduce((sum, line) => sum + line.qty, 0)}
+              label={currentReceipt.state === "APPROVED" ? "Đã nhận theo biên nhận" : "Thực nhận chờ duyệt"} />
+            <p className="text-small">Biên nhận {currentReceipt.version}</p>
+            <ul className="grid gap-2">
+              {order.allocations.map((part, index) => {
+                const received = currentReceipt.lines.find(line => line.allocationId === part.allocationId)?.receivedQty ?? 0;
+                return <li key={part.allocationId} className="flex flex-wrap justify-between gap-2 rounded-input bg-sky-tint p-3 text-small">
+                  <strong>{party ? `Phần hộ ${index + 1}` : "Phần của bạn"}</strong>
+                  <span>{currentReceipt.state === "APPROVED" ? "Đã nhận" : "Chờ duyệt"} {received}/{part.qty} đơn vị</span>
+                </li>;
+              })}
+            </ul>
             <p>{currentReceipt.approvals.length}/2 bên đã duyệt · Giao lúc {dateTime(currentReceipt.handedAt)}</p>
             {party && canHandoff && currentReceipt.state === "DRAFT" &&
               !currentReceipt.approvals.some(entry => entry.role === (seller ? "SELLER" : "REP")) &&
@@ -196,12 +212,13 @@ export default function OrderPage() {
                 method: "POST", body, schema: receipt, idempotencyKey: key,
               }));
             }}>
-              <label className="grid gap-1">Giờ bàn giao thực tế<input className={INPUT_CLASS} name="handedAt" type="datetime-local" max={localDateTime(new Date())} required /></label>
-              {order.allocations.map((part, index) => <label key={part.allocationId} className="grid gap-1">Phần {index + 1} · nhận tối đa {part.qty}
-                <input className={INPUT_CLASS} name={part.allocationId} type="number" min="0" max={part.qty} required defaultValue={currentReceipt?.lines.find(line => line.allocationId === part.allocationId)?.receivedQty ?? part.qty} />
-              </label>)}
+              <label className="grid gap-1">Giờ bàn giao thực tế<input className={INPUT_CLASS} name="handedAt" type="datetime-local"
+                defaultValue={localDateTime(new Date())} max={localDateTime(new Date())} disabled={trade.busy} required /></label>
+              {order.allocations.map((part, index) => <QuantityInput key={part.allocationId}
+                label={`Phần ${index + 1} · nhận tối đa ${part.qty}`} name={part.allocationId} max={part.qty} showAll
+                disabled={trade.busy} defaultValue={currentReceipt?.lines.find(line => line.allocationId === part.allocationId)?.receivedQty ?? part.qty} />)}
               {evidenceIds.map((evidenceId, index) => <label key={evidenceId} className="flex gap-2"><input type="checkbox" name="proof" value={evidenceId} defaultChecked /> Ảnh {index + 1}</label>)}
-              <Button type="submit" disabled={trade.busy}>Gửi biên nhận</Button>
+              <div className="ui-sticky-actions"><Button type="submit" loading={trade.busy}>Gửi biên nhận</Button></div>
             </form>
           </details>}
           {party && canHandoff && <details>
