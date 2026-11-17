@@ -172,7 +172,7 @@
   border-radius: var(--oops-radius-input);
   transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
 }
-.ui-select:hover:not(.ui-select--disabled) {
+.ui-select:hover:not(.ui-select--disabled, .ui-select--static) {
   border-color: var(--oops-sky-300);
   background-color: color-mix(in srgb, var(--oops-sky-tint) 25%, var(--oops-surface));
 }

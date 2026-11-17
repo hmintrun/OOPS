@@ -1,12 +1,11 @@
 /**
  * Màn Feed công khai (nhu cầu đã đăng) — DEV 1, design/STYLE.md.
- * Lọc theo danh mục + khu vực, phân trang 12 nhu cầu (3x4) / trang,
+ * Lọc theo danh mục và khu vực, phân trang 12 nhu cầu (3x4) / trang,
  * bố trí 3 cột trên màn hình rộng, widget Chào hàng tương tác tại chỗ.
  */
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Button,
   Card,
@@ -15,22 +14,21 @@ import {
   MaterialSymbol,
 } from "@/components/ui";
 import { AppShell } from "@/components/app-shell";
+import { LocationFields } from "@/components/location-fields";
 import type { CatalogItem, DemandItem } from "@/contracts/foundation";
-import { ApiError, getCatalog, getFeed, type FeedFilters } from "@/lib/api-client";
+import { ApiError, getCatalog, getFeed } from "@/lib/api-client";
+import { HCM_PROVINCE_CODE, locationLabel } from "@/lib/locations";
 import { DemandCard, demandCategoryVisual } from "./DemandCard";
 import { FEED_PAGE_SIZE, FeedPagination } from "./FeedPagination";
 import { WidgetDialog } from "@/components/ui/WidgetDialog";
 import dynamic from "next/dynamic";
 import "./feed.css";
-import { LocationFields } from "@/components/location-fields";
-import { HCM_PROVINCE_CODE, locationLabel } from "@/lib/locations";
 
 const OffersPanel = dynamic(() => import("@/app/trade/needs/OffersPanel").then(module => module.OffersPanel), {
   loading: () => <p role="status">Đang tải…</p>,
 });
 
 type Category = CatalogItem["category"];
-type AppliedFilters = { category: Category | ""; district: string; ward: string };
 type LoadStatus = "loading" | "ready" | "empty" | "error";
 
 const categoryOptions = [
@@ -51,9 +49,9 @@ function redirectExpiredSession(error: unknown): boolean {
 }
 
 export default function FeedPage() {
-  const [district, setDistrict] = useState("");
+  const [category, setCategory] = useState<Category | "">("");
   const [ward, setWard] = useState("");
-  const [applied, setApplied] = useState<AppliedFilters>({ category: "", district: "", ward: "" });
+  const [appliedWard, setAppliedWard] = useState("");
   const [categories, setCategories] = useState<ReadonlyMap<string, Category>>(new Map());
   const [items, setItems] = useState<DemandItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
@@ -86,24 +84,23 @@ export default function FeedPage() {
     };
   }, []);
 
-  const requestFilters = useCallback((filters: AppliedFilters, cursor?: string): FeedFilters => ({
-    category: filters.category || undefined,
-    district: filters.district.trim() || undefined,
-    province: filters.ward ? HCM_PROVINCE_CODE : undefined,
-    ward: filters.ward.trim() || undefined,
+  const requestPage = useCallback((cursor?: string) => getFeed({
+    category: category || undefined,
+    province: appliedWard ? HCM_PROVINCE_CODE : undefined,
+    ward: appliedWard || undefined,
     limit: FEED_PAGE_SIZE,
     cursor,
-  }), []);
+  }), [category, appliedWard]);
 
   const loadFirstPage = useCallback(
-    async (filters: AppliedFilters) => {
+    async () => {
       const run = ++generation.current;
       setStatus("loading");
       setLoadingMore(false);
       setMoreError("");
       setCurrentPage(1);
       try {
-        const data = await getFeed(requestFilters(filters));
+        const data = await requestPage();
         if (run !== generation.current) return;
         setItems(data.items);
         setNextCursor(data.nextCursor);
@@ -115,7 +112,7 @@ export default function FeedPage() {
         setStatus("error");
       }
     },
-    [requestFilters],
+    [requestPage],
   );
 
   const loadMore = useCallback(async () => {
@@ -124,7 +121,7 @@ export default function FeedPage() {
     setLoadingMore(true);
     setMoreError("");
     try {
-      const data = await getFeed(requestFilters(applied, nextCursor));
+      const data = await requestPage(nextCursor);
       if (run !== generation.current) return;
       setItems((current) => [...current, ...data.items]);
       setNextCursor(data.nextCursor);
@@ -136,11 +133,11 @@ export default function FeedPage() {
     } finally {
       if (run === generation.current) setLoadingMore(false);
     }
-  }, [applied, requestFilters, loadingMore, nextCursor]);
+  }, [requestPage, loadingMore, nextCursor]);
 
   useEffect(() => {
-    void loadFirstPage(applied);
-  }, [applied, loadFirstPage]);
+    void loadFirstPage();
+  }, [loadFirstPage]);
 
   useEffect(() => {
     if (previousPage.current === currentPage) return;
@@ -149,15 +146,15 @@ export default function FeedPage() {
     resultsHeading.current?.scrollIntoView({ block: "start" });
   }, [currentPage]);
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+  function applyLocation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setApplied((current) => ({ ...current, district, ward }));
-  };
+    setAppliedWard(ward);
+  }
 
   function clearFilters() {
-    setDistrict("");
+    setCategory("");
     setWard("");
-    setApplied({ category: "", district: "", ward: "" });
+    setAppliedWard("");
   }
 
   const handleOpenOfferModal = (item: DemandItem) => {
@@ -169,8 +166,6 @@ export default function FeedPage() {
   const totalPages = Math.max(1, Math.ceil(items.length / FEED_PAGE_SIZE));
   const startIndex = (currentPage - 1) * FEED_PAGE_SIZE;
   const displayedItems = items.slice(startIndex, startIndex + FEED_PAGE_SIZE);
-  const locationFilter = applied.ward ? locationLabel(HCM_PROVINCE_CODE, applied.ward) : "";
-  const hasFilters = Boolean(locationFilter || applied.category);
 
   return (
     <AppShell
@@ -188,8 +183,8 @@ export default function FeedPage() {
               key={value}
               type="button"
               className={`feed-category feed-category--${tone}`}
-              aria-pressed={applied.category === value}
-              onClick={() => setApplied((current) => current.category === value ? current : { ...current, category: value })}
+              aria-pressed={category === value}
+              onClick={() => setCategory(value)}
             >
               <span className="feed-category__icon"><MaterialSymbol name={icon} size={18} /></span>
               <span>{label}</span>
@@ -199,11 +194,11 @@ export default function FeedPage() {
         <details className="feed-location">
           <summary>
             <MaterialSymbol name="location_on" size={22} />
-            <span>{locationFilter || "Lọc theo khu vực"}</span>
+            <span>{appliedWard ? locationLabel(HCM_PROVINCE_CODE, appliedWard) : "Lọc theo khu vực"}</span>
             <MaterialSymbol name="expand_more" size={20} className="feed-location__chevron" />
           </summary>
-          <form onSubmit={onSubmit} className="feed-filters">
-            <LocationFields wardCode={ward} onChange={setWard} allowAll />
+          <form onSubmit={applyLocation} className="feed-filters">
+            <LocationFields wardCode={ward} onChange={setWard} variant="filter" />
             <Button variant="secondary" type="submit">
               <MaterialSymbol className="ui-btn__icon" name="filter_list" />
               Áp dụng khu vực
@@ -229,7 +224,7 @@ export default function FeedPage() {
             <IconTile icon="inbox" tone="sky" />
             <div style={{ minWidth: 0 }}>
               <CardTitle>Chưa có nhu cầu nào phù hợp</CardTitle>
-              {hasFilters ? (
+              {category || appliedWard ? (
                 <Button variant="secondary" full={false} onClick={clearFilters}>Xóa bộ lọc</Button>
               ) : <p className="text-body text-navy-600">Khi có nhóm đăng nhu cầu, bạn sẽ thấy tại đây.</p>}
             </div>
@@ -244,7 +239,7 @@ export default function FeedPage() {
             {errorMessage}
           </p>
           <div style={{ marginTop: 16 }}>
-            <Button variant="secondary" onClick={() => void loadFirstPage(applied)}>
+            <Button variant="secondary" onClick={() => void loadFirstPage()}>
               Thử lại
             </Button>
           </div>

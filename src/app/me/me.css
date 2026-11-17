@@ -182,9 +182,14 @@
   gap: 12px;
 }
 
-/* ---------- Ô nhập liên hệ ---------- */
+/* ---------- Form tài khoản ---------- */
 .me-field-stack {
   display: grid;
+  gap: 12px;
+}
+.me-form-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
   gap: 12px;
 }
 .me-input {

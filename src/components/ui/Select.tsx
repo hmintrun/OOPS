@@ -7,6 +7,7 @@ export type SelectOption = { value: string; label: string };
 
 type SelectProps = {
   label: string;
+  showLabel?: boolean;
   value: string;
   options: SelectOption[];
   disabled?: boolean;
@@ -24,6 +25,7 @@ type SelectProps = {
  */
 export function Select({
   label,
+  showLabel = true,
   value,
   options,
   disabled = false,
@@ -42,7 +44,7 @@ export function Select({
         className={`ui-select ${disabled ? "ui-select--disabled" : ""}`.trim()}
       >
         {icon && <IconTile icon={icon.name} tone={icon.tone ?? "sky"} size="sm" />}
-        <span className="ui-select__label">{label}</span>
+        {showLabel && <span className="ui-select__label">{label}</span>}
         <div className="ui-select__value-wrap">
           <span
             className={`ui-select__value ${!selected ? "ui-select__value--placeholder" : ""}`.trim()}

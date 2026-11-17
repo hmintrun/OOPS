@@ -12,8 +12,18 @@ export const memberRole = z.enum(["MEMBER", "REP"]);
 export const campaignState = z.enum(["DRAFT", "PUBLISHED"]);
 export const roundState = z.enum(["OPENING", "OPEN", "CONFIRMED", "CLOSED"]);
 
-export const patchMeInput = z.strictObject({ contactPrivate: z.string().optional(), location: userLocation.optional() })
-  .refine(body => body.contactPrivate !== undefined || body.location !== undefined, "Cần thông tin để cập nhật.");
+export const DISPLAY_NAME_MAX_LENGTH = 80;
+export const displayNameInput = z.string().trim()
+  .min(1, "Vui lòng nhập tên hiển thị.")
+  .max(DISPLAY_NAME_MAX_LENGTH, `Tên hiển thị tối đa ${DISPLAY_NAME_MAX_LENGTH} ký tự.`);
+export const patchMeInput = z.strictObject({
+  displayName: displayNameInput.optional(),
+  contactPrivate: z.string().optional(),
+  location: userLocation.optional(),
+}).refine(
+  body => body.displayName !== undefined || body.contactPrivate !== undefined || body.location !== undefined,
+  "Cần thông tin để cập nhật.",
+);
 export const evmAddress = z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Địa chỉ ví EVM không hợp lệ.");
 export const txHash = z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Mã giao dịch Fuji không hợp lệ.");
 export const bytes32Hex = z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Giá trị bytes32 không hợp lệ.");
@@ -83,12 +93,14 @@ export const apiError = z.strictObject({
 });
 export const me = z.strictObject({
   userId: uuid,
+  displayName: z.string(),
   location: userLocation.optional(),
   groupId: uuid.optional(),
   wallet: z.strictObject({
     address: z.string(), verificationState: walletVerificationState,
   }).optional(),
   confirmationEligible: z.boolean(),
+  confirmationEligibilityUnavailable: z.literal(true).optional(),
   contactPrivate: z.string().optional(),
 });
 export const walletChallenge = z.strictObject({
@@ -157,6 +169,7 @@ export const feed = z.strictObject({ items: z.array(demandItem), nextCursor: z.s
 
 export type ApiError = z.infer<typeof apiError>;
 export type Me = z.infer<typeof me>;
+export type PatchMeInput = z.infer<typeof patchMeInput>;
 export type WalletChallenge = z.infer<typeof walletChallenge>;
 export type WalletLinkInput = z.infer<typeof walletLinkInput>;
 export type WalletLinkResult = z.infer<typeof walletLinkResult>;
