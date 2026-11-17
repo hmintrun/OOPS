@@ -1,6 +1,7 @@
 import type { Campaign } from "@/contracts/foundation";
 import { offers } from "@/contracts/negotiation";
 import { apiFetch, getGroup, getMe, getNeeds } from "@/lib/api-client";
+import { readReceivingContact } from "@/lib/receiving-contact";
 
 export type GroupDemandOrder = {
   id: string;
@@ -9,6 +10,8 @@ export type GroupDemandOrder = {
   detail: string;
   needBy: string;
   href: string;
+  receivingName?: string;
+  receivingPlace?: string;
 };
 
 async function campaignDemands(campaign: Campaign): Promise<GroupDemandOrder[]> {
@@ -44,5 +47,8 @@ export async function readGroupDemandOrders(): Promise<GroupDemandOrder[]> {
   if (!profile.groupId) return [];
   const group = await getGroup(profile.groupId);
   const campaigns = group.campaigns.filter(campaign => Date.parse(campaign.needBy) > Date.now());
-  return (await Promise.all(campaigns.map(campaignDemands))).flat();
+  const entries = (await Promise.all(campaigns.map(campaignDemands))).flat();
+  const contact = group.repId === profile.userId ? readReceivingContact(profile.contactPrivate) : undefined;
+  const receivingName = contact?.name || group.members.find(member => member.userId === group.repId)?.displayName || "Đại diện nhóm";
+  return entries.map(entry => ({ ...entry, receivingName, receivingPlace: contact?.address || "Xác nhận với đại diện" }));
 }

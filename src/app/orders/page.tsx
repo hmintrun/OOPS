@@ -9,25 +9,11 @@ import { contractList, type Contract } from "@/contracts/orders";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { dateTime, useTrade, vnd } from "../trade/trade-client";
 import { TradeStatus } from "../trade/TradeStatus";
-import { orderStates, orderStateTones } from "./order-labels";
+import { orderStates } from "./order-labels";
+import { orderProgress, orderTabs } from "./order-progress";
+import { readReceivingContact } from "@/lib/receiving-contact";
+import "./orders.css";
 import { readGroupDemandOrders, type GroupDemandOrder } from "./group-demands";
-
-const toneClasses = {
-  green: "bg-green-100 text-green-700",
-  amber: "bg-amber-tint text-navy-900",
-  rose: "bg-rose-tint text-danger",
-  sky: "bg-sky-tint text-navy-600",
-} as const;
-
-const orderTabs = [
-  { key: "all", label: "Tất cả", states: [] },
-  { key: "waiting", label: "Đang chờ", states: [] },
-  { key: "negotiating", label: "Đang thương lượng", states: [] },
-  { key: "commitments", label: "Ký và thanh toán", states: ["AWAIT_COMMITMENTS", "AWAIT_DEPOSIT", "AWAIT_PAYMENT"] },
-  { key: "handoff", label: "Bàn giao", states: ["AWAIT_HANDOFF", "AWAIT_APPROVAL"] },
-  { key: "completed", label: "Hoàn tất", states: ["SETTLING", "COMPLETED"] },
-  { key: "review", label: "Đối soát / Đã hủy", states: ["NEEDS_REVIEW", "CANCELED"] },
-];
 
 const pageSize = 12;
 
@@ -113,8 +99,8 @@ function OrderResults({ role }: { role: string }) {
   const orders = results?.items ?? [];
   const groupDemands = first?.groupDemands ?? [];
   const tabs = orderTabs.map(tab => {
-    const needs = tab.key === "all" ? groupDemands : groupDemands.filter(item => item.state === tab.key);
-    const selected = tab.key === "waiting" || tab.key === "negotiating" ? [] :
+    const needs = tab.key === "all" || tab.key === "negotiating" ? groupDemands : [];
+    const selected = tab.key === "negotiating" ? [] :
       tab.states.length ? orders.filter(order => tab.states.includes(order.state)) : orders;
     const entries: OrderEntry[] = [
       ...needs.map(demand => ({ kind: "demand" as const, demand })),
@@ -132,11 +118,10 @@ function OrderResults({ role }: { role: string }) {
     if (tabKey !== activeTab) setPage(0);
     const tab = tabs.find(item => item.key === tabKey);
     if (!tab) return;
-    if (tabKey === "waiting" || tabKey === "negotiating") {
+    if (tabKey === "negotiating") {
       setPage(nextPage);
       return;
     }
-    if (tabKey === "waiting" || tabKey === "negotiating") { setPage(nextPage); return; }
     if (tab.orders.length >= (nextPage + 1) * pageSize || !results.nextCursor) {
       setPage(nextPage);
       return;
@@ -180,45 +165,56 @@ function OrderResults({ role }: { role: string }) {
         <Button variant="secondary" full={false} disabled={trade.loading || trade.busy} onClick={() => void trade.refresh()}>
           Cập nhật đơn hàng
         </Button>
-        <div role="group" aria-label="Lọc theo tiến độ" className="flex flex-wrap gap-2">
+        <div role="group" aria-label="Lọc theo tiến độ" className="orders-tabs">
           {tabs.map(tab => (
             <Button key={tab.key} full={false} variant={tab.key === activeTab ? "primary" : "secondary"}
               disabled={loadingMore}
-              aria-pressed={tab.key === activeTab} onClick={() => {
+              aria-pressed={tab.key === activeTab} onClick={event => {
+                event.currentTarget.scrollIntoView({ block: "nearest", inline: "center" });
                 if (tab.key !== activeTab || page > 0) void changePage(tab.key, 0);
               }}>
-              {tab.label}{results?.nextCursor && tab.key !== "waiting" && tab.key !== "negotiating" ? null : <span>{tab.orders.length}</span>}
+              {tab.label}{results?.nextCursor && tab.key !== "negotiating" ? null : <span>{tab.orders.length}</span>}
             </Button>
           ))}
         </div>
-        {displayedOrders.length === 0 && (!results?.nextCursor || activeTab === "waiting" || activeTab === "negotiating") && !first.demandError &&
+        {displayedOrders.length === 0 && (!results?.nextCursor || activeTab === "negotiating") && !first.demandError &&
           <Card className="ui-status-card"><p>Chưa có đơn hàng ở mục này.</p></Card>}
         {displayedOrders.length > 0 && <div className="ui-card-grid">
           {displayedOrders.map(entry => {
-            if (entry.kind === "demand") return <Card key={entry.demand.id} className="flex flex-col items-start gap-3">
-              <span className={`rounded-pill px-3 py-1 text-sm font-bold ${entry.demand.state === "waiting" ? toneClasses.amber : toneClasses.sky}`}>
+            if (entry.kind === "demand") return <Card key={entry.demand.id} className="order-card" data-stage="amber">
+              <span className="order-card__status">
                 {entry.demand.state === "waiting" ? "Đang chờ" : "Đang thương lượng"}
               </span>
               <CardTitle as="h2" className="ui-card__title--flush">{entry.demand.name}</CardTitle>
               <p className="text-small text-navy-600">Nhu cầu nhóm mình</p>
               <p>{entry.demand.detail}</p>
               <p className="text-small text-navy-600">Cần trước {dateTime(entry.demand.needBy)}</p>
-              <Link prefetch={false} href={entry.demand.href} className="ui-btn ui-btn--secondary mt-auto">
-                {entry.demand.state === "negotiating" ? "Xem đề nghị" : "Xem nhu cầu"}
+              <div className="order-card__receiving">
+                <p>Điểm nhận · {entry.demand.receivingPlace}</p>
+                <p>Người nhận · {entry.demand.receivingName}</p>
+              </div>
+              <Link prefetch={false} href={entry.demand.href} className="ui-btn ui-btn--primary order-card__cta">
+                Xem chi tiết tiến độ
               </Link>
             </Card>;
             const { order } = entry;
-            return <Card key={order.contractId} className="flex flex-col items-start gap-3">
+            const stage = orderProgress(order.state);
+            const contact = readReceivingContact(order.repContact);
+            return <Card key={order.contractId} className="order-card" data-stage={stage.tone}>
             <div className="flex w-full flex-wrap items-start justify-between gap-2">
               <CardTitle as="h2" className="ui-card__title--flush">Đơn {order.contractId.slice(0, 8).toUpperCase()}</CardTitle>
-              <span className={`rounded-pill px-3 py-1 text-sm font-bold ${toneClasses[orderStateTones[order.state]]}`}>{orderStates[order.state]}</span>
+              <span className="order-card__status">{orderStates[order.state]}</span>
             </div>
             <p className="font-bold tabular-nums">{order.qty} đơn vị · {vnd(order.goodsVnd)}</p>
             {order.state === "AWAIT_COMMITMENTS" && order.confirmBy && (
               <p className="text-navy-600">Hạn xác nhận Fuji · {dateTime(order.confirmBy)}</p>
             )}
             <p className="text-navy-600">Hạn bàn giao · {dateTime(order.handoffBy)}</p>
-            <Link prefetch={false} className="ui-btn ui-btn--secondary mt-auto" href={`/orders/${order.contractId}`}>Xem đơn</Link>
+            <div className="order-card__receiving">
+              <p>Điểm nhận · {order.handoffPrivate || contact.address || "Xác nhận với đại diện"}</p>
+              <p>Người nhận · {contact.name || "Đại diện nhóm"}</p>
+            </div>
+            <Link prefetch={false} className="ui-btn ui-btn--primary order-card__cta" href={`/orders/${order.contractId}#${stage.anchor}`}>Xem chi tiết tiến độ</Link>
           </Card>;
           })}
         </div>}
@@ -234,7 +230,7 @@ function OrderResults({ role }: { role: string }) {
         </Card>}
         <div className="ui-actions">
           {page > 0 && <Button variant="secondary" full={false} disabled={loadingMore} onClick={() => setPage(page - 1)}>Trang trước</Button>}
-          {(((activeTab !== "waiting" && activeTab !== "negotiating") && results?.nextCursor) || (page + 1) * pageSize < filteredOrders.length) &&
+          {(((activeTab !== "negotiating") && results?.nextCursor) || (page + 1) * pageSize < filteredOrders.length) &&
             <Button variant="secondary" full={false} loading={loadingMore} onClick={() => void changePage(activeTab, page + 1)}>Trang sau</Button>}
         </div>
       </>}

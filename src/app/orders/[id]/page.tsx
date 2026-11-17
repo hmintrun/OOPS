@@ -4,7 +4,7 @@ import { ReceivingContactDetails } from "@/components/ReceivingContactDetails";
 import { QuantityInput } from "@/components/ui/QuantityInput";
 import { ProgressCapsule } from "@/components/ui/ProgressCapsule";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
@@ -16,6 +16,7 @@ import { isPast } from "@/app/campaigns/_shared/dates";
 import { TradeStatus } from "@/app/trade/TradeStatus";
 import { dateTime, localDateTime, useRoundRefresh, useTrade, vnd } from "@/app/trade/trade-client";
 import { orderStates, paymentKinds } from "../order-labels";
+import "../orders.css";
 
 const chargeLabels = { PENDING: "Chờ ghi nhận", RECEIVED: "Đã nhận", EXPIRED: "Hết hạn", REVIEW: "Cần đối soát" };
 const transferLabels = { PENDING: "Chờ ghi nhận", POSTED: "Đã ghi nhận", REVIEW: "Cần đối soát" };
@@ -39,6 +40,14 @@ export default function OrderPage() {
   const [fileRevision, setFileRevision] = useState(0);
   const [proofInputVersion, setProofInputVersion] = useState(0);
   const order = trade.data?.order;
+  useEffect(() => {
+    if (!order) return;
+    const target = document.getElementById(window.location.hash.slice(1));
+    if (target) {
+      target.scrollIntoView({ block: "start" });
+      target.focus({ preventScroll: true });
+    }
+  }, [order?.contractId]);
   const userId = trade.data?.userId;
   useRoundRefresh(order?.state === "AWAIT_COMMITMENTS" && !trade.loading && !trade.busy, trade.refresh);
   const seller = userId === order?.sellerId && Boolean(order);
@@ -69,7 +78,7 @@ export default function OrderPage() {
       <TradeStatus {...trade} retry={() => void trade.refresh()} />
       {formError && <p role="alert">{formError}</p>}
       {order && <div className="ui-card-grid">
-        <Card className="grid gap-3">
+        <Card id="commitments" tabIndex={-1} className="order-stage grid gap-3">
           <CardTitle as="h2">{orderStates[order.state]}</CardTitle>
           {order.reviewScope && <p>{order.reviewScope === "HANDOFF" ? "Đang đối soát bàn giao." : "Đang đối soát tiền cọc."}</p>}
           <dl className="grid gap-2">
@@ -96,7 +105,7 @@ export default function OrderPage() {
           {order.handoffPrivate && <p className="break-words">Điểm nhận · {order.handoffPrivate}</p>}
           {order.repContact && <ReceivingContactDetails value={order.repContact} />}
         </Card>
-        <Card className="grid gap-3">
+        <Card id="settlement" tabIndex={-1} className="order-stage grid gap-3">
           <CardTitle as="h2">Thu và quyết toán</CardTitle>
           <p className="text-small">Các khoản thu trong bản MVP được ghi bằng SIM.</p>
           {order.charges.length === 0 && order.disbursements.length === 0 && <p>Chưa có khoản nào hiển thị cho bạn.</p>}
@@ -134,7 +143,7 @@ export default function OrderPage() {
             {payment.postedAt ? ` · ${dateTime(payment.postedAt)}` : ""}
           </p>)}
         </Card>
-        {((party && canHandoff) || evidenceIds.length > 0 || Boolean(currentReceipt)) && <Card className="grid gap-3">
+        {(canHandoff || evidenceIds.length > 0 || Boolean(currentReceipt)) && <Card id="handoff" tabIndex={-1} className="order-stage grid gap-3">
           <CardTitle as="h2">Bàn giao và biên nhận</CardTitle>
           {seller && order.state === "AWAIT_HANDOFF" && !order.readyAt && <Button disabled={trade.busy || trade.loading}
             onClick={() => {
