@@ -6,12 +6,14 @@ import { z } from "zod";
 import { Button } from "@/components/ui";
 import { cartAiInput, cartAiResult, type CatalogItem } from "@/contracts/foundation";
 import { ApiError, apiFetch, newIdempotencyKey } from "@/lib/api-client";
+import { readSavedFamilyStatus } from "@/lib/family-status";
 import { INPUT_CLASS } from "../_shared/ui";
 
 type Suggestion = z.infer<typeof cartAiResult>["draft"];
 
-export function CartSuggestion({ campaignId, householdSize, catalog, disabled, onApply }: {
+export function CartSuggestion({ campaignId, userId, householdSize, catalog, disabled, onApply }: {
   campaignId: string;
+  userId: string;
   householdSize: number;
   catalog: CatalogItem[];
   disabled: boolean;
@@ -38,6 +40,7 @@ export function CartSuggestion({ campaignId, householdSize, catalog, disabled, o
       text: text.trim(),
       householdSize: householdSize > 0 ? householdSize : undefined,
       days: duration,
+      householdStatus: readSavedFamilyStatus(userId),
     });
     if (!parsed.success) { setError("Nhập mô tả nhu cầu, số người và số ngày hợp lệ."); return; }
     const fingerprint = JSON.stringify(parsed.data);
@@ -74,9 +77,10 @@ export function CartSuggestion({ campaignId, householdSize, catalog, disabled, o
       </label>
       <label className="grid gap-1">Nhà mình đang có gì và cần thêm gì?
         <textarea className={INPUT_CLASS} maxLength={4000} value={text} disabled={pending || disabled}
-          placeholder="Để trống nếu chưa có gì, hoặc mô tả thêm (vd: Nhà có 2 chai nước, cần thêm nước để tắm...)"
+          placeholder="Ví dụ nhà có 2 chai nước uống và đã hết gạo."
           onChange={event => { setText(event.target.value); setResult(undefined); setError(""); }} />
       </label>
+      <p className="text-small text-navy-600">Khi tạo gợi ý, Gemini dùng cả thông tin đã lưu ở Hiện trạng gia đình.</p>
       <Button variant="secondary" loading={pending} disabled={disabled || !validDuration} onClick={() => void suggest()}>Tạo gợi ý</Button>
       {error && <p role="alert">{error}</p>}
       {result && <>
@@ -86,7 +90,7 @@ export function CartSuggestion({ campaignId, householdSize, catalog, disabled, o
           </p>
         )}
         <p className="text-small text-navy-600">
-          Gợi ý dùng số người trong hộ, {duration} ngày dự trữ và mô tả bạn nhập. Kiểm tra lại trước khi đưa vào giỏ.
+          Kiểm tra lại số lượng trước khi đưa vào giỏ.
         </p>
         {result.draft.householdSize && <p>Số người · {result.draft.householdSize}</p>}
         {suggestions.length > 0 && <ul className="grid gap-1">

@@ -41,10 +41,20 @@ export const putCartInput = z.strictObject({
   version: count,
 });
 export const confirmCartInput = z.strictObject({ version: count });
+export const householdStatus = z.strictObject({
+  members: z.number().int().min(1).max(30),
+  adults: z.number().int().min(0).max(20),
+  children: z.number().int().min(0).max(20),
+  elderly: z.number().int().min(0).max(20),
+  housingType: z.enum(["kienco", "bankienco", "cap4", "vungtrung"]),
+  incomeLevel: z.enum(["low", "medium", "high"]).optional(),
+  notes: z.string().trim().max(1_000),
+});
 export const cartAiInput = z.strictObject({
   text: z.string().max(4_000).optional().default(""),
   householdSize: positiveCount.optional(),
   days: z.number().int().min(1).max(365).optional().default(3),
+  householdStatus: householdStatus.optional(),
 });
 export const cartAiResult = z.strictObject({
   draft: z.strictObject({

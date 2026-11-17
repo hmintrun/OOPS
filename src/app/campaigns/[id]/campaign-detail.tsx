@@ -8,12 +8,12 @@ import {
   newIdempotencyKey, publishCampaign, putCart, type PutCartBody,
 } from "@/lib/api-client";
 import { Button, Card, CardTitle } from "@/components/ui";
-import { readFamilyStatus } from "@/app/groups/FamilyStatusWidget";
+import { readFamilyStatus } from "@/lib/family-status";
 import { CartSuggestion } from "./CartSuggestion";
 import { formatDateTime, isPast } from "../_shared/dates";
 import { Banner, CampaignStateChip, CartStateChip, INPUT_CLASS, LinkButton, LoadingState } from "../_shared/ui";
 
-type Data = { campaign: Campaign; catalog: CatalogItem[]; cart: Cart | null; needs: Needs; isRep: boolean };
+type Data = { campaign: Campaign; catalog: CatalogItem[]; cart: Cart | null; needs: Needs; isRep: boolean; userId: string };
 type Draft = {
   householdSize: string;
   supportRequested: boolean;
@@ -39,7 +39,7 @@ async function loadCampaign(id: string): Promise<Data> {
     const group = await getGroup(profile.groupId);
     const campaign = group.campaigns.find(item => item.campaignId === id);
     if (!campaign) throw new Error("Không tìm thấy đợt gom trong nhóm của bạn.");
-    return { campaign, isRep: group.repId === profile.userId };
+    return { campaign, isRep: group.repId === profile.userId, userId: profile.userId };
   });
   const [groupContext, catalog, cart, needs] = await Promise.all([
     context,
@@ -74,7 +74,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     void loadCampaign(campaignId).then(value => {
       if (!active) return;
       setData(value);
-      setDraft(toDraft(value.cart, readFamilyStatus().members));
+      setDraft(toDraft(value.cart, readFamilyStatus(value.userId).members));
       setDirty(false);
     }).catch((error: unknown) => {
       if (!active) return;
@@ -227,7 +227,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
           </details>}
           {editable && <Button type="submit" loading={saving}>Lưu giỏ</Button>}
         </form>
-        {editable && <CartSuggestion campaignId={campaignId} householdSize={parseQuantity(draft.householdSize)}
+        {editable && <CartSuggestion campaignId={campaignId} userId={data.userId} householdSize={parseQuantity(draft.householdSize)}
           catalog={catalog} disabled={saving} onApply={suggestion => edit(current => {
             const lines = { ...current.lines };
             for (const line of suggestion.lines) {

@@ -1,5 +1,6 @@
 import "server-only";
 import type { CatalogItem } from "@/contracts/foundation";
+import { DEFAULT_WATER_BOTTLE_ML, DRINKING_WATER_LITRES_PER_PERSON_PER_DAY } from "@/lib/water-reserve";
 
 export type CartNormRule = {
   mode: "per_person" | "per_household";
@@ -10,11 +11,6 @@ export type CartNormRule = {
 const MAX_QUANTITY = 2_147_483_647;
 
 const RULES_BY_SKU_ID: Record<string, CartNormRule> = {
-  "e7509c34-3063-4be5-8428-77ff563ad1a1": {
-    mode: "per_person",
-    qty: 6,
-    label: "Chuẩn 72h Be Ready · Nước uống: 6 chai/người (2L/ngày × 3 ngày)",
-  },
   "e7509c34-3063-4be5-8428-77ff563ad1a2": {
     mode: "per_person",
     qty: 1,
@@ -27,15 +23,16 @@ const RULES_BY_SKU_ID: Record<string, CartNormRule> = {
   },
 };
 
-export function findCartNormRule(item: CatalogItem): CartNormRule | undefined {
+export function isBottledWater(item: CatalogItem): boolean {
+  return item.category === "WATER" && item.unit.trim().toLowerCase() === "chai";
+}
+
+function findCartNormRule(item: CatalogItem): CartNormRule | undefined {
   const byId = RULES_BY_SKU_ID[item.skuId];
   if (byId) return byId;
 
   const unit = item.unit.trim().toLowerCase();
   const name = item.name.trim().toLowerCase();
-  if (item.category === "WATER" && unit === "chai") {
-    return RULES_BY_SKU_ID["e7509c34-3063-4be5-8428-77ff563ad1a1"];
-  }
   if (item.category === "FOOD" && unit === "kg" && name.includes("gạo")) {
     return RULES_BY_SKU_ID["e7509c34-3063-4be5-8428-77ff563ad1a2"];
   }
@@ -60,23 +57,26 @@ export function computeRecommendedNeed(
   days = 3,
   urgency: UrgencyLevel = "NORMAL",
 ): { needQty: number; ruleRef: string } | undefined {
+  const reserveDays = Math.max(1, Math.min(365, Math.trunc(days)));
+  if (isBottledWater(item)) {
+    if (householdSize === undefined || householdSize < 1) return undefined;
+    const urgencyMultiplier = URGENCY_MULTIPLIER[urgency];
+    const waterLitres = householdSize * DRINKING_WATER_LITRES_PER_PERSON_PER_DAY * reserveDays * urgencyMultiplier;
+    const target = Math.min(MAX_QUANTITY, Math.ceil(waterLitres * 1_000 / DEFAULT_WATER_BOTTLE_ML));
+    const adjustment = urgency === "NORMAL" ? "" : ` × ${urgencyMultiplier} (nhu cầu tăng)`;
+    const label = `Nước uống · ${DRINKING_WATER_LITRES_PER_PERSON_PER_DAY} lít/người/ngày (tham khảo WHO) × ${reserveDays} ngày${adjustment} · ${DEFAULT_WATER_BOTTLE_ML} mL/chai`;
+    return describeNeed(item, target, stockQty, label);
+  }
+
   const rule = findCartNormRule(item);
   if (!rule) return undefined;
   if (rule.mode === "per_person" && (householdSize === undefined || householdSize < 1)) {
     return undefined;
   }
 
-  const reserveDays = Math.max(1, Math.min(365, Math.trunc(days)));
-  const knownStock = stockQty ?? 0;
-
   let target: number;
   let label: string;
-  if (item.category === "WATER" && item.unit.trim().toLowerCase() === "chai") {
-    target = Math.min(MAX_QUANTITY, (householdSize ?? 1) * 2 * reserveDays);
-    label = reserveDays === 3
-      ? rule.label
-      : `Định mức ${reserveDays} ngày (chuẩn Be Ready) · Nước uống: ${2 * reserveDays} chai/người (2L/ngày × ${reserveDays} ngày)`;
-  } else if (item.category === "FOOD" && item.unit.trim().toLowerCase() === "kg") {
+  if (item.category === "FOOD" && item.unit.trim().toLowerCase() === "kg") {
     target = Math.min(MAX_QUANTITY, Math.ceil(((householdSize ?? 1) * reserveDays) / 3));
     label = reserveDays === 3
       ? rule.label
@@ -94,11 +94,15 @@ export function computeRecommendedNeed(
     label = reserveDays === 3 ? rule.label : `${rule.label} (${reserveDays} ngày)`;
   }
 
-  if (urgency !== "NORMAL" && (item.category === "WATER" || item.category === "FOOD")) {
+  if (urgency !== "NORMAL" && item.category === "FOOD") {
     target = Math.min(MAX_QUANTITY, Math.ceil(target * URGENCY_MULTIPLIER[urgency]));
   }
 
-  const needQty = Math.max(0, target - knownStock);
+  return describeNeed(item, target, stockQty, label);
+}
+
+function describeNeed(item: CatalogItem, target: number, stockQty: number | null, label: string) {
+  const needQty = Math.max(0, target - (stockQty ?? 0));
   const stockNote = stockQty === null
     ? `cần ${target} ${item.unit} (chưa nêu lượng đang có)`
     : `cần ${target}, đang có ${stockQty} → đề xuất thiếu ${needQty} ${item.unit}`;

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CatalogItem } from "@/contracts/foundation";
+import type { FamilyStatusData } from "@/lib/family-status";
 import { ApiFailure } from "@/server/errors";
 import { draftFromGemini, geminiResponseSchema } from "@/server/cart/gemini";
 import { waterSkuId } from "./fixtures/foundation";
@@ -13,6 +14,15 @@ const catalog: CatalogItem[] = [
   { skuId: riceSkuId, name: "Gạo", category: "FOOD", unit: "kg" },
   { skuId: batterySkuId, name: "Pin AA", category: "ESSENTIALS", unit: "viên" },
 ];
+const savedHousehold: FamilyStatusData = {
+  members: 3,
+  adults: 1,
+  children: 1,
+  elderly: 1,
+  housingType: "vungtrung",
+  incomeLevel: "low",
+  notes: "Hay cúp điện và mất nước khi ngập, cần dự trữ thêm nước uống cho người cao tuổi.",
+};
 
 const SUPPORTED_SCHEMA_KEYS = new Set([
   "$id", "$defs", "$ref", "$anchor", "type", "format", "title", "description", "enum",
@@ -72,7 +82,7 @@ describe("draftFromGemini", () => {
                 recommendAll: false,
                 nothingInStock: false,
                 items: [
-                  { skuId: waterSkuId, label: "Nước uống", unit: "chai", stockQty: 3, needQty: 7 },
+                  { skuId: waterSkuId, label: "Nước uống", unit: "chai 0,5 L", stockQty: 3, needQty: 7 },
                   { skuId: riceSkuId, label: "Gạo", unit: "bao", stockQty: 1, needQty: 2 },
                 ],
               }),
@@ -84,7 +94,7 @@ describe("draftFromGemini", () => {
     vi.stubGlobal("fetch", provider);
 
     const result = await draftFromGemini(
-      { text: "Nhà 4 người, có 3 chai nước cần 7 chai, cần 2 bao gạo", householdSize: 1 },
+      { text: "Nhà 4 người, có 3 chai nước 0,5 L, cần thêm 7 chai cùng loại và 2 bao gạo", householdSize: 1, householdStatus: savedHousehold },
       catalog,
     );
 
@@ -102,7 +112,7 @@ describe("draftFromGemini", () => {
     expect(sent.generationConfig.responseJsonSchema).toEqual(geminiResponseSchema);
   });
 
-  it("recommends water and rice with 72h Be Ready norms when user asks generally without mentioning batteries", async () => {
+  it("recommends three days of water and rice when user asks generally without mentioning batteries", async () => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
     vi.stubEnv("GEMINI_MODEL", "gemini-3.5-flash-lite");
     vi.stubGlobal("fetch", mockGeminiResponse({
@@ -129,12 +139,13 @@ describe("draftFromGemini", () => {
     expect(result.draft).toEqual({
       householdSize: 4,
       lines: [
-        { skuId: waterSkuId, stockQty: 0, needQty: 24 },
+        { skuId: waterSkuId, stockQty: 0, needQty: 72 },
         { skuId: riceSkuId, stockQty: 0, needQty: 4 },
       ],
     });
     expect(result.unresolved).toEqual([]);
     expect(result.ruleRefs).toHaveLength(2);
+    expect(result.ruleRefs[0]).toContain("3 lít/người/ngày (tham khảo WHO) × 3 ngày · 500 mL/chai");
     expect(result.encouragement).toBeTruthy();
   });
 
@@ -151,7 +162,7 @@ describe("draftFromGemini", () => {
               recommendAll: false,
               nothingInStock: false,
               items: [
-                { skuId: waterSkuId, label: "nước", unit: "chai", stockQty: 2, needQty: null },
+                { skuId: waterSkuId, label: "nước", unit: "chai 500 mL", stockQty: 2, needQty: null },
                 { skuId: riceSkuId, label: "gạo", unit: null, stockQty: 0, needQty: null },
               ],
             }),
@@ -161,14 +172,14 @@ describe("draftFromGemini", () => {
     }));
 
     const result = await draftFromGemini(
-      { text: "Nhà 4 người, đang có 2 chai nước, hết gạo.", householdSize: 1 },
+      { text: "Nhà 4 người, đang có 2 chai nước 500 mL, hết gạo.", householdSize: 1 },
       catalog,
     );
 
     expect(result.draft).toEqual({
       householdSize: 4,
       lines: [
-        { skuId: waterSkuId, stockQty: 2, needQty: 22 },
+        { skuId: waterSkuId, stockQty: 2, needQty: 70 },
         { skuId: riceSkuId, stockQty: 0, needQty: 4 },
       ],
     });
@@ -186,13 +197,50 @@ describe("draftFromGemini", () => {
     expect(result.draft).toEqual({
       householdSize: 4,
       lines: [
-        { skuId: waterSkuId, stockQty: 0, needQty: 48 },
+        { skuId: waterSkuId, stockQty: 0, needQty: 144 },
         { skuId: riceSkuId, stockQty: 0, needQty: 8 },
       ],
     });
     expect(result.unresolved).toEqual([]);
     expect(result.ruleRefs).toHaveLength(2);
     expect(result.encouragement).toBeTruthy();
+  });
+
+  it("uses saved household details with empty text and keeps the basic supplies", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-3.5-flash-lite");
+    const provider = mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: { parts: [{ text: JSON.stringify({
+          householdSize: 8,
+          days: 7,
+          urgency: "ELEVATED",
+          items: [{ skuId: batterySkuId, label: "Pin AA", unit: null, stockQty: null, needQty: null }],
+        }) }] },
+      }],
+    });
+    vi.stubGlobal("fetch", provider);
+
+    const result = await draftFromGemini({ days: 1, householdStatus: savedHousehold }, catalog);
+
+    expect(result.draft).toEqual({
+      householdSize: 3,
+      lines: [
+        { skuId: batterySkuId, stockQty: 0, needQty: 4 },
+        { skuId: waterSkuId, stockQty: 0, needQty: 23 },
+        { skuId: riceSkuId, stockQty: 0, needQty: 2 },
+      ],
+    });
+    const [, init] = provider.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+    expect(JSON.parse(body.contents[0].parts[0].text)).toEqual({
+      text: "",
+      householdSize: 3,
+      days: 1,
+      householdStatus: savedHousehold,
+      catalog,
+    });
   });
 
   it("defaults unmentioned products to stockQty 0 and uses extracted days override over form days", async () => {
@@ -220,7 +268,7 @@ describe("draftFromGemini", () => {
     expect(result.draft).toEqual({
       householdSize: 4,
       lines: [
-        { skuId: waterSkuId, stockQty: 0, needQty: 40 },
+        { skuId: waterSkuId, stockQty: 0, needQty: 120 },
         { skuId: riceSkuId, stockQty: 0, needQty: 7 },
       ],
     });
@@ -229,7 +277,10 @@ describe("draftFromGemini", () => {
     expect(result.encouragement).toBeTruthy();
   });
 
-  it("does not guess conflicting-unit items even during general recommendation and marks missing householdSize", async () => {
+  it.each([
+    { unit: "thùng", text: "Có 2 thùng nước, gợi ý thêm giúp tôi" },
+    { unit: "chai 1,5 L", text: "Có 2 chai nước loại 1,5 L, gợi ý thêm giúp tôi" },
+  ])("does not replace unresolved water stock in $unit with zero stock", async ({ unit, text }) => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
     vi.stubEnv("GEMINI_MODEL", "gemini-3.5-flash-lite");
     vi.stubGlobal("fetch", mockGeminiResponse({
@@ -242,7 +293,7 @@ describe("draftFromGemini", () => {
               recommendAll: true,
               nothingInStock: false,
               items: [
-                { skuId: waterSkuId, label: "nước", unit: "thùng", stockQty: 2, needQty: null },
+                { skuId: waterSkuId, label: "nước", unit, stockQty: 2, needQty: null },
               ],
             }),
           }],
@@ -250,12 +301,10 @@ describe("draftFromGemini", () => {
       }],
     }));
 
-    const result = await draftFromGemini({ text: "Có 2 thùng nước, gợi ý thêm giúp tôi" }, catalog);
-    expect(result.draft).toEqual({
-      lines: [],
-    });
-    expect(result.unresolved).toEqual(["nước", "Số người trong hộ"]);
-    expect(result.ruleRefs).toHaveLength(0);
+    const result = await draftFromGemini({ text, householdSize: 4 }, catalog);
+    expect(result.draft.lines).toEqual([{ skuId: riceSkuId, stockQty: 0, needQty: 4 }]);
+    expect(result.unresolved).toEqual(["nước"]);
+    expect(result.ruleRefs).toHaveLength(1);
   });
 
   it("recommends batteries when user explicitly mentions power outage or batteries, and scales urgent need higher than normal", async () => {
@@ -285,7 +334,7 @@ describe("draftFromGemini", () => {
       catalog,
     );
     expect(urgentResult.draft.lines).toEqual([
-      { skuId: waterSkuId, stockQty: 0, needQty: 36 },
+      { skuId: waterSkuId, stockQty: 0, needQty: 108 },
       { skuId: riceSkuId, stockQty: 0, needQty: 6 },
     ]);
 
@@ -349,10 +398,10 @@ describe("draftFromGemini", () => {
     });
   });
 
-  it("accepts AI contextual estimation with reasoning and days context while rejecting unestimated unitless numbers", async () => {
+  it("uses server rules for estimated water and keeps contextual estimates for other items", async () => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
     vi.stubEnv("GEMINI_MODEL", "gemini-3.5-flash-lite");
-    const reason = "Ước lượng 4 người dùng 5 ngày: 40 chai uống + 20 chai tắm/vệ sinh, đang có 0 → đề xuất 60 chai.";
+    const reason = "Ước lượng 8 kg gạo vì nhu cầu ăn cao hơn bình thường.";
     const encouragement = "Bạn đừng lo, OOPS sẽ cùng bạn và hàng xóm chuẩn bị đủ lương thực, nước uống cho những ngày tới.";
     const provider = mockGeminiResponse({
       candidates: [{
@@ -371,18 +420,18 @@ describe("draftFromGemini", () => {
                   label: "Nước uống",
                   unit: null,
                   stockQty: null,
-                  needQty: 60,
+                  needQty: 999,
                   estimated: true,
-                  reason,
+                  reason: "Gemini tự ước lượng số chai.",
                 },
                 {
                   skuId: riceSkuId,
                   label: "gạo",
                   unit: null,
                   stockQty: null,
-                  needQty: 5,
-                  estimated: false,
-                  reason: null,
+                  needQty: 8,
+                  estimated: true,
+                  reason,
                 },
               ],
             }),
@@ -393,23 +442,26 @@ describe("draftFromGemini", () => {
     vi.stubGlobal("fetch", provider);
 
     const result = await draftFromGemini(
-      { text: "Nhà tôi có dùng nước cho việc tắm nữa, cần 5 gạo", householdSize: 4, days: 5 },
+      { text: "Nhà tôi thiếu nước uống, nhà ăn nhiều gạo", householdSize: 4, days: 5 },
       catalog,
     );
 
     expect(result).toEqual({
       draft: {
         householdSize: 4,
-        lines: [{ skuId: waterSkuId, stockQty: 0, needQty: 60 }],
+        lines: [
+          { skuId: waterSkuId, stockQty: 0, needQty: 120 },
+          { skuId: riceSkuId, stockQty: 0, needQty: 8 },
+        ],
       },
       encouragement,
-      unresolved: ["gạo"],
-      ruleRefs: [reason],
+      unresolved: [],
+      ruleRefs: [expect.stringContaining("500 mL/chai"), reason],
     });
     const [, init] = provider.mock.calls[0] as unknown as [string, RequestInit];
     const sent = JSON.parse(String(init.body)) as { contents: Array<{ parts: Array<{ text: string }> }> };
     expect(JSON.parse(sent.contents[0].parts[0].text)).toMatchObject({
-      text: "Nhà tôi có dùng nước cho việc tắm nữa, cần 5 gạo",
+      text: "Nhà tôi thiếu nước uống, nhà ăn nhiều gạo",
       householdSize: 4,
       days: 5,
     });
