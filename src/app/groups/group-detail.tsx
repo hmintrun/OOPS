@@ -6,6 +6,7 @@ import { FamilyStatusWidget } from "./FamilyStatusWidget";
 import { formatDateTime } from "./helpers";
 import { InviteForm } from "./[id]/invite-form";
 import { LeaveGroupButton } from "./[id]/leave-group-button";
+import { CAMPAIGN_STATUS_LABEL, campaignDisplayState } from "../campaigns/_shared/dates";
 
 export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
   const isRepresentative = data.repId === userId;
@@ -20,14 +21,17 @@ export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
           </div>
           {data.campaigns.length > 0 ? (
             <ul className="grid gap-2">
-              {data.campaigns.map(campaign => (
-                <li key={campaign.campaignId}>
-                  <Link href={`/campaigns/${campaign.campaignId}`} className="ui-group-campaign">
-                    <strong>{campaign.state === "DRAFT" ? "Đang chuẩn bị" : "Đã đăng"}</strong>
-                    <span>Cần hàng trước {formatDateTime(campaign.needBy)}</span>
-                  </Link>
-                </li>
-              ))}
+              {data.campaigns.map(campaign => {
+                const displayState = campaignDisplayState(campaign);
+                return (
+                  <li key={campaign.campaignId}>
+                    <Link href={`/campaigns/${campaign.campaignId}`} className="ui-group-campaign ui-campaign-status" data-campaign-status={displayState}>
+                      <strong>{CAMPAIGN_STATUS_LABEL[displayState]}</strong>
+                      <span>Cần hàng trước {formatDateTime(campaign.needBy)}</span>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           ) : <p className="rounded-input bg-amber-tint p-3 text-navy-900">Nhóm chưa có đợt gom.</p>}
           <Link href="/campaigns" className="ui-btn ui-btn--primary ui-btn--full mt-3">

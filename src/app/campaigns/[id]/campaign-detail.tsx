@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Campaign, Cart, CatalogItem, Needs } from "@/contracts/foundation";
 import {
@@ -8,29 +9,35 @@ import {
   newIdempotencyKey, publishCampaign, putCart, type PutCartBody,
 } from "@/lib/api-client";
 import { Button, Card, CardTitle } from "@/components/ui";
-import { readFamilyStatus } from "@/lib/family-status";
-import { CartSuggestion } from "./CartSuggestion";
-import { formatDateTime, isPast } from "../_shared/dates";
+import { defaultFamilyStatus, readSavedFamilyStatus } from "@/lib/family-status";
+import { campaignDisplayState, formatDateTime, isPast } from "../_shared/dates";
 import { Banner, CampaignStateChip, CartStateChip, INPUT_CLASS, LinkButton, LoadingState } from "../_shared/ui";
 
-type Data = { campaign: Campaign; catalog: CatalogItem[]; cart: Cart | null; needs: Needs; isRep: boolean; userId: string };
+const CartSuggestion = dynamic(() => import("./CartSuggestion").then(module => module.CartSuggestion), {
+  loading: () => <LoadingState />,
+});
+
+type Data = {
+  campaign: Campaign;
+  catalog: CatalogItem[];
+  cart: Cart | null;
+  needs: Needs;
+  isRep: boolean;
+  userId: string;
+  householdSize: number;
+};
 type Draft = {
-  householdSize: string;
   supportRequested: boolean;
-  lines: Record<string, { stockQty: string; needQty: string }>;
+  quantities: Record<string, string>;
 };
 
-function toDraft(cart: Cart | null, defaultHouseholdSize = 1): Draft {
+function toDraft(cart: Cart | null): Draft {
   return {
-    householdSize: String(cart?.householdSize ?? defaultHouseholdSize),
     supportRequested: cart?.supportRequested ?? false,
-    lines: Object.fromEntries((cart?.lines ?? []).map(line => [
-      line.skuId, { stockQty: String(line.stockQty), needQty: String(line.needQty) },
-    ])),
+    quantities: Object.fromEntries((cart?.lines ?? []).map(line => [line.skuId, String(line.needQty)])),
   };
 }
 
-const blankLine = { stockQty: "0", needQty: "0" };
 const parseQuantity = (value: string) => /^\d+$/.test(value) ? Number(value) : NaN;
 
 async function loadCampaign(id: string): Promise<Data> {
@@ -50,7 +57,9 @@ async function loadCampaign(id: string): Promise<Data> {
     }),
     getNeeds(id),
   ]);
-  return { ...groupContext, catalog: catalog.items, cart, needs };
+  const householdSize = readSavedFamilyStatus(groupContext.userId)?.members
+    ?? cart?.householdSize ?? defaultFamilyStatus.members;
+  return { ...groupContext, catalog: catalog.items, cart, needs, householdSize };
 }
 
 export function CampaignDetail({ campaignId }: { campaignId: string }) {
@@ -63,6 +72,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [walletNotReady, setWalletNotReady] = useState(false);
+  const [suggestionOpenedFor, setSuggestionOpenedFor] = useState<string>();
   const busy = useRef(false);
   const retry = useRef<{ body: string; key: string } | undefined>(undefined);
 
@@ -74,7 +84,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     void loadCampaign(campaignId).then(value => {
       if (!active) return;
       setData(value);
-      setDraft(toDraft(value.cart, readFamilyStatus(value.userId).members));
+      setDraft(toDraft(value.cart));
       setDirty(false);
     }).catch((error: unknown) => {
       if (!active) return;
@@ -130,19 +140,22 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     </Card>
   ) : <LoadingState />;
 
-  const { campaign, cart, needs, catalog, isRep } = data;
-  const editable = campaign.state === "DRAFT" && !isPast(campaign.collectUntil);
+  const { campaign, cart, needs, catalog, isRep, householdSize } = data;
+  const displayState = campaignDisplayState(campaign);
+  const editable = displayState === "COLLECTING";
   const canPublish = isRep && needs.campaignState === "DRAFT" && !isPast(campaign.needBy) && needs.items.length > 0;
 
   function save() {
+    const existingStock = new Map(cart?.lines.map(line => [line.skuId, line.stockQty]));
     const body: PutCartBody = {
-      householdSize: parseQuantity(draft.householdSize),
+      householdSize,
       supportRequested: draft.supportRequested,
       version: cart?.version ?? 0,
-      lines: catalog.map(item => {
-        const line = draft.lines[item.skuId] ?? blankLine;
-        return { skuId: item.skuId, stockQty: parseQuantity(line.stockQty), needQty: parseQuantity(line.needQty) };
-      }).filter(line => line.stockQty !== 0 || line.needQty !== 0),
+      lines: catalog.map(({ skuId }) => ({
+        skuId,
+        stockQty: existingStock.get(skuId) ?? 0,
+        needQty: parseQuantity(draft.quantities[skuId] ?? "0"),
+      })).filter(line => line.stockQty !== 0 || line.needQty !== 0),
     };
     void action(`save:${JSON.stringify(body)}`, "Đã lưu giỏ.", key => putCart(campaignId, body, key),
       cart?.state === "CONFIRMED" ? undefined : savedCart => {
@@ -156,8 +169,8 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
   return (
     <div className="grid gap-4">
       <LinkButton href="/campaigns" icon="arrow_back">Các đợt gom</LinkButton>
-      <Card>
-        <CampaignStateChip state={campaign.state} />
+      <Card className="ui-campaign-status" data-campaign-status={displayState}>
+        <CampaignStateChip state={displayState} />
         <p>Gom đến {formatDateTime(campaign.collectUntil)}</p>
         <p>Cần hàng trước {formatDateTime(campaign.needBy)}</p>
       </Card>
@@ -179,12 +192,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         <CardTitle>Giỏ của nhà mình</CardTitle>
         {cart && <CartStateChip state={cart.state} />}
         <form className="grid gap-3" onSubmit={event => { event.preventDefault(); save(); }}>
-          <label className="grid gap-1">
-            Số người trong hộ
-            <input className={INPUT_CLASS} type="number" min={1} max={2147483647} step={1} required
-              value={draft.householdSize} disabled={!editable || saving}
-              onChange={event => edit(value => ({ ...value, householdSize: event.target.value }))} />
-          </label>
+          <p className="text-sm text-navy-600"><strong>{householdSize} người</strong> trong hộ</p>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={draft.supportRequested} disabled={!editable || saving}
               onChange={event => edit(value => ({ ...value, supportRequested: event.target.checked }))} />
@@ -196,50 +204,28 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               <span>{item.name} ({item.unit})</span>
               <input className={INPUT_CLASS} type="number" min={0} max={2147483647} step={1} inputMode="numeric" required
                 disabled={!editable || saving}
-                value={(draft.lines[item.skuId] ?? blankLine).needQty}
+                value={draft.quantities[item.skuId] ?? "0"}
                 onChange={event => {
                   const needQty = event.target.value;
                   edit(value => ({
                     ...value,
-                    lines: { ...value.lines, [item.skuId]: { ...blankLine, ...value.lines[item.skuId], needQty } },
+                    quantities: { ...value.quantities, [item.skuId]: needQty },
                   }));
                 }} />
             </label>
           ))}
-          {editable && <details className="rounded-input border border-line p-3">
-            <summary className="cursor-pointer font-semibold">Số lượng nhà đang có</summary>
-            <div className="mt-2 grid gap-2">
-              {catalog.map(item => (
-                <label key={item.skuId} className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-3">
-                  <span>{item.name} ({item.unit})</span>
-                  <input className={INPUT_CLASS} type="number" min={0} max={2147483647} step={1} inputMode="numeric" required
-                    disabled={saving} value={(draft.lines[item.skuId] ?? blankLine).stockQty}
-                    onChange={event => {
-                      const stockQty = event.target.value;
-                      edit(value => ({
-                        ...value,
-                        lines: { ...value.lines, [item.skuId]: { ...blankLine, ...value.lines[item.skuId], stockQty } },
-                      }));
-                    }} />
-                </label>
-              ))}
-            </div>
-          </details>}
           {editable && <Button type="submit" loading={saving}>Lưu giỏ</Button>}
         </form>
-        {editable && <CartSuggestion campaignId={campaignId} userId={data.userId} householdSize={parseQuantity(draft.householdSize)}
-          catalog={catalog} disabled={saving} onApply={suggestion => edit(current => {
-            const lines = { ...current.lines };
-            for (const line of suggestion.lines) {
-              const previous = lines[line.skuId] ?? blankLine;
-              lines[line.skuId] = {
-                stockQty: line.stockQty === undefined ? previous.stockQty : String(line.stockQty),
-                needQty: line.needQty === undefined ? previous.needQty : String(line.needQty),
-              };
-            }
-            return { ...current, lines, householdSize: suggestion.householdSize === undefined
-              ? current.householdSize : String(suggestion.householdSize) };
-          })} />}
+        {editable && <details className="mt-4 rounded-input border border-line p-3" onToggle={event => {
+          if (event.currentTarget.open) setSuggestionOpenedFor(campaignId);
+        }}>
+          <summary className="cursor-pointer font-bold">Gợi ý giỏ bằng AI</summary>
+          {suggestionOpenedFor === campaignId && <CartSuggestion campaignId={campaignId} userId={data.userId} householdSize={householdSize}
+            catalog={catalog} disabled={saving} onApply={suggestedQuantities => edit(current => ({
+              ...current,
+              quantities: { ...current.quantities, ...suggestedQuantities },
+            }))} />}
+        </details>}
         {editable && cart?.state === "DRAFT" && (
           <Button className="mt-2" disabled={dirty || saving}
             onClick={() => void action(`confirm:${cart.version}`, "Đã xác nhận giỏ.", key => confirmCart(campaignId, cart.version, key))}>

@@ -1,4 +1,4 @@
-import { Button, Card, IconTile } from "@/components/ui";
+import { Button, Card, IconTile, MaterialSymbol } from "@/components/ui";
 
 export function TradeStatus({ loading, failure, retry }: {
   loading: boolean;
@@ -7,7 +7,10 @@ export function TradeStatus({ loading, failure, retry }: {
 }) {
   return <>
     {loading && <Card className="ui-status-card" padding="tight">
-      <p role="status" className="text-navy-600">Đang tải…</p>
+      <div className="flex items-center justify-center gap-2 py-1 text-body text-navy-700">
+        <MaterialSymbol name="progress_activity" size={20} className="ui-spin text-emerald-700" />
+        <p role="status" className="font-medium">Đang tải…</p>
+      </div>
     </Card>}
     {failure && <Card className="ui-status-card ui-empty">
       <div className="flex items-center gap-3">

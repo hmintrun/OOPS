@@ -12,7 +12,7 @@ import { OfferModalWidget, type OfferSubmitData } from "@/app/feed/OfferModalWid
 import { FamilyStatusWidget } from "@/app/groups/FamilyStatusWidget";
 import { defaultFamilyStatus, readFamilyStatus, type FamilyStatusData } from "@/lib/family-status";
 import { PwaInstallCard } from "@/components/pwa";
-import { formatDateTime, toLocalInputValue } from "@/app/campaigns/_shared/dates";
+import { CAMPAIGN_STATUS_LABEL, campaignDisplayState, formatDateTime, toLocalInputValue } from "@/app/campaigns/_shared/dates";
 import type { CatalogItem, DemandItem } from "@/contracts/foundation";
 import { scenario } from "./scenario";
 import { OrderDemo, getDemoOrderStatus } from "./OrderDemo";
@@ -147,7 +147,6 @@ function DemoCampaignCart({ people, quantities, saved, onChange, onSave }: {
   onSave: () => void;
 }) {
   const [days, setDays] = useState("3");
-  const [stocks, setStocks] = useState<Record<string, string>>({});
   const [suggestion, setSuggestion] = useState<Record<string, string>>();
   const duration = Number(days);
   const validDuration = Number.isInteger(duration) && duration >= 1 && duration <= 365;
@@ -156,7 +155,9 @@ function DemoCampaignCart({ people, quantities, saved, onChange, onSave }: {
     <Card className="grid gap-3">
       <div>
         <CardTitle as="h3">Giỏ của nhà mình</CardTitle>
-        <p className="text-sm text-navy-600">{people} người · Nhập 0 cho món bạn không mua.</p>
+        <p className="text-xs text-navy-600 mt-1">
+          Quy mô: <strong className="text-emerald-800">{people} người</strong> (lấy từ Hiện trạng gia đình) · Nhập 0 cho món bạn không mua.
+        </p>
       </div>
       {reliefItems.map(item => (
         <label key={item.id} className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-3 rounded-input bg-sky-tint p-2">
@@ -171,33 +172,21 @@ function DemoCampaignCart({ people, quantities, saved, onChange, onSave }: {
         </label>
       ))}
       <details className="rounded-input bg-amber-tint p-3">
-        <summary className="cursor-pointer font-bold">Gợi ý dự trữ mẫu</summary>
+        <summary className="cursor-pointer font-bold">Gợi ý dự trữ theo chuẩn 72h</summary>
         <div className="mt-3 grid gap-3 text-sm">
           <label className="grid gap-1">Số ngày cần dự trữ
             <input type="number" min={1} max={365} step={1} inputMode="numeric"
               className="min-h-11 w-full rounded-input border border-line bg-white px-2 text-base"
               value={days} onChange={event => { setDays(event.target.value); setSuggestion(undefined); }} />
           </label>
-          <fieldset className="grid gap-2">
-            <legend className="font-semibold">Số lượng đang có</legend>
-            {reliefItems.map(item => (
-              <label key={item.id} className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-2">
-                {item.shortName} ({item.unit})
-                <input type="number" min={0} max={999} step={1} inputMode="numeric"
-                  className="min-h-11 w-full rounded-input border border-line bg-white px-2 text-base"
-                  value={stocks[item.id] ?? "0"} onChange={event => {
-                    setStocks(current => ({ ...current, [item.id]: event.target.value }));
-                    setSuggestion(undefined);
-                  }} />
-              </label>
-            ))}
-          </fieldset>
           <Button variant="secondary" disabled={!validDuration} onClick={() => setSuggestion(Object.fromEntries(
-            reliefItems.map(item => [item.id, String(demoQuantity(String(item.calcSuggested(people, duration) - demoQuantity(stocks[item.id]))))]),
+            reliefItems.map(item => [item.id, String(demoQuantity(String(item.calcSuggested(people, duration))))]),
           ))}>Tạo gợi ý</Button>
           {suggestion && <>
-            <p role="status">Gợi ý mẫu tính cho {people} người trong {duration} ngày và trừ số lượng nhà đã có. Nước và thực phẩm tăng theo số ngày. Đèn pin và túi y tế tính theo hộ.</p>
-            <ul className="grid gap-1">{reliefItems.map(item => <li key={item.id}>{item.shortName} · {suggestion[item.id]} {item.unit}</li>)}</ul>
+            <p role="status" className="text-xs text-navy-700">
+              Khuyến nghị dự trữ cho <strong>{people} người</strong> trong <strong>{duration} ngày</strong> theo chuẩn phòng chống lụt bão 72h.
+            </p>
+            <ul className="grid gap-1 font-semibold">{reliefItems.map(item => <li key={item.id}>{item.shortName} · {suggestion[item.id]} {item.unit}</li>)}</ul>
             <Button onClick={() => { onChange(suggestion); setSuggestion(undefined); }}>Sử dụng gợi ý</Button>
           </>}
         </div>
@@ -503,6 +492,10 @@ export function OopsDemo() {
     orderFilterTab === "all" ? true : o.stage === orderFilterTab
   );
   const selectedOrder = orders.find((o) => o.id === selectedOrderId);
+  const currentCampaignStatus = campaignDisplayState({
+    state: phase === "draft" ? "DRAFT" : "PUBLISHED",
+    collectUntil: campaignDraft?.collectUntil ?? null,
+  });
 
   return (
     <main className={tab === "groups" ? "ui-app-page demo-page ui-family-page" : "ui-app-page demo-page"}>
@@ -604,9 +597,9 @@ export function OopsDemo() {
                   </div>
                 </div>
 
-                <div className="mt-3 flex items-center justify-between gap-2 rounded-input bg-sky-tint px-3 py-2 text-sm text-navy-900">
-                  <span>{earlierCampaigns[0].name}</span>
-                  <span className="shrink-0 text-xs font-bold text-green-700">Đã đăng</span>
+                <div className="mt-3 flex items-center justify-between gap-2 rounded-input bg-slate-100 border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                  <span className="font-medium text-slate-700">{earlierCampaigns[0].name}</span>
+                  <span className="shrink-0 text-xs font-bold text-slate-500 bg-slate-200/90 px-2.5 py-0.5 rounded-full">Đã đăng</span>
                 </div>
                 <button
                   type="button"
@@ -874,16 +867,18 @@ export function OopsDemo() {
           ) : (
             <ul className="grid gap-2">
               <li>
-                <button type="button" className="ui-group-campaign w-full text-start" onClick={() => openCampaignEditor()}>
-                  <strong>{campaignDraft?.name ?? "Đợt gom nhu yếu phẩm 72 giờ"}</strong>
-                  <span>{phase === "draft" ? "Đang chuẩn bị" : "Đã đăng"}{campaignDraft && ` · Cần trước ${formatDateTime(campaignDraft.needBy)}`}</span>
+                <button type="button" className="ui-group-campaign ui-campaign-status w-full text-start p-3 rounded-xl border border-emerald-200 bg-emerald-50/80 text-navy-900 transition-all hover:bg-emerald-100/70"
+                  data-campaign-status={currentCampaignStatus} onClick={() => openCampaignEditor()}>
+                  <strong className="block text-emerald-950 font-extrabold">{campaignDraft?.name ?? "Đợt gom nhu yếu phẩm 72 giờ"}</strong>
+                  <span className="text-xs text-emerald-800 mt-0.5 block">{CAMPAIGN_STATUS_LABEL[currentCampaignStatus]}{campaignDraft && ` · Cần trước ${formatDateTime(campaignDraft.needBy)}`}</span>
                 </button>
               </li>
               {earlierCampaigns.map(campaign => (
                 <li key={campaign.id}>
-                  <button type="button" className="ui-group-campaign w-full text-start" onClick={() => setEarlierCampaignId(campaign.id)}>
-                    <strong>{campaign.name}</strong>
-                    <span>Đã đăng · Cần trước {formatDateTime(campaign.needBy)}</span>
+                  <button type="button" className="ui-group-campaign ui-campaign-status w-full text-start p-3 rounded-xl border border-slate-200 bg-slate-100/90 text-slate-600 opacity-90 transition-all hover:bg-slate-200/90"
+                    data-campaign-status="PUBLISHED" onClick={() => setEarlierCampaignId(campaign.id)}>
+                    <strong className="block text-slate-700 font-bold">{campaign.name}</strong>
+                    <span className="text-xs text-slate-500 mt-0.5 block">Đã đăng · Cần trước {formatDateTime(campaign.needBy)}</span>
                   </button>
                 </li>
               ))}

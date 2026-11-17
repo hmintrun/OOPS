@@ -9,15 +9,13 @@ import { ApiError, apiFetch, newIdempotencyKey } from "@/lib/api-client";
 import { readSavedFamilyStatus } from "@/lib/family-status";
 import { INPUT_CLASS } from "../_shared/ui";
 
-type Suggestion = z.infer<typeof cartAiResult>["draft"];
-
 export function CartSuggestion({ campaignId, userId, householdSize, catalog, disabled, onApply }: {
   campaignId: string;
   userId: string;
   householdSize: number;
   catalog: CatalogItem[];
   disabled: boolean;
-  onApply: (draft: Suggestion) => void;
+  onApply: (quantities: Record<string, string>) => void;
 }) {
   const router = useRouter();
   const [text, setText] = useState("");
@@ -31,6 +29,9 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, dis
     const item = catalog.find(entry => entry.skuId === line.skuId);
     return item ? [{ line, item }] : [];
   }) ?? [];
+  const suggestedQuantities = Object.fromEntries(suggestions.flatMap(({ line }) =>
+    line.needQty === undefined ? [] : [[line.skuId, String(line.needQty)]],
+  ));
   const duration = Number(days);
   const validDuration = Number.isInteger(duration) && duration >= 1 && duration <= 365;
   async function suggest() {
@@ -67,17 +68,15 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, dis
     }
   }
 
-  return <details className="mt-4 rounded-input border border-line p-3">
-    <summary className="cursor-pointer font-bold">Gợi ý giỏ bằng AI</summary>
-    <div className="mt-3 grid gap-3">
+  return <div className="mt-3 grid gap-3">
       <label className="grid gap-1">Số ngày cần dự trữ
         <input className={INPUT_CLASS} type="number" min={1} max={365} step={1} inputMode="numeric"
           value={days} disabled={pending || disabled}
           onChange={event => { setDays(event.target.value); setResult(undefined); setError(""); }} />
       </label>
       <label className="grid gap-1">Nhà mình đang có gì và cần thêm gì?
-        <textarea className={INPUT_CLASS} maxLength={4000} value={text} disabled={pending || disabled}
-          placeholder="Ví dụ nhà có 2 chai nước uống và đã hết gạo."
+        <textarea className={INPUT_CLASS} maxLength={3900} value={text} disabled={pending || disabled}
+          placeholder="Ví dụ: Nhà còn 3 chai nước và 1 kg gạo. Gợi ý lượng cần mua thêm."
           onChange={event => { setText(event.target.value); setResult(undefined); setError(""); }} />
       </label>
       <p className="text-small text-navy-600">Khi tạo gợi ý, Gemini dùng cả thông tin đã lưu ở Hiện trạng gia đình.</p>
@@ -105,13 +104,10 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, dis
             Chưa có dòng hàng nào được gợi ý. Hãy nêu món cần chuẩn bị hoặc số người trong hộ để AI đề xuất.
           </p>
         )}
-        {(suggestions.length > 0 || (result.draft.householdSize !== undefined && result.draft.householdSize !== householdSize)) && (
-          <Button disabled={disabled} onClick={() => {
-            onApply({ householdSize: result.draft.householdSize, lines: suggestions.map(({ line }) => line) });
-            setResult(undefined);
-          }}>Sử dụng gợi ý</Button>
-        )}
+        {Object.keys(suggestedQuantities).length > 0 && <Button disabled={disabled} onClick={() => {
+          onApply(suggestedQuantities);
+          setResult(undefined);
+        }}>Sử dụng gợi ý</Button>}
       </>}
-    </div>
-  </details>;
+  </div>;
 }

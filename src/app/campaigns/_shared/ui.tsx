@@ -7,6 +7,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { IconTile, MaterialSymbol } from "@/components/ui";
+import { CAMPAIGN_STATUS_LABEL } from "./dates";
 
 /** Liên kết mang hình thức nút (Button của kit chỉ nhận onClick, không nhận href). */
 export function LinkButton({
@@ -28,13 +29,14 @@ export function LinkButton({
   );
 }
 
-type ChipTone = "sky" | "green" | "amber" | "rose";
+type ChipTone = "sky" | "green" | "amber" | "rose" | "neutral";
 
 const CHIP_CLASS: Record<ChipTone, string> = {
   sky: "bg-sky-tint text-navy-600",
   green: "bg-green-100 text-green-700",
   amber: "bg-amber-tint text-navy-900",
   rose: "bg-rose-tint text-danger",
+  neutral: "bg-slate-200 text-slate-700",
 };
 
 export function Chip({
@@ -56,14 +58,11 @@ export function Chip({
   );
 }
 
-export function CampaignStateChip({ state }: { state: "DRAFT" | "PUBLISHED" }) {
-  return state === "DRAFT" ? (
-    <Chip tone="sky" icon="edit_note">
-      Đang gom
-    </Chip>
-  ) : (
-    <Chip tone="green" icon="check_circle">
-      Đã đăng
+export function CampaignStateChip({ state }: { state: keyof typeof CAMPAIGN_STATUS_LABEL }) {
+  const icons = { COLLECTING: "edit_note", EXPIRED: "schedule", PUBLISHED: "check_circle" };
+  return (
+    <Chip tone={state === "COLLECTING" ? "green" : "neutral"} icon={icons[state]}>
+      {CAMPAIGN_STATUS_LABEL[state]}
     </Chip>
   );
 }
@@ -131,9 +130,13 @@ export function Banner({
 
 export function LoadingState({ label = "Đang tải…" }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center gap-[10px] py-[24px] text-body text-navy-600">
-      <MaterialSymbol name="progress_activity" size={22} />
-      {label}
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex items-center justify-center gap-[10px] py-[24px] text-body text-navy-700"
+    >
+      <MaterialSymbol name="progress_activity" size={22} className="ui-spin text-emerald-700 animate-spin" />
+      <span className="font-medium">{label}</span>
     </div>
   );
 }
