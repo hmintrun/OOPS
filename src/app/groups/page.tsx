@@ -15,7 +15,7 @@ export default async function GroupsPage() {
   return (
     <AppShell title="Nhóm của tôi" icon={{ icon: "groups", tone: "green" }} familyBackground bare>
       <div className="space-y-4">
-        <FamilyStatusWidget />
+        {result.userId && <FamilyStatusWidget key={result.userId} userId={result.userId} />}
         {result.ok ? (
           <div className="ui-card-grid">
             <Card>

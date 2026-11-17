@@ -147,6 +147,8 @@ type ConfirmationRound = {
 - `category` nhận `WATER`, `FOOD` hoặc `ESSENTIALS`.
 - GET giỏ trả `404` nếu chưa tạo. PUT tạo với `version: 0` và trả bản đã lưu ở version 1. Sửa hoặc xác nhận thành công tăng version thêm 1. Phát lại cùng khóa idempotency trả kết quả cũ.
 - AI trả `draft: {householdSize?, lines: [{skuId, stockQty?, needQty?}]}`, `unresolved: string[]` và `ruleRefs: string[]`. Mỗi dòng có ít nhất một lượng được trích rõ. Thiếu lượng, SKU hoặc đơn vị khớp được đưa vào `unresolved`. Người dùng nhập đủ trước khi lưu giỏ. `ruleRefs` rỗng khi chỉ trích dữ liệu đã nhập.
+- Khi hộ chưa nêu số chai muốn mua, server lấy mốc 3 lít nước uống/người/ngày, điều chỉnh theo mức độ cấp thiết, làm tròn lên theo chai 500 mL, rồi trừ số chai đang có cùng dung tích. [Tài liệu chuẩn bị ứng phó của WHO](https://applications.emro.who.int/dsaf/libcat/WHO_CBDRM_Participants_Work_Book_Module_2_EN.pdf?ua=1#page=9)
+- `householdStatus` là tùy chọn và nhận `{members, adults, children, elderly, housingType, incomeLevel?, notes}` từ phần Hiện trạng gia đình đã lưu theo tài khoản trên trình duyệt. `members` từ 1 đến 30. Mỗi nhóm tuổi từ 0 đến 20. `housingType` nhận `kienco`, `bankienco`, `cap4`, `vungtrung`. `incomeLevel` nhận `low`, `medium`, `high`. `notes` tối đa 1.000 ký tự. Khi có hiện trạng, Gemini dùng ngữ cảnh này kể cả khi `text` trống. Lượng đang có và lượng muốn mua ưu tiên mô tả hiện tại. Mức thu nhập dùng để ưu tiên mặt hàng, không thay đổi quyền được hỗ trợ.
 
 | Endpoint và quyền | Dữ liệu vào | Phản hồi |
 | --- | --- | --- |
@@ -160,7 +162,7 @@ type ConfirmationRound = {
 | `POST /groups/{id}/campaigns`<br>Đại diện | {collectUntil, needBy, supportRequested?}. Kiểm tra thời điểm hiện tại < collectUntil < needBy. | 201 Campaign ở DRAFT. |
 | `GET /catalog`<br>Đã đăng nhập | category? | 200 {items: [{skuId, name, category, unit}]}. |
 | `GET /campaigns/{id}/cart` và `PUT /campaigns/{id}/cart`<br>Hộ trong nhóm | PUT {householdSize, supportRequested, lines: [{skuId, stockQty, needQty}], version}. version = 0 để tạo. householdSize > 0, stockQty ≥ 0, needQty ≥ 0. | 200 Cart. PUT lưu DRAFT. 409 nếu version cũ, đã đăng hoặc đã tới hạn gom. 422 nếu số lượng sai. |
-| `POST /campaigns/{id}/cart/ai`<br>Hộ trong nhóm | {text, householdSize?}. Chỉ trong thời gian gom. Trích dữ liệu, đối chiếu SKU và áp quy tắc nếu đủ đầu vào. | 200 {draft, unresolved, ruleRefs}. 409 nếu đã đóng gom. 503 khi AI lỗi. Hộ tiếp tục nhập tay. |
+| `POST /campaigns/{id}/cart/ai`<br>Hộ trong nhóm | {text?, householdSize?, days?, householdStatus?}. Chỉ trong thời gian gom. Trích dữ liệu, mặc định các sản phẩm chưa nêu là chưa có (`stockQty = 0`), đối chiếu SKU và suy luận lượng theo ngữ cảnh hoặc áp quy tắc theo số ngày dự trữ (`days`, mặc định 3 ngày), kèm 1 câu động viên ngắn. | 200 {draft, encouragement?, unresolved, ruleRefs}. 409 nếu đã đóng gom. 503 khi AI lỗi. Hộ tiếp tục nhập tay. |
 | `POST /campaigns/{id}/cart/confirm`<br>Chủ giỏ | {version}. Đợt còn DRAFT, chưa tới collectUntil và ví đã xác minh, đủ quyền Fuji. | 200 Cart ở CONFIRMED. 409 nếu version cũ hoặc đã đóng gom. `409 WALLET_NOT_READY` giữ giỏ đã lưu để hộ xử lý ví rồi thử lại. 503 khi dịch vụ kiểm quyền Fuji không sẵn sàng. |
 
 ## Nhu cầu, đề nghị và xác nhận hợp đồng

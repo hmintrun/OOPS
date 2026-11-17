@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Campaign, Cart, CatalogItem, Needs } from "@/contracts/foundation";
 import {
@@ -8,8 +9,7 @@ import {
   newIdempotencyKey, publishCampaign, putCart, type PutCartBody,
 } from "@/lib/api-client";
 import { Button, Card, CardTitle } from "@/components/ui";
-import { readFamilyStatus } from "@/app/groups/FamilyStatusWidget";
-import dynamic from "next/dynamic";
+import { defaultFamilyStatus, readSavedFamilyStatus } from "@/lib/family-status";
 import { campaignDisplayState, formatDateTime, isPast } from "../_shared/dates";
 import { Banner, CampaignStateChip, CartStateChip, INPUT_CLASS, LinkButton, LoadingState } from "../_shared/ui";
 
@@ -17,7 +17,15 @@ const CartSuggestion = dynamic(() => import("./CartSuggestion").then(module => m
   loading: () => <LoadingState />,
 });
 
-type Data = { campaign: Campaign; catalog: CatalogItem[]; cart: Cart | null; needs: Needs; isRep: boolean; householdSize: number };
+type Data = {
+  campaign: Campaign;
+  catalog: CatalogItem[];
+  cart: Cart | null;
+  needs: Needs;
+  isRep: boolean;
+  userId: string;
+  householdSize: number;
+};
 type Draft = {
   supportRequested: boolean;
   quantities: Record<string, string>;
@@ -38,7 +46,7 @@ async function loadCampaign(id: string): Promise<Data> {
     const group = await getGroup(profile.groupId);
     const campaign = group.campaigns.find(item => item.campaignId === id);
     if (!campaign) throw new Error("Không tìm thấy đợt gom trong nhóm của bạn.");
-    return { campaign, isRep: group.repId === profile.userId };
+    return { campaign, isRep: group.repId === profile.userId, userId: profile.userId };
   });
   const [groupContext, catalog, cart, needs] = await Promise.all([
     context,
@@ -49,7 +57,9 @@ async function loadCampaign(id: string): Promise<Data> {
     }),
     getNeeds(id),
   ]);
-  return { ...groupContext, catalog: catalog.items, cart, needs, householdSize: readFamilyStatus().members };
+  const householdSize = readSavedFamilyStatus(groupContext.userId)?.members
+    ?? cart?.householdSize ?? defaultFamilyStatus.members;
+  return { ...groupContext, catalog: catalog.items, cart, needs, householdSize };
 }
 
 export function CampaignDetail({ campaignId }: { campaignId: string }) {
@@ -182,7 +192,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         <CardTitle>Giỏ của nhà mình</CardTitle>
         {cart && <CartStateChip state={cart.state} />}
         <form className="grid gap-3" onSubmit={event => { event.preventDefault(); save(); }}>
-          <p className="text-sm text-navy-600"><strong>{householdSize} người</strong> · Theo Hiện trạng gia đình</p>
+          <p className="text-sm text-navy-600"><strong>{householdSize} người</strong> trong hộ</p>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={draft.supportRequested} disabled={!editable || saving}
               onChange={event => edit(value => ({ ...value, supportRequested: event.target.checked }))} />
@@ -210,7 +220,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
           if (event.currentTarget.open) setSuggestionOpenedFor(campaignId);
         }}>
           <summary className="cursor-pointer font-bold">Gợi ý giỏ bằng AI</summary>
-          {suggestionOpenedFor === campaignId && <CartSuggestion campaignId={campaignId} householdSize={householdSize}
+          {suggestionOpenedFor === campaignId && <CartSuggestion campaignId={campaignId} userId={data.userId} householdSize={householdSize}
             catalog={catalog} disabled={saving} onApply={suggestedQuantities => edit(current => ({
               ...current,
               quantities: { ...current.quantities, ...suggestedQuantities },

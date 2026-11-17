@@ -6,10 +6,12 @@ import { z } from "zod";
 import { Button } from "@/components/ui";
 import { cartAiInput, cartAiResult, type CatalogItem } from "@/contracts/foundation";
 import { ApiError, apiFetch, newIdempotencyKey } from "@/lib/api-client";
+import { readSavedFamilyStatus } from "@/lib/family-status";
 import { INPUT_CLASS } from "../_shared/ui";
 
-export function CartSuggestion({ campaignId, householdSize, catalog, disabled, onApply }: {
+export function CartSuggestion({ campaignId, userId, householdSize, catalog, disabled, onApply }: {
   campaignId: string;
+  userId: string;
   householdSize: number;
   catalog: CatalogItem[];
   disabled: boolean;
@@ -34,12 +36,14 @@ export function CartSuggestion({ campaignId, householdSize, catalog, disabled, o
   const validDuration = Number.isInteger(duration) && duration >= 1 && duration <= 365;
   async function suggest() {
     if (running.current || disabled) return;
-    if (!validDuration || !text.trim()) return;
+    if (!validDuration) { setError("Số ngày cần dự trữ phải từ 1 đến 365."); return; }
     const parsed = cartAiInput.safeParse({
-      text: `Số ngày cần dự trữ: ${duration}. Mô tả của hộ: ${text.trim()}`,
+      text: text.trim(),
       householdSize: householdSize > 0 ? householdSize : undefined,
+      days: duration,
+      householdStatus: readSavedFamilyStatus(userId),
     });
-    if (!parsed.success) { setError("Nhập mô tả nhu cầu và số người hợp lệ."); return; }
+    if (!parsed.success) { setError("Nhập mô tả nhu cầu, số người và số ngày hợp lệ."); return; }
     const fingerprint = JSON.stringify(parsed.data);
     if (request.current?.body !== fingerprint) request.current = { body: fingerprint, key: newIdempotencyKey() };
     running.current = true;
@@ -75,10 +79,19 @@ export function CartSuggestion({ campaignId, householdSize, catalog, disabled, o
           placeholder="Ví dụ: Nhà còn 3 chai nước và 1 kg gạo. Gợi ý lượng cần mua thêm."
           onChange={event => { setText(event.target.value); setResult(undefined); setError(""); }} />
       </label>
-      <Button variant="secondary" loading={pending} disabled={disabled || !validDuration || !text.trim()} onClick={() => void suggest()}>Tạo gợi ý</Button>
+      <p className="text-small text-navy-600">Khi tạo gợi ý, Gemini dùng cả thông tin đã lưu ở Hiện trạng gia đình.</p>
+      <Button variant="secondary" loading={pending} disabled={disabled || !validDuration} onClick={() => void suggest()}>Tạo gợi ý</Button>
       {error && <p role="alert">{error}</p>}
       {result && <>
-        <p role="status">Gợi ý dùng số người trong hộ, {duration} ngày dự trữ và mô tả bạn nhập. Bên dưới là số lượng AI đọc hoặc đề xuất cho từng món. Bạn có thể xem lại trước khi điền vào giỏ.</p>
+        {result.encouragement && (
+          <p role="status" className="rounded-input bg-sky-tint p-3 text-navy-900">
+            {result.encouragement}
+          </p>
+        )}
+        <p className="text-small text-navy-600">
+          Kiểm tra lại số lượng trước khi đưa vào giỏ.
+        </p>
+        {result.draft.householdSize && <p>Số người · {result.draft.householdSize}</p>}
         {suggestions.length > 0 && <ul className="grid gap-1">
           {suggestions.map(({ line, item }) => <li key={line.skuId}>{item.name}
             {line.stockQty !== undefined && ` · Đang có ${line.stockQty} ${item.unit}`}
@@ -86,6 +99,11 @@ export function CartSuggestion({ campaignId, householdSize, catalog, disabled, o
           </li>)}
         </ul>}
         {result.unresolved.length > 0 && <p>Nhập tay các mục chưa xác định · {result.unresolved.join(", ")}</p>}
+        {suggestions.length === 0 && result.unresolved.length === 0 && (
+          <p className="text-small text-navy-600">
+            Chưa có dòng hàng nào được gợi ý. Hãy nêu món cần chuẩn bị hoặc số người trong hộ để AI đề xuất.
+          </p>
+        )}
         {Object.keys(suggestedQuantities).length > 0 && <Button disabled={disabled} onClick={() => {
           onApply(suggestedQuantities);
           setResult(undefined);

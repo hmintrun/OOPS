@@ -12,7 +12,7 @@ export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
   const isRepresentative = data.repId === userId;
   return (
     <AppShell title="Nhóm của tôi" subtitle={`${data.members.length} hộ gia đình`} icon={{ icon: "groups", tone: "green" }} familyBackground bodyClassName="ui-stack" bare>
-      <FamilyStatusWidget />
+      <FamilyStatusWidget key={userId} userId={userId} />
       <div className="ui-card-grid">
         <Card>
           <div className="mb-3 flex items-center gap-3">

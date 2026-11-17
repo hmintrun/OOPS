@@ -1261,6 +1261,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       expect(provider).not.toHaveBeenCalled();
       expect(cartAiResult.parse((await call(postCartAi, rep, request)).data)).toEqual({
         draft: { householdSize: 2, lines: [{ skuId: waterSkuId, stockQty: 3, needQty: 7 }] },
+        encouragement: expect.any(String),
         unresolved: ["Thực phẩm chưa rõ"], ruleRefs: [],
       });
       expect((await call(postCartAi, rep, request)).status).toBe(503);

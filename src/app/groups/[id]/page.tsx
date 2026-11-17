@@ -16,7 +16,7 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
     if (result.status === 404) notFound();
     return (
       <AppShell title="Nhóm của tôi" icon={{ icon: "groups", tone: "green" }} familyBackground bodyClassName="ui-stack" bare>
-        <FamilyStatusWidget />
+        {result.userId && <FamilyStatusWidget key={result.userId} userId={result.userId} />}
         <Card className="ui-status-card">
           <p role="alert">{result.message}</p>
         </Card>
