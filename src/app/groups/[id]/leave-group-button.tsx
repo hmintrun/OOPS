@@ -62,7 +62,7 @@ export function LeaveGroupButton({
       ) : (
         <div className="grid gap-3">
           <p role="alert" className="text-small font-semibold text-navy-900">
-            Bạn chắc chắn muốn rời nhóm này? Hành động này không thể tự hoàn tác nếu chưa có lời mời mới.
+            Bạn sẽ rời nhóm này và có lại nhóm riêng. Để vào lại nhóm này, bạn cần lời mời mới.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button variant="danger" full={false} loading={pending} onClick={() => void submitLeave()}>

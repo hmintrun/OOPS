@@ -2,11 +2,10 @@ import "server-only";
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { z } from "zod";
-import type { Campaign, Group, Invite, Membership, createGroupInput, createInviteInput } from "@/contracts/foundation";
+import type { Campaign, Group, Invite, Membership, createInviteInput } from "@/contracts/foundation";
 import { appOrigin, requiredEnv } from "./config";
 import { ApiFailure, conflict, forbidden, invalid, notFound, unavailable } from "./errors";
 
-type GroupInput = z.output<typeof createGroupInput>;
 type InviteInput = z.output<typeof createInviteInput>;
 type CampaignRow = { id: string; status: Campaign["state"]; collect_until: Date; need_by: Date };
 type MembershipRow = { id: string; group_id: string; role: Membership["role"] };
@@ -24,6 +23,10 @@ async function activeMembership(client: PoolClient, userId: string) {
     "select id, group_id, role from public.memberships where user_id = $1 and left_at is null", [userId],
   );
   return row;
+}
+
+function lockUserMembership(client: PoolClient, userId: string) {
+  return client.query("select pg_advisory_xact_lock(hashtextextended('membership:' || $1::text, 0))", [userId]);
 }
 
 export async function requireMember(client: PoolClient, userId: string, groupId: string) {
@@ -45,28 +48,25 @@ export async function requireRepresentative(client: PoolClient, userId: string, 
   return member;
 }
 
-export async function createGroup(client: PoolClient, userId: string, body: GroupInput): Promise<Membership> {
-  if (await activeMembership(client, userId)) throw conflict("Tài khoản đã có nhóm hoạt động.");
+export async function ensureActiveGroup(client: PoolClient, userId: string): Promise<string> {
+  await lockUserMembership(client, userId);
+  const current = await activeMembership(client, userId);
+  if (current) return current.group_id;
   const { rows: [group] } = await client.query<{ id: string }>(
-    `insert into public.groups (name, district_code, ward_code, pickup_private)
-     values ($1, $2, $3, $4) returning id`,
-    [body.name, body.districtCode, body.wardCode, body.pickupPrivate ?? null],
+    `insert into public.groups (name, district_code, ward_code)
+     select display_name, '', '' from public.profiles where id = $1 returning id`,
+    [userId],
   );
-  const { rows: [member] } = await client.query<MembershipRow>(
-    "insert into public.memberships (group_id, user_id, role) values ($1, $2, 'REP') returning id, group_id, role",
+  await client.query(
+    "insert into public.memberships (group_id, user_id, role) values ($1, $2, 'REP')",
     [group.id, userId],
   );
-  return membershipDto(member);
+  return group.id;
 }
 
 export async function readGroup(client: PoolClient, userId: string, groupId: string): Promise<Group> {
   await requireMember(client, userId, groupId);
   return readGroupDetails(client, groupId);
-}
-
-export async function readMyGroup(client: PoolClient, userId: string): Promise<Group | null> {
-  const member = await activeMembership(client, userId);
-  return member ? readGroupDetails(client, member.group_id) : null;
 }
 
 async function readGroupDetails(client: PoolClient, groupId: string): Promise<Group> {
@@ -78,14 +78,22 @@ async function readGroupDetails(client: PoolClient, groupId: string): Promise<Gr
   );
   const rep = members.find(member => member.role === "REP");
   if (!rep) throw conflict("Nhóm chưa có đại diện.");
+  const { rows: [location] } = await client.query<{ province_code: "79" | null; ward_code: string }>(
+    `select coalesce(p.province_code, g.province_code) as province_code,
+            coalesce(p.ward_code, g.ward_code) as ward_code
+     from public.groups g join public.profiles p on p.id = $2 where g.id = $1`,
+    [groupId, rep.userId],
+  );
   const { rows } = await client.query<CampaignRow>(
     "select id, status, collect_until, need_by from public.campaigns where group_id = $1 order by need_by, id",
     [groupId],
   );
-  return { groupId, repId: rep.userId, members, campaigns: rows.map(campaignDto) };
+  return { groupId, repId: rep.userId, members, campaigns: rows.map(campaignDto),
+    ...(location.province_code && { location: { provinceCode: location.province_code, wardCode: location.ward_code } }) };
 }
 
 export async function leaveGroup(client: PoolClient, userId: string, groupId: string) {
+  await lockUserMembership(client, userId);
   await requireMember(client, userId, groupId);
   await lockGroup(client, groupId);
   const { rows: [member] } = await client.query<MembershipRow>(
@@ -96,6 +104,12 @@ export async function leaveGroup(client: PoolClient, userId: string, groupId: st
   if (member.role === "REP") {
     throw new ApiFailure(409, "REP_TRANSFER_REQUIRED", "Cần có người nhận vai trò đại diện trước khi rời nhóm.");
   }
+  const left = await endMembership(client, userId, member);
+  await ensureActiveGroup(client, userId);
+  return left;
+}
+
+async function endMembership(client: PoolClient, userId: string, member: MembershipRow) {
   const { rows: [blockers] } = await client.query<{ commitment: boolean; published: boolean }>(
     `select public.has_active_commitment($1, $2) as commitment, exists (
        select 1 from public.demand_shares s join public.demand_items d on d.id = s.demand_item_id
@@ -114,9 +128,9 @@ export async function leaveGroup(client: PoolClient, userId: string, groupId: st
   );
   await client.query(
     `insert into public.audit_events (actor_id, entity_type, entity_id, action) values ($1, 'GROUP', $2, 'MEMBER_LEFT')`,
-    [userId, groupId],
+    [userId, member.group_id],
   );
-  return { groupId, membershipId: member.id, leftAt: left.left_at.toISOString() };
+  return { groupId: member.group_id, membershipId: member.id, leftAt: left.left_at.toISOString() };
 }
 
 function inviteToken(inviteId: string) {
@@ -165,7 +179,11 @@ export async function acceptInvite(client: PoolClient, userId: string, token: st
     "select group_id from public.invites where token_hash = $1", [hash],
   );
   if (!group) throw expired();
-  await lockGroup(client, group.group_id);
+  await lockUserMembership(client, userId);
+  const beforeLock = await activeMembership(client, userId);
+  const groupIds = new Set([group.group_id, ...(beforeLock ? [beforeLock.group_id] : [])]);
+  // Switches between two groups must take their row locks in the same order.
+  for (const id of [...groupIds].sort()) await lockGroup(client, id);
   const { rows: [invite] } = await client.query<{ id: string; kind: InviteInput["kind"]; target_user_id: string | null }>(
     `select id, kind, target_user_id from public.invites
      where token_hash = $1 and used_at is null and expires_at > clock_timestamp() for update`,
@@ -176,7 +194,23 @@ export async function acceptInvite(client: PoolClient, userId: string, token: st
 
   let member: MembershipRow;
   if (invite.kind === "JOIN") {
-    if (current) throw conflict("Tài khoản đã có nhóm hoạt động.");
+    const destination = await client.query(
+      "select 1 from public.memberships where group_id = $1 and role = 'REP' and left_at is null",
+      [group.group_id],
+    );
+    if (!destination.rowCount) throw expired();
+    if (current?.group_id === group.group_id) throw conflict("Bạn đã ở trong nhóm được mời.");
+    if (current) {
+      if (current.role !== "REP") throw conflict("Hãy rời nhóm hiện tại trước khi tham gia nhóm khác.");
+      const { rows: [state] } = await client.query<{ has_members: boolean; has_campaigns: boolean }>(
+        `select exists (select 1 from public.memberships where group_id = $1 and user_id <> $2 and left_at is null) as has_members,
+                exists (select 1 from public.campaigns where group_id = $1 and need_by > clock_timestamp()) as has_campaigns`,
+        [current.group_id, userId],
+      );
+      if (state.has_members) throw conflict("Hãy bàn giao vai trò đại diện trước khi rời nhóm hiện tại.");
+      if (state.has_campaigns) throw conflict("Hãy chờ đợt gom của nhóm hiện tại kết thúc trước khi chuyển nhóm.");
+      await endMembership(client, userId, current);
+    }
     const { rows: [joined] } = await client.query<MembershipRow>(
       "insert into public.memberships (group_id, user_id, role) values ($1, $2, 'MEMBER') returning id, group_id, role",
       [group.group_id, userId],

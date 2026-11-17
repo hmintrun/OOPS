@@ -4,6 +4,8 @@ Tài liệu mô tả các bảng, trường, khóa và ràng buộc cho [OOPS MV
 
 ## Quy ước
 
+Cập nhật 17/11/2026: migration `20261117000100_account_and_demand_locations.sql` bổ sung danh mục hành chính TP.HCM, vị trí hồ sơ/nhóm và snapshot vị trí trên nhu cầu. Xem [chi tiết ràng buộc và nguồn dữ liệu](locations.md).
+
 - `id` là khóa chính UUID, trừ bảng có khóa chính ghép ghi trong bảng.
 - `fk` là khóa ngoại UUID. `UQ` là ràng buộc duy nhất.
 - `ts` là `timestamptz`. `vnd` là `bigint` không âm, tính theo đồng.

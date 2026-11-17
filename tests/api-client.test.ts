@@ -4,7 +4,6 @@ import { evidenceResult } from "@/contracts/orders";
 import {
   ApiError,
   apiFetch,
-  createGroup,
   getFeed,
   getMe,
   publishCampaign,
@@ -215,26 +214,6 @@ describe("apiFetch — happy path", () => {
     expect(params.get("district")).toBeNull();
     expect(params.get("ward")).toBeNull();
     expect(params.get("category")).toBe("FOOD");
-  });
-
-  it("POST /groups gửi JSON body với Content-Type và parse Membership", async () => {
-    const membershipBody = {
-      groupId: representative.groupId,
-      membershipId: demoCart.cartId,
-      role: "REP",
-    } as const;
-    const calls = installFetchMock(() => jsonResponse(membershipBody, 201));
-
-    const result = await createGroup({ name: "Khu phố 3", districtCode: "OOPS_DEMO", wardCode: "OOPS_DEMO" });
-
-    expect(result).toEqual(membershipBody);
-    expect(calls[0].init.method).toBe("POST");
-    expect(headerOf(calls[0], "Content-Type")).toBe("application/json");
-    expect(JSON.parse(calls[0].init.body as string)).toEqual({
-      name: "Khu phố 3",
-      districtCode: "OOPS_DEMO",
-      wardCode: "OOPS_DEMO",
-    });
   });
 
   it("apiFetch tổng quát trả dữ liệu đã validate qua schema caller", async () => {

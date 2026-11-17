@@ -4,6 +4,7 @@ import { Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import type { Me } from "@/contracts/foundation";
 import { CopyButton } from "./CopyButton";
 import { shortenMiddle } from "./me-api";
+import { locationLabel } from "@/lib/locations";
 
 /** Tài khoản: mã tài khoản (UUID) và nhóm đang tham gia. */
 export function AccountSection({ data }: { data: Me }) {
@@ -20,6 +21,10 @@ export function AccountSection({ data }: { data: Me }) {
       </div>
 
       <div className="me-rows me-rows--divided">
+        <div className="me-item"><div className="me-item__body">
+          <p className="me-item__label">Nơi đang ở</p>
+          <p>{data.location ? locationLabel(data.location.provinceCode, data.location.wardCode) : "Chưa cập nhật vị trí"}</p>
+        </div></div>
         <div className="me-item">
           <div className="me-item__body">
             <p className="me-item__label">Mã tài khoản</p>

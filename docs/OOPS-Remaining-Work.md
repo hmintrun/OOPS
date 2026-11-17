@@ -1,5 +1,13 @@
 # OOPS — Báo cáo công việc còn lại
 
+## Cập nhật đăng ký · 17/11/2026
+
+- **VERIFIED — vị trí.** Đã nhập 168 đơn vị TP.HCM từ Công báo; đăng ký bắt buộc chọn vị trí, lưu hồ sơ, điền sẵn nhóm và lọc Feed theo snapshot trên nhu cầu. Migration đã áp Supabase dev. Smoke Auth/DB/HTTP đã qua cả bộ lọc đúng/sai phường và giữ vị trí nhu cầu sau khi nhóm test đổi vị trí. Giỏ publish dùng fixture CONFIRMED sau khi kiểm chặn thiếu ví; không tính là nghiệm thu Fuji. [Dữ liệu, API và schema](locations.md).
+
+- **VERIFIED — code/UI.** Form kiểm tên/email, mật khẩu và nhập lại; có màn chờ xác nhận, gửi lại email với thời gian chờ, xử lý lỗi và giữ `next` của lời mời. Callback hỗ trợ PKCE `sb_flow_id` và `token_hash`. Đã kiểm form và lỗi mật khẩu không khớp trên Edge ở viewport 390×844.
+- **VERIFIED — Supabase dev + HTTP thật.** `npm run test:registration` đã qua: hai tài khoản mới, callback ghi cookie, token dùng một lần, đăng nhập mật khẩu, hồ sơ đúng tên, tạo nhóm và nhận lời mời. Tài khoản/nhóm test đã được dọn. Script tạo link bằng `admin.generateLink`, không gửi email.
+- **MISSING — giao email/staging.** Cần kiểm thư xác nhận tới hộp thư thật và URL triển khai. [Cấu hình callback/template/SMTP](../README.md#cấu-hình-email-đăng-ký). Các mốc bàn giao cũ bên dưới là lịch sử, không thay thế kết quả này.
+
 ## Cập nhật bàn giao DEV 1 · `feat/a07-pwa-install`
 
 Đối chiếu phạm vi A01–A06 trong [kế hoạch 7 ngày](OOPS-7-Day-Development-Plan.md). Phần báo cáo bên dưới ghi nhận mốc `b095b19`.
@@ -26,7 +34,7 @@ Trên nhánh DEV 2, API thương lượng, chốt đơn, thu SIM, bàn giao, ops
 
 | Việc còn lại | Hiện trạng | Phụ trách | Điều kiện nghiệm thu |
 | --- | --- | --- | --- |
-| **Đăng ký tài khoản mới** | **Một phần.** Có đăng nhập và hồ sơ. Chưa thấy luồng đăng ký trong UI tích hợp. | DEV 1 + DEV 2 | Đăng ký bằng Supabase Auth, đăng nhập rồi tạo nhóm hoặc dùng lời mời với tài khoản mới. |
+| **Đăng ký tài khoản mới** | **VERIFIED — code và Supabase dev.** Đã có form, xác nhận/gửi lại email và giữ lời mời; smoke tài khoản mới tạo/tham gia nhóm đã qua. **MISSING:** giao email thật và staging. | DEV 1 + DEV 2 | Kiểm email xác nhận đến hộp thư và callback đúng hostname triển khai. |
 | **Rời nhóm và đổi ví** | Đã có API rời nhóm và ràng buộc PostgreSQL cho thay đổi ví theo [G-09](OOPS-Spec.md#66-rời-nhóm-và-đổi-ví-g-09). Còn nối UI, luồng liên kết/đổi ví và nghiệm thu tích hợp. | DEV 1 nối UI, DEV 2 kiểm transaction, DEV 3 nối xác minh ví | Thành viên đủ điều kiện rời được. Đại diện bàn giao vai trước. Server khóa khi còn nghĩa vụ. |
 | **Giỏ nháp từ Gemini** · A05/B09 | **Một phần.** Giỏ tay có `stockQty` và `needQty`. Chưa có luồng AI từ nội dung hộ nhập tới bản nháp để hộ sửa. | DEV 1 + DEV 2 | Hộ nhập nội dung về món đang có hoặc còn thiếu. Kết quả được đối chiếu SKU và đơn vị, rồi hộ sửa và xác nhận. Gemini lỗi thì giữ dữ liệu đang sửa và vẫn nhập tay được. |
 | **Đề nghị và thương lượng** · B02/A04 | **Chưa triển khai.** Feed đã hiển thị nhu cầu. Chưa có luồng gửi đề nghị và phản hồi bản hợp đồng. | DEV 2 + DEV 1 | Seller chào tối đa 10 chai. Ba hộ góp 2+2+3, ghi chú và thấy số tiền. Seller có thể từ chối, yêu cầu sửa hoặc chấp thuận. Bản đã gửi giữ nguyên, bản sửa có phiên bản mới. Chỉ 7 chai của ba hộ đi tiếp. |
@@ -57,7 +65,7 @@ Bằng chứng hiện có cho phần nền gồm 19 test mặc định và 5 tes
 - [ ] Nối biên nhận, bàn giao thiếu, chi/hoàn và ops `POSTED` · B05/A04.
 - [ ] Chốt giá trị deadline và nối worker xử lý hạn, retry và thông báo · C05/B05.
 - [ ] Nối Gemini tạo giỏ nháp và kiểm đường nhập tay khi lỗi · A05/B09.
-- [ ] Thêm đăng ký và kiểm tài khoản mới có thể tạo/tham gia nhóm · DEV 1 + DEV 2.
+- [x] Thêm đăng ký và kiểm tài khoản mới có thể tạo/tham gia nhóm trên Supabase dev · DEV 1 + DEV 2; còn giao email thật/staging như cập nhật 17/11/2026.
 - [ ] Nối UI rời nhóm, tích hợp luồng đổi ví của DEV 3 và nghiệm thu khóa G-09 · DEV 1 + DEV 2 + DEV 3.
 
 B03–B05 có thể chuẩn bị với fixture xác nhận chung trong lúc tích hợp Fuji. Kiểm các ca chính bằng giao dịch Fuji thật trên cùng SHA staging trước khi chốt bản demo.

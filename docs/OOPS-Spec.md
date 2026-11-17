@@ -92,7 +92,7 @@ flowchart TD
 Mười bước tương ứng với các mục dưới đây:
 
 1. **Tài khoản và ví.** Supabase Auth giữ phiên. Hộ liên kết Core Wallet bằng challenge có nonce dùng một lần; bằng chứng ghi trên Fuji. Trạng thái `PENDING`, `VERIFIED`, `FAILED`; `confirmationEligible` do backend kiểm theo chính sách.
-2. **Nhóm.** Người tạo nhóm xác nhận nhận vai trò đại diện khi gửi. Người khác vào bằng link `JOIN` dùng một lần. Chuyển vai trò `REP` cần đúng `targetUserId` đang trong nhóm và người nhận chấp thuận.
+2. **Nhóm.** Tài khoản chưa tham gia nhóm có nhóm riêng và là đại diện. Đại diện tạo link `JOIN` dùng một lần để mời hộ khác. Vị trí nhóm lấy từ nơi sinh sống của đại diện. Chuyển vai trò `REP` cần đúng `targetUserId` đang trong nhóm và người nhận chấp thuận.
 3. **Lưu và xác nhận giỏ.** Trong đợt nháp, mỗi hộ lưu số người, cờ cần hỗ trợ và các dòng `stockQty`, `needQty`. Khi thêm món, app có thể báo ví đã sẵn sàng hoặc hiện nút **Liên kết ví**. Hộ được lưu giỏ nháp khi ví chưa sẵn sàng. Khi hộ bấm **Xác nhận giỏ đã lưu**, backend kiểm phiên bản giỏ và điều kiện ví đã xác minh, đủ quyền xác nhận Fuji. Giỏ chỉ chuyển `CONFIRMED` khi đạt cả hai điều kiện. Nếu ví chưa sẵn sàng, app hướng dẫn liên kết hoặc xác minh và giữ dữ liệu đã lưu. Giỏ từ Gemini đi qua cùng bước xác nhận. Nếu AI lỗi, hộ tiếp tục nhập tay với dữ liệu đang sửa.
 4. **Mở đợt gom chính thức.** Đại diện đăng nhu cầu lên Feed trước `needBy`, có thể đăng sớm để kết thúc nhập giỏ. Giao dịch đăng khóa đợt, chụp `needQty` của các giỏ `CONFIRMED` thành `demand_items` và `demand_shares`. Từ mốc này, hộ đọc giỏ đã chốt và dùng lượng đó làm căn cứ bỏ phiếu cho từng đề nghị.
 5. **Đề nghị.** Người bán gửi cho một `demandItemId`: lượng tối đa đến `missing`, đơn giá (kể cả 0), cờ hỗ trợ, khung giao `handoffStart..handoffBy`, thông tin điểm nhận riêng. Điều khoản bất biến sau khi gửi. App hiển thị trước tiền hàng và cọc dự kiến.
@@ -107,7 +107,7 @@ Mười bước tương ứng với các mục dưới đây:
 | Màn hình | Nội dung bắt buộc | Yêu cầu |
 | --- | --- | --- |
 | **Tài khoản** | Đăng ký, đăng nhập, liên kết ví Core, trạng thái xác minh và bước còn thiếu để được xác nhận. | FR01 |
-| **Nhóm của tôi** | Tạo nhóm, vào bằng link, mời và xác nhận đại diện, danh sách hộ, điểm nhận dự kiến, hạn gom. Mỗi hộ quản lý giỏ của mình. | FR01, FR02 |
+| **Nhóm của tôi** | Nhóm riêng mặc định, vào bằng link, mời và xác nhận đại diện, danh sách hộ, hạn gom. Mỗi hộ quản lý giỏ của mình. | FR01, FR02 |
 | **Giỏ nhu yếu phẩm** | Chọn món hoặc mô tả bằng câu tự nhiên, sửa và lưu giỏ nháp. Hiện trạng thái ví và kiểm ví khi hộ bấm **Xác nhận giỏ đã lưu**. | FR01, FR02 |
 | **Nhu cầu của nhóm** | Tổng theo món, hạn cần hàng, nút đăng Feed, và với mỗi món: **đã giữ**, **đã nhận**, **còn thiếu**. | FR02 |
 | **Feed và gửi đề nghị** | Lọc theo quận/khu vực, phường, nhóm mặt hàng. Form chào có lượng, giá, khung giờ, điểm nhận; hiện tiền hàng và cọc dự kiến trước khi gửi. | FR02, FR03 |
@@ -297,7 +297,7 @@ Tiền tố `/api/v1`. JSON, trừ upload bằng chứng (`multipart/form-data`)
 | Nhóm | Endpoint |
 | --- | --- |
 | Tài khoản, ví | `GET/PATCH /me`, `GET /wallet/challenge`, `POST /wallet/link` |
-| Nhóm | `POST /groups`, `GET /groups/{id}`, `POST /groups/{id}/invites`, `POST /invites/accept` |
+| Nhóm | `GET /me` cấp nhóm mặc định, `GET /groups/{id}`, `POST /groups/{id}/invites`, `POST /invites/accept` |
 | Đợt gom và giỏ | `POST /groups/{id}/campaigns`, `GET /catalog`, `GET/PUT /campaigns/{id}/cart`, `POST /campaigns/{id}/cart/ai`, `POST /campaigns/{id}/cart/confirm`, `POST /campaigns/{id}/publish`, `GET /campaigns/{id}/needs` |
 | Feed và đề nghị | `GET /feed`, `POST /needs/{id}/offers`, `GET /needs/{id}/offers` |
 | Thương lượng hiện hành, cần đồng bộ với luồng bỏ phiếu | `POST /offers/{id}/draft`, `GET /drafts/{id}`, `PUT /drafts/{id}/my-line`, `POST /drafts/{id}/submit`, `POST /drafts/{id}/versions/{version}/seller-response`, `POST /drafts/{id}/revise` |

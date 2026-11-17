@@ -22,6 +22,8 @@ import { FEED_PAGE_SIZE, FeedPagination } from "./FeedPagination";
 import { WidgetDialog } from "@/components/ui/WidgetDialog";
 import dynamic from "next/dynamic";
 import "./feed.css";
+import { LocationFields } from "@/components/location-fields";
+import { HCM_PROVINCE_CODE, locationLabel } from "@/lib/locations";
 
 const OffersPanel = dynamic(() => import("@/app/trade/needs/OffersPanel").then(module => module.OffersPanel), {
   loading: () => <p role="status">Đang tải…</p>,
@@ -87,6 +89,7 @@ export default function FeedPage() {
   const requestFilters = useCallback((filters: AppliedFilters, cursor?: string): FeedFilters => ({
     category: filters.category || undefined,
     district: filters.district.trim() || undefined,
+    province: filters.ward ? HCM_PROVINCE_CODE : undefined,
     ward: filters.ward.trim() || undefined,
     limit: FEED_PAGE_SIZE,
     cursor,
@@ -166,7 +169,7 @@ export default function FeedPage() {
   const totalPages = Math.max(1, Math.ceil(items.length / FEED_PAGE_SIZE));
   const startIndex = (currentPage - 1) * FEED_PAGE_SIZE;
   const displayedItems = items.slice(startIndex, startIndex + FEED_PAGE_SIZE);
-  const locationFilter = [applied.district.trim(), applied.ward.trim()].filter(Boolean).join(" · ");
+  const locationFilter = applied.ward ? locationLabel(HCM_PROVINCE_CODE, applied.ward) : "";
   const hasFilters = Boolean(locationFilter || applied.category);
 
   return (
@@ -200,24 +203,7 @@ export default function FeedPage() {
             <MaterialSymbol name="expand_more" size={20} className="feed-location__chevron" />
           </summary>
           <form onSubmit={onSubmit} className="feed-filters">
-            <label className="feed-field">
-              <IconTile icon="location_on" tone="sky" size="sm" />
-              <input
-                value={district}
-                onChange={(event) => setDistrict(event.target.value)}
-                placeholder="Khu vực (quận/huyện)"
-                aria-label="Khu vực (quận/huyện)"
-              />
-            </label>
-            <label className="feed-field">
-              <IconTile icon="signpost" tone="sky" size="sm" />
-              <input
-                value={ward}
-                onChange={(event) => setWard(event.target.value)}
-                placeholder="Phường/xã"
-                aria-label="Phường/xã"
-              />
-            </label>
+            <LocationFields wardCode={ward} onChange={setWard} allowAll />
             <Button variant="secondary" type="submit">
               <MaterialSymbol className="ui-btn__icon" name="filter_list" />
               Áp dụng khu vực

@@ -1,0 +1,852 @@
+{
+  "provinceCode": "79",
+  "provinceName": "Thành phố Hồ Chí Minh",
+  "effectiveFrom": "2025-07-01",
+  "source": {
+    "title": "Công báo 921 + 922, 18/07/2025, trang 45–52; Quyết định 19/2025/QĐ-TTg",
+    "url": "https://congbao.chinhphu.vn/van-ban/quyet-dinh-so-19-2025-qd-ttg-45430/57441.htm",
+    "pdfSha256": "8c102cf1b24feb831bfcaa26ec6bcc77fde5e48a235b3e633809b86411ee4e13"
+  },
+  "wards": [
+    {
+      "code": "25747",
+      "name": "Phường Thủ Dầu Một",
+      "kind": "Phường"
+    },
+    {
+      "code": "25750",
+      "name": "Phường Phú Lợi",
+      "kind": "Phường"
+    },
+    {
+      "code": "25760",
+      "name": "Phường Bình Dương",
+      "kind": "Phường"
+    },
+    {
+      "code": "25768",
+      "name": "Phường Phú An",
+      "kind": "Phường"
+    },
+    {
+      "code": "25771",
+      "name": "Phường Chánh Hiệp",
+      "kind": "Phường"
+    },
+    {
+      "code": "25813",
+      "name": "Phường Bến Cát",
+      "kind": "Phường"
+    },
+    {
+      "code": "25837",
+      "name": "Phường Chánh Phú Hòa",
+      "kind": "Phường"
+    },
+    {
+      "code": "25840",
+      "name": "Phường Long Nguyên",
+      "kind": "Phường"
+    },
+    {
+      "code": "25843",
+      "name": "Phường Tây Nam",
+      "kind": "Phường"
+    },
+    {
+      "code": "25846",
+      "name": "Phường Thới Hòa",
+      "kind": "Phường"
+    },
+    {
+      "code": "25849",
+      "name": "Phường Hòa Lợi",
+      "kind": "Phường"
+    },
+    {
+      "code": "25888",
+      "name": "Phường Tân Uyên",
+      "kind": "Phường"
+    },
+    {
+      "code": "25891",
+      "name": "Phường Tân Khánh",
+      "kind": "Phường"
+    },
+    {
+      "code": "25912",
+      "name": "Phường Vĩnh Tân",
+      "kind": "Phường"
+    },
+    {
+      "code": "25915",
+      "name": "Phường Bình Cơ",
+      "kind": "Phường"
+    },
+    {
+      "code": "25920",
+      "name": "Phường Tân Hiệp",
+      "kind": "Phường"
+    },
+    {
+      "code": "25942",
+      "name": "Phường Dĩ An",
+      "kind": "Phường"
+    },
+    {
+      "code": "25945",
+      "name": "Phường Tân Đông Hiệp",
+      "kind": "Phường"
+    },
+    {
+      "code": "25951",
+      "name": "Phường Đông Hòa",
+      "kind": "Phường"
+    },
+    {
+      "code": "25966",
+      "name": "Phường Lái Thiêu",
+      "kind": "Phường"
+    },
+    {
+      "code": "25969",
+      "name": "Phường Thuận Giao",
+      "kind": "Phường"
+    },
+    {
+      "code": "25975",
+      "name": "Phường An Phú",
+      "kind": "Phường"
+    },
+    {
+      "code": "25978",
+      "name": "Phường Thuận An",
+      "kind": "Phường"
+    },
+    {
+      "code": "25987",
+      "name": "Phường Bình Hòa",
+      "kind": "Phường"
+    },
+    {
+      "code": "26506",
+      "name": "Phường Vũng Tàu",
+      "kind": "Phường"
+    },
+    {
+      "code": "26526",
+      "name": "Phường Tam Thắng",
+      "kind": "Phường"
+    },
+    {
+      "code": "26536",
+      "name": "Phường Rạch Dừa",
+      "kind": "Phường"
+    },
+    {
+      "code": "26542",
+      "name": "Phường Phước Thắng",
+      "kind": "Phường"
+    },
+    {
+      "code": "26560",
+      "name": "Phường Bà Rịa",
+      "kind": "Phường"
+    },
+    {
+      "code": "26566",
+      "name": "Phường Long Hương",
+      "kind": "Phường"
+    },
+    {
+      "code": "26572",
+      "name": "Phường Tam Long",
+      "kind": "Phường"
+    },
+    {
+      "code": "26704",
+      "name": "Phường Phú Mỹ",
+      "kind": "Phường"
+    },
+    {
+      "code": "26710",
+      "name": "Phường Tân Hải",
+      "kind": "Phường"
+    },
+    {
+      "code": "26713",
+      "name": "Phường Tân Phước",
+      "kind": "Phường"
+    },
+    {
+      "code": "26725",
+      "name": "Phường Tân Thành",
+      "kind": "Phường"
+    },
+    {
+      "code": "26737",
+      "name": "Phường Tân Định",
+      "kind": "Phường"
+    },
+    {
+      "code": "26740",
+      "name": "Phường Sài Gòn",
+      "kind": "Phường"
+    },
+    {
+      "code": "26743",
+      "name": "Phường Bến Thành",
+      "kind": "Phường"
+    },
+    {
+      "code": "26758",
+      "name": "Phường Cầu Ông Lãnh",
+      "kind": "Phường"
+    },
+    {
+      "code": "26767",
+      "name": "Phường An Phú Đông",
+      "kind": "Phường"
+    },
+    {
+      "code": "26773",
+      "name": "Phường Thới An",
+      "kind": "Phường"
+    },
+    {
+      "code": "26782",
+      "name": "Phường Tân Thới Hiệp",
+      "kind": "Phường"
+    },
+    {
+      "code": "26785",
+      "name": "Phường Trung Mỹ Tây",
+      "kind": "Phường"
+    },
+    {
+      "code": "26791",
+      "name": "Phường Đông Hưng Thuận",
+      "kind": "Phường"
+    },
+    {
+      "code": "26800",
+      "name": "Phường Linh Xuân",
+      "kind": "Phường"
+    },
+    {
+      "code": "26803",
+      "name": "Phường Tam Bình",
+      "kind": "Phường"
+    },
+    {
+      "code": "26809",
+      "name": "Phường Hiệp Bình",
+      "kind": "Phường"
+    },
+    {
+      "code": "26824",
+      "name": "Phường Thủ Đức",
+      "kind": "Phường"
+    },
+    {
+      "code": "26833",
+      "name": "Phường Long Bình",
+      "kind": "Phường"
+    },
+    {
+      "code": "26842",
+      "name": "Phường Tăng Nhơn Phú",
+      "kind": "Phường"
+    },
+    {
+      "code": "26848",
+      "name": "Phường Phước Long",
+      "kind": "Phường"
+    },
+    {
+      "code": "26857",
+      "name": "Phường Long Phước",
+      "kind": "Phường"
+    },
+    {
+      "code": "26860",
+      "name": "Phường Long Trường",
+      "kind": "Phường"
+    },
+    {
+      "code": "26876",
+      "name": "Phường An Nhơn",
+      "kind": "Phường"
+    },
+    {
+      "code": "26878",
+      "name": "Phường An Hội Đông",
+      "kind": "Phường"
+    },
+    {
+      "code": "26882",
+      "name": "Phường An Hội Tây",
+      "kind": "Phường"
+    },
+    {
+      "code": "26884",
+      "name": "Phường Gò Vấp",
+      "kind": "Phường"
+    },
+    {
+      "code": "26890",
+      "name": "Phường Hạnh Thông",
+      "kind": "Phường"
+    },
+    {
+      "code": "26898",
+      "name": "Phường Thông Tây Hội",
+      "kind": "Phường"
+    },
+    {
+      "code": "26905",
+      "name": "Phường Bình Lợi Trung",
+      "kind": "Phường"
+    },
+    {
+      "code": "26911",
+      "name": "Phường Bình Quới",
+      "kind": "Phường"
+    },
+    {
+      "code": "26929",
+      "name": "Phường Bình Thạnh",
+      "kind": "Phường"
+    },
+    {
+      "code": "26944",
+      "name": "Phường Gia Định",
+      "kind": "Phường"
+    },
+    {
+      "code": "26956",
+      "name": "Phường Thạnh Mỹ Tây",
+      "kind": "Phường"
+    },
+    {
+      "code": "26968",
+      "name": "Phường Tân Sơn Nhất",
+      "kind": "Phường"
+    },
+    {
+      "code": "26977",
+      "name": "Phường Tân Sơn Hòa",
+      "kind": "Phường"
+    },
+    {
+      "code": "26983",
+      "name": "Phường Bảy Hiền",
+      "kind": "Phường"
+    },
+    {
+      "code": "26995",
+      "name": "Phường Tân Hòa",
+      "kind": "Phường"
+    },
+    {
+      "code": "27004",
+      "name": "Phường Tân Bình",
+      "kind": "Phường"
+    },
+    {
+      "code": "27007",
+      "name": "Phường Tân Sơn",
+      "kind": "Phường"
+    },
+    {
+      "code": "27013",
+      "name": "Phường Tây Thạnh",
+      "kind": "Phường"
+    },
+    {
+      "code": "27019",
+      "name": "Phường Tân Sơn Nhì",
+      "kind": "Phường"
+    },
+    {
+      "code": "27022",
+      "name": "Phường Phú Thọ Hòa",
+      "kind": "Phường"
+    },
+    {
+      "code": "27028",
+      "name": "Phường Phú Thạnh",
+      "kind": "Phường"
+    },
+    {
+      "code": "27031",
+      "name": "Phường Tân Phú",
+      "kind": "Phường"
+    },
+    {
+      "code": "27043",
+      "name": "Phường Đức Nhuận",
+      "kind": "Phường"
+    },
+    {
+      "code": "27058",
+      "name": "Phường Cầu Kiệu",
+      "kind": "Phường"
+    },
+    {
+      "code": "27073",
+      "name": "Phường Phú Nhuận",
+      "kind": "Phường"
+    },
+    {
+      "code": "27094",
+      "name": "Phường An Khánh",
+      "kind": "Phường"
+    },
+    {
+      "code": "27097",
+      "name": "Phường Bình Trưng",
+      "kind": "Phường"
+    },
+    {
+      "code": "27112",
+      "name": "Phường Cát Lái",
+      "kind": "Phường"
+    },
+    {
+      "code": "27139",
+      "name": "Phường Xuân Hòa",
+      "kind": "Phường"
+    },
+    {
+      "code": "27142",
+      "name": "Phường Nhiêu Lộc",
+      "kind": "Phường"
+    },
+    {
+      "code": "27154",
+      "name": "Phường Bàn Cờ",
+      "kind": "Phường"
+    },
+    {
+      "code": "27163",
+      "name": "Phường Hòa Hưng",
+      "kind": "Phường"
+    },
+    {
+      "code": "27169",
+      "name": "Phường Diên Hồng",
+      "kind": "Phường"
+    },
+    {
+      "code": "27190",
+      "name": "Phường Vườn Lài",
+      "kind": "Phường"
+    },
+    {
+      "code": "27211",
+      "name": "Phường Hòa Bình",
+      "kind": "Phường"
+    },
+    {
+      "code": "27226",
+      "name": "Phường Phú Thọ",
+      "kind": "Phường"
+    },
+    {
+      "code": "27232",
+      "name": "Phường Bình Thới",
+      "kind": "Phường"
+    },
+    {
+      "code": "27238",
+      "name": "Phường Minh Phụng",
+      "kind": "Phường"
+    },
+    {
+      "code": "27259",
+      "name": "Phường Xóm Chiếu",
+      "kind": "Phường"
+    },
+    {
+      "code": "27265",
+      "name": "Phường Khánh Hội",
+      "kind": "Phường"
+    },
+    {
+      "code": "27286",
+      "name": "Phường Vĩnh Hội",
+      "kind": "Phường"
+    },
+    {
+      "code": "27301",
+      "name": "Phường Chợ Quán",
+      "kind": "Phường"
+    },
+    {
+      "code": "27316",
+      "name": "Phường An Đông",
+      "kind": "Phường"
+    },
+    {
+      "code": "27343",
+      "name": "Phường Chợ Lớn",
+      "kind": "Phường"
+    },
+    {
+      "code": "27349",
+      "name": "Phường Phú Lâm",
+      "kind": "Phường"
+    },
+    {
+      "code": "27364",
+      "name": "Phường Bình Phú",
+      "kind": "Phường"
+    },
+    {
+      "code": "27367",
+      "name": "Phường Bình Tây",
+      "kind": "Phường"
+    },
+    {
+      "code": "27373",
+      "name": "Phường Bình Tiên",
+      "kind": "Phường"
+    },
+    {
+      "code": "27418",
+      "name": "Phường Chánh Hưng",
+      "kind": "Phường"
+    },
+    {
+      "code": "27424",
+      "name": "Phường Bình Đông",
+      "kind": "Phường"
+    },
+    {
+      "code": "27427",
+      "name": "Phường Phú Định",
+      "kind": "Phường"
+    },
+    {
+      "code": "27439",
+      "name": "Phường Bình Hưng Hòa",
+      "kind": "Phường"
+    },
+    {
+      "code": "27442",
+      "name": "Phường Bình Tân",
+      "kind": "Phường"
+    },
+    {
+      "code": "27448",
+      "name": "Phường Bình Trị Đông",
+      "kind": "Phường"
+    },
+    {
+      "code": "27457",
+      "name": "Phường Tân Tạo",
+      "kind": "Phường"
+    },
+    {
+      "code": "27460",
+      "name": "Phường An Lạc",
+      "kind": "Phường"
+    },
+    {
+      "code": "27475",
+      "name": "Phường Tân Hưng",
+      "kind": "Phường"
+    },
+    {
+      "code": "27478",
+      "name": "Phường Tân Thuận",
+      "kind": "Phường"
+    },
+    {
+      "code": "27484",
+      "name": "Phường Phú Thuận",
+      "kind": "Phường"
+    },
+    {
+      "code": "27487",
+      "name": "Phường Tân Mỹ",
+      "kind": "Phường"
+    },
+    {
+      "code": "25777",
+      "name": "Xã Dầu Tiếng",
+      "kind": "Xã"
+    },
+    {
+      "code": "25780",
+      "name": "Xã Minh Thạnh",
+      "kind": "Xã"
+    },
+    {
+      "code": "25792",
+      "name": "Xã Long Hòa",
+      "kind": "Xã"
+    },
+    {
+      "code": "25807",
+      "name": "Xã Thanh An",
+      "kind": "Xã"
+    },
+    {
+      "code": "25819",
+      "name": "Xã Trừ Văn Thố",
+      "kind": "Xã"
+    },
+    {
+      "code": "25822",
+      "name": "Xã Bàu Bàng",
+      "kind": "Xã"
+    },
+    {
+      "code": "25858",
+      "name": "Xã Phú Giáo",
+      "kind": "Xã"
+    },
+    {
+      "code": "25864",
+      "name": "Xã Phước Thành",
+      "kind": "Xã"
+    },
+    {
+      "code": "25867",
+      "name": "Xã An Long",
+      "kind": "Xã"
+    },
+    {
+      "code": "25882",
+      "name": "Xã Phước Hòa",
+      "kind": "Xã"
+    },
+    {
+      "code": "25906",
+      "name": "Xã Bắc Tân Uyên",
+      "kind": "Xã"
+    },
+    {
+      "code": "25909",
+      "name": "Xã Thường Tân",
+      "kind": "Xã"
+    },
+    {
+      "code": "26545",
+      "name": "Xã Long Sơn",
+      "kind": "Xã"
+    },
+    {
+      "code": "26575",
+      "name": "Xã Ngãi Giao",
+      "kind": "Xã"
+    },
+    {
+      "code": "26584",
+      "name": "Xã Xuân Sơn",
+      "kind": "Xã"
+    },
+    {
+      "code": "26590",
+      "name": "Xã Bình Giã",
+      "kind": "Xã"
+    },
+    {
+      "code": "26596",
+      "name": "Xã Châu Đức",
+      "kind": "Xã"
+    },
+    {
+      "code": "26608",
+      "name": "Xã Kim Long",
+      "kind": "Xã"
+    },
+    {
+      "code": "26617",
+      "name": "Xã Nghĩa Thành",
+      "kind": "Xã"
+    },
+    {
+      "code": "26620",
+      "name": "Xã Hồ Tràm",
+      "kind": "Xã"
+    },
+    {
+      "code": "26632",
+      "name": "Xã Xuyên Mộc",
+      "kind": "Xã"
+    },
+    {
+      "code": "26638",
+      "name": "Xã Bàu Lâm",
+      "kind": "Xã"
+    },
+    {
+      "code": "26641",
+      "name": "Xã Hòa Hội",
+      "kind": "Xã"
+    },
+    {
+      "code": "26647",
+      "name": "Xã Hòa Hiệp",
+      "kind": "Xã"
+    },
+    {
+      "code": "26656",
+      "name": "Xã Bình Châu",
+      "kind": "Xã"
+    },
+    {
+      "code": "26659",
+      "name": "Xã Long Điền",
+      "kind": "Xã"
+    },
+    {
+      "code": "26662",
+      "name": "Xã Long Hải",
+      "kind": "Xã"
+    },
+    {
+      "code": "26680",
+      "name": "Xã Đất Đỏ",
+      "kind": "Xã"
+    },
+    {
+      "code": "26686",
+      "name": "Xã Phước Hải",
+      "kind": "Xã"
+    },
+    {
+      "code": "26728",
+      "name": "Xã Châu Pha",
+      "kind": "Xã"
+    },
+    {
+      "code": "27496",
+      "name": "Xã Tân An Hội",
+      "kind": "Xã"
+    },
+    {
+      "code": "27508",
+      "name": "Xã An Nhơn Tây",
+      "kind": "Xã"
+    },
+    {
+      "code": "27511",
+      "name": "Xã Nhuận Đức",
+      "kind": "Xã"
+    },
+    {
+      "code": "27526",
+      "name": "Xã Thái Mỹ",
+      "kind": "Xã"
+    },
+    {
+      "code": "27541",
+      "name": "Xã Phú Hòa Đông",
+      "kind": "Xã"
+    },
+    {
+      "code": "27544",
+      "name": "Xã Bình Mỹ",
+      "kind": "Xã"
+    },
+    {
+      "code": "27553",
+      "name": "Xã Củ Chi",
+      "kind": "Xã"
+    },
+    {
+      "code": "27559",
+      "name": "Xã Hóc Môn",
+      "kind": "Xã"
+    },
+    {
+      "code": "27568",
+      "name": "Xã Đông Thạnh",
+      "kind": "Xã"
+    },
+    {
+      "code": "27577",
+      "name": "Xã Xuân Thới Sơn",
+      "kind": "Xã"
+    },
+    {
+      "code": "27592",
+      "name": "Xã Bà Điểm",
+      "kind": "Xã"
+    },
+    {
+      "code": "27595",
+      "name": "Xã Tân Nhựt",
+      "kind": "Xã"
+    },
+    {
+      "code": "27601",
+      "name": "Xã Vĩnh Lộc",
+      "kind": "Xã"
+    },
+    {
+      "code": "27604",
+      "name": "Xã Tân Vĩnh Lộc",
+      "kind": "Xã"
+    },
+    {
+      "code": "27610",
+      "name": "Xã Bình Lợi",
+      "kind": "Xã"
+    },
+    {
+      "code": "27619",
+      "name": "Xã Bình Hưng",
+      "kind": "Xã"
+    },
+    {
+      "code": "27628",
+      "name": "Xã Hưng Long",
+      "kind": "Xã"
+    },
+    {
+      "code": "27637",
+      "name": "Xã Bình Chánh",
+      "kind": "Xã"
+    },
+    {
+      "code": "27655",
+      "name": "Xã Nhà Bè",
+      "kind": "Xã"
+    },
+    {
+      "code": "27658",
+      "name": "Xã Hiệp Phước",
+      "kind": "Xã"
+    },
+    {
+      "code": "27664",
+      "name": "Xã Cần Giờ",
+      "kind": "Xã"
+    },
+    {
+      "code": "27667",
+      "name": "Xã Bình Khánh",
+      "kind": "Xã"
+    },
+    {
+      "code": "27673",
+      "name": "Xã An Thới Đông",
+      "kind": "Xã"
+    },
+    {
+      "code": "27676",
+      "name": "Xã Thạnh An",
+      "kind": "Xã"
+    },
+    {
+      "code": "26732",
+      "name": "Đặc khu Côn Đảo",
+      "kind": "Đặc khu"
+    }
+  ]
+}

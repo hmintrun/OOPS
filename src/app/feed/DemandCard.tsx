@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { locationLabel } from "@/lib/locations";
 import type { CatalogItem, DemandItem } from "@/contracts/foundation";
 import { Card, MaterialSymbol } from "@/components/ui";
 
@@ -88,7 +89,7 @@ export function DemandCard({
           </p>
           <p>
             <MaterialSymbol name="location_on" size={16} />
-            <span>{item.districtCode} · {item.wardCode}</span>
+            <span>{locationLabel(item.provinceCode, item.wardCode, item.districtCode)}</span>
           </p>
           {item.supportRequested && (
             <span className="feed-card__support">

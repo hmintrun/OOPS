@@ -166,11 +166,12 @@ export function quantities(target: number, pending: number, reserved: number, re
 }
 
 function demandDto(row: DemandRow): DemandItem {
-  return { ...row, needBy: row.needBy.toISOString(), ...quantities(row.target, row.pending, row.reserved, row.received) };
+  const { provinceCode, ...rest } = row;
+  return { ...rest, ...(provinceCode && { provinceCode }), needBy: row.needBy.toISOString(), ...quantities(row.target, row.pending, row.reserved, row.received) };
 }
 
 const demandColumns = `d.id as "demandItemId", d.campaign_id as "campaignId", d.sku_id as "skuId",
-  s.name, s.unit, g.district_code as "districtCode", g.ward_code as "wardCode", c.need_by as "needBy",
+  s.name, s.unit, d.province_code as "provinceCode", d.district_code as "districtCode", d.ward_code as "wardCode", c.need_by as "needBy",
   d.support_requested as "supportRequested", d.target, d.pending, d.reserved, d.received`;
 const demandFrom = `from public.demand_items d
   join public.campaigns c on c.id = d.campaign_id
@@ -274,13 +275,14 @@ export async function readFeed(client: PoolClient, filters: z.output<typeof feed
        to_char(c.need_by at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "cursorNeedBy"
      ${demandFrom}
      where c.status = 'PUBLISHED' and c.need_by > clock_timestamp() and d.target - d.reserved - d.received > 0
-       and ($1::text is null or g.district_code = $1)
-       and ($2::text is null or g.ward_code = $2)
+       and ($1::text is null or d.district_code = $1)
+       and ($2::text is null or d.ward_code = $2)
        and ($3::public.catalog_category is null or s.category = $3)
        and ($4::timestamptz is null or (c.need_by, d.id) > ($4::timestamptz, $5::uuid))
+       and ($7::text is null or d.province_code = $7)
      order by c.need_by, d.id limit $6`,
     [filters.district ?? null, filters.ward ?? null, filters.category ?? null,
-      cursor?.needBy ?? null, cursor?.id ?? null, limit + 1],
+      cursor?.needBy ?? null, cursor?.id ?? null, limit + 1, filters.province ?? null],
   );
   const items = rows.slice(0, limit).map(({ cursorNeedBy: _, ...row }) => demandDto(row));
   if (rows.length <= limit) return { items };
