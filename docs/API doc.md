@@ -145,7 +145,7 @@ type ConfirmationRound = {
 ## Tài khoản nhóm và giỏ
 
 - `members` gồm các phần tử `{membershipId, userId, displayName, role}`. Role của nhóm là `MEMBER` hoặc `REP`. `repId` là userId của đại diện.
-- Lời mời hết hạn sau 24 giờ. Frontend đọc token từ `/join?token=…` và gửi đến `POST /invites/accept` sau khi có phiên.
+- Link vào nhóm chứa mã 8 ký tự tại `/join?token=…`. Đại diện lấy lại cùng link và mã cho mỗi nhóm. Người nhận có thể dán link hoặc nhập mã, không phân biệt hoa thường. Frontend gửi giá trị đến `POST /invites/accept` sau khi có phiên. Lời mời chỉ định tài khoản, lời mời REP và link JOIN cũ vẫn dùng một lần trong 24 giờ.
 - `category` nhận `WATER`, `FOOD` hoặc `ESSENTIALS`.
 - GET giỏ trả `404` nếu chưa tạo. PUT tạo với `version: 0` và trả bản đã lưu ở version 1. Sửa hoặc xác nhận thành công tăng version thêm 1. Phát lại cùng khóa idempotency trả kết quả cũ.
 - AI trả `draft: {householdSize?, lines: [{skuId, stockQty?, needQty?}]}`, `unresolved: string[]` và `ruleRefs: string[]`. Mỗi dòng có ít nhất một lượng được trích rõ. Thiếu lượng, SKU hoặc đơn vị khớp được đưa vào `unresolved`. Người dùng nhập đủ trước khi lưu giỏ. `ruleRefs` rỗng khi chỉ trích dữ liệu đã nhập.
@@ -158,7 +158,7 @@ type ConfirmationRound = {
 | `POST /wallet/link`<br>Chủ phiên | {address, proofTx, nonce}. GET /wallet/challenge cấp nonce một lần và expiresAt. Fuji ghi hash thử thách gắn với ví. | 202 {verificationState}. GET /me cho biết kết quả. 422 nếu bằng chứng sai. Khi lưu thay đổi ví, 409 `ACTIVE_COMMITMENT` nếu còn nghĩa vụ theo [G-09](OOPS-Spec.md#66-rời-nhóm-và-đổi-ví-g-09). |
 | `GET /groups/{id}`<br>Thành viên | id là groupId. | 200 {groupId, repId, members, campaigns: Campaign[]}. Ẩn điểm nhận cụ thể với hộ chưa chốt. |
 | `POST /groups/{id}/leave`<br>Thành viên tự rời | {}. Xem [G-09](OOPS-Spec.md#66-rời-nhóm-và-đổi-ví-g-09). | 200 {groupId, membershipId, leftAt}. 409 `REP_TRANSFER_REQUIRED`, `ACTIVE_COMMITMENT` hoặc `PUBLISHED_NEED_ACTIVE`. 404 nếu người gọi không còn là thành viên. |
-| `POST /groups/{id}/invites`<br>Đại diện | {kind: JOIN hoặc REP, targetUserId?}. REP bắt buộc có targetUserId đang trong nhóm. | 201 {inviteId, inviteUrl, expiresAt}. |
+| `POST /groups/{id}/invites`<br>Đại diện | {kind: JOIN hoặc REP, targetUserId?}. REP bắt buộc có targetUserId đang trong nhóm. | 201 {inviteId, inviteUrl, joinCode} với JOIN không chỉ định tài khoản. Lời mời một lần trả {inviteId, inviteUrl, expiresAt}. |
 | `POST /invites/accept`<br>Người được mời | {token}. JOIN áp dụng cho tài khoản chưa có nhóm hoặc là đại diện duy nhất của nhóm đã xong đợt gom và nghĩa vụ. REP kiểm tra đúng tài khoản đích. | 200 {groupId, membershipId, role}. 409 nếu lời mời hoặc điều kiện chuyển nhóm không hợp lệ. |
 | `POST /groups/{id}/campaigns`<br>Đại diện | {collectUntil, needBy, supportRequested?}. Kiểm tra thời điểm hiện tại < collectUntil < needBy. | 201 Campaign ở DRAFT. |
 | `GET /catalog`<br>Đã đăng nhập | category? | 200 {items: [{skuId, name, category, unit}]}. |
