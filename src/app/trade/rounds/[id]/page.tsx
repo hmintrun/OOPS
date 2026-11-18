@@ -12,7 +12,7 @@ import { useRoundRefresh, useTrade } from "../../trade-client";
 export default function RoundPage() {
   const { id } = useParams<{ id: string }>();
   const load = useCallback(() => apiFetch(`/api/v1/rounds/${encodeURIComponent(id)}`, { schema: confirmationRound }), [id]);
-  const trade = useTrade(load);
+  const trade = useTrade(load, `round:${id}`);
   const state = trade.data?.state;
   useRoundRefresh((state === "OPENING" || state === "OPEN") && !trade.loading, trade.refresh);
   return <AppShell title="Xác nhận giao dịch" icon={{ icon: "verified", tone: "green" }} bare>

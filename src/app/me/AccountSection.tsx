@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { LocationFields } from "@/components/location-fields";
 import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
@@ -13,6 +14,7 @@ export function AccountSection({ data, onData, onUnauthorized }: {
   onData: (data: Me) => void;
   onUnauthorized: () => void;
 }) {
+  const router = useRouter();
   const [draft, setDraft] = useState<{ displayName: string; wardCode: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -46,6 +48,7 @@ export function AccountSection({ data, onData, onUnauthorized }: {
     setSaving(false);
     if (result.ok) {
       onData(result.data);
+      router.refresh();
       setDraft(null);
       setSaved(true);
     } else if (result.status === 401) {

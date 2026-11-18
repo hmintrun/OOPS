@@ -24,7 +24,7 @@ export default function NotificationsPage() {
   const load = useCallback(() => apiFetch(`/api/v1/notifications${cursor ? `?cursor=${cursor}` : ""}`, {
     schema: notificationList,
   }), [cursor]);
-  const trade = useTrade(load);
+  const trade = useTrade(load, `notifications:${cursor ?? ""}`);
   const next = trade.data?.nextCursor;
   return <AppShell title="Thông báo" illustration="home" bare>
     <div className="grid gap-4">

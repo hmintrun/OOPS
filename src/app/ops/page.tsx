@@ -16,7 +16,7 @@ export default function OpsPage() {
   const load = useCallback(() => apiFetch(`/api/v1/ops/disbursements?state=PENDING${cursor ? `&cursor=${cursor}` : ""}`, {
     schema: opsList,
   }), [cursor]);
-  const trade = useTrade(load);
+  const trade = useTrade(load, `ops:${cursor ?? ""}`);
   const [notice, setNotice] = useState("");
   const denied = trade.failure instanceof ApiError && trade.failure.status === 403;
   return <AppShell title="Đối soát SIM" icon={{ icon: "account_balance_wallet", tone: "amber" }} bare>

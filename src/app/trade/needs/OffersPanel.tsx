@@ -27,7 +27,7 @@ export function OffersPanel({ id, standalone = false, demand }: {
       throw error;
     }
   }, [path]);
-  const trade = useTrade(load);
+  const trade = useTrade(load, `offers:${id}`);
   const [formError, setFormError] = useState("");
   const [sent, setSent] = useState(false);
   const canOffer = !demand || (demand.missing > 0 && Date.parse(demand.needBy) > Date.now());

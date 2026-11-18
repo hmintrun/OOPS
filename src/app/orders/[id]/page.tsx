@@ -27,7 +27,7 @@ export default function OrderPage() {
     const [order, me] = await Promise.all([apiFetch(path, { schema: contract }), getMe()]);
     return { order, userId: me.userId };
   }, [path]);
-  const trade = useTrade(load);
+  const trade = useTrade(load, `order:${id}`);
   const [formError, setFormError] = useState("");
   const [proof, setProof] = useState<{ id: string; url: string; expiresAt: string }>();
   const [proofPending, setProofPending] = useState(false);
