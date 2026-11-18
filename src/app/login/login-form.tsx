@@ -4,10 +4,13 @@ import { createBrowserClient } from "@supabase/ssr";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
+import { DISPLAY_NAME_MAX_LENGTH } from "@/contracts/foundation";
 import { resolveLoginNext } from "@/lib/login-next";
-import { accountErrorMessage, confirmationUrl, registrationInput } from "@/lib/account-auth";
+import { accountErrorMessage, confirmationUrl, MIN_SIGNUP_PASSWORD_LENGTH, registrationInput } from "@/lib/account-auth";
+import { PHONE_MAX_LENGTH } from "@/lib/receiving-contact";
 import { LocationFields } from "@/components/location-fields";
 import { HCM_PROVINCE_CODE } from "@/lib/locations";
+import { signUp } from "./signup";
 
 /**
  * Ô nhập dựng theo quy ước control của design/STYLE.md mục 6 (trắng, viền line,
@@ -59,6 +62,7 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const [register, setRegister] = useState(searchParams.get("mode") === "signup");
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -123,46 +127,41 @@ export function LoginForm() {
 
   async function handleSubmit() {
     if (inFlight.current) return;
-    const client = supabaseBrowser();
-    if (!client) {
-      setState({ kind: "error", message: CONFIG_MESSAGE });
-      return;
-    }
     const address = email.trim();
     if (!address || !password) {
       setState({ kind: "error", message: "Vui lòng nhập email và mật khẩu." });
       return;
     }
-    if (register) {
-      const parsed = registrationInput.safeParse({ name, email: address, password, confirmPassword,
-        location: { provinceCode: HCM_PROVINCE_CODE, wardCode } });
-      if (!parsed.success) {
-        setState({ kind: "error", message: parsed.error.issues[0].message });
-        return;
-      }
+    const signup = register ? registrationInput.safeParse({
+      name, email: address, phone, password, confirmPassword,
+      location: { provinceCode: HCM_PROVINCE_CODE, wardCode },
+    }) : undefined;
+    if (signup && !signup.success) {
+      setState({ kind: "error", message: signup.error.issues[0].message });
+      return;
     }
 
     inFlight.current = true;
     setPending(true);
     setState({ kind: "idle" });
     try {
-      if (register) {
-        const { data, error } = await client.auth.signUp({
-          email: address,
-          password,
-          options: {
-            data: { display_name: name.trim(), location: { provinceCode: HCM_PROVINCE_CODE, wardCode } },
-            emailRedirectTo: confirmationUrl(window.location.origin, searchParams.get("next")),
-          },
-        });
-        if (error) throw error;
-        if (!data.user) throw new Error("Missing signup user");
-        if (!data.session) {
+      if (signup) {
+        const result = await signUp(signup.data, searchParams.get("next"));
+        if (!result.ok) {
+          setState({ kind: "error", message: result.message });
+          return;
+        }
+        if (result.needsConfirmation) {
           waitForConfirmation(address);
           setResendSeconds(60);
           return;
         }
       } else {
+        const client = supabaseBrowser();
+        if (!client) {
+          setState({ kind: "error", message: CONFIG_MESSAGE });
+          return;
+        }
         const { data, error } = await client.auth.signInWithPassword({ email: address, password });
         if (error?.code === "email_not_confirmed") {
           waitForConfirmation(address);
@@ -227,7 +226,7 @@ export function LoginForm() {
           <span className="text-label">Tên hiển thị</span>
           <span className={FIELD_ROW}>
             <IconTile icon="person" tone="sky" size="sm" />
-            <input className={FIELD_INPUT} name="name" autoComplete="name" maxLength={80} required
+            <input className={FIELD_INPUT} name="name" autoComplete="name" maxLength={DISPLAY_NAME_MAX_LENGTH} required
               placeholder="Tên của bạn hoặc hộ gia đình"
               value={name} disabled={pending} onChange={event => setName(event.target.value)} />
           </span>
@@ -235,9 +234,18 @@ export function LoginForm() {
         {register && (
           <fieldset className="grid min-w-0 gap-2">
             <legend className="mb-2 text-label">Nơi sinh sống</legend>
-            <LocationFields wardCode={wardCode} onChange={setWardCode} disabled={pending} searchable={false} />
+            <LocationFields wardCode={wardCode} onChange={setWardCode} disabled={pending} searchable={false} required />
           </fieldset>
         )}
+        {register && <label className="grid gap-2">
+          <span className="text-label">Số điện thoại</span>
+          <span className={FIELD_ROW}>
+            <IconTile icon="call" tone="sky" size="sm" />
+            <input className={FIELD_INPUT} type="tel" name="phone" autoComplete="tel"
+              maxLength={PHONE_MAX_LENGTH} required value={phone} disabled={pending}
+              onChange={event => setPhone(event.target.value)} />
+          </span>
+        </label>}
         <label className="grid gap-2">
           <span className="text-label">Email</span>
           <span className={FIELD_ROW}>
@@ -268,15 +276,14 @@ export function LoginForm() {
               type={showPassword ? "text" : "password"}
               name="password"
               autoComplete={register ? "new-password" : "current-password"}
-              minLength={register ? 6 : undefined}
+              minLength={register ? MIN_SIGNUP_PASSWORD_LENGTH : undefined}
               required
-              placeholder={register ? "Ít nhất 6 ký tự" : "Mật khẩu của bạn"}
+              placeholder={register ? `Ít nhất ${MIN_SIGNUP_PASSWORD_LENGTH} ký tự` : "Mật khẩu của bạn"}
               value={password}
               disabled={pending}
               onChange={event => setPassword(event.target.value)}
             />
           </span>
-          {register && <span className="text-small text-navy-600">Ít nhất 6 ký tự. Nên kết hợp chữ, số và ký tự đặc biệt.</span>}
         </label>
 
         {register && <label className="grid gap-2">

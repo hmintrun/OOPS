@@ -73,6 +73,7 @@ it("validates voting offers, vote inputs, and parallel-commitment contracts", ()
     version: 1,
     state: "AWAIT_COMMITMENTS",
     qty: 7,
+    unit: "chai",
     unitPriceVnd: 2_000,
     goodsVnd: 14_000,
     depositVnd: 50_000,
@@ -85,6 +86,7 @@ it("validates voting offers, vote inputs, and parallel-commitment contracts", ()
     handoffBy: demoOffer.terms.handoffBy,
     approvalDueAt: "2026-11-19T16:00:00+07:00",
     allocations: [{ allocationId: "44444444-4444-4444-8444-444444444444", qty: 2, goodsVnd: 4_000 }],
+    myShare: { qty: 2, goodsVnd: 4_000 },
     charges: [{
       chargeId: "55555555-5555-4555-8555-555555555555", kind: "DEPOSIT", state: "PENDING",
       amountVnd: 50_000, dueAt: "2026-11-17T14:00:00+07:00", canPay: true,
@@ -93,11 +95,14 @@ it("validates voting offers, vote inputs, and parallel-commitment contracts", ()
   };
   expect(contract.parse(sampleContract)).toMatchObject({
     state: "AWAIT_COMMITMENTS",
+    unit: "chai",
+    myShare: { qty: 2, goodsVnd: 4_000 },
     roundId: sampleContract.roundId,
     roundOpenBy: sampleContract.roundOpenBy,
     confirmBy: sampleContract.confirmBy,
     charges: [{ kind: "DEPOSIT", canPay: true }],
   });
+  expect(contract.safeParse({ ...sampleContract, unit: undefined, myShare: undefined }).success).toBe(true);
   expect(contract.safeParse({
     ...sampleContract,
     charges: [{ ...sampleContract.charges[0], canPay: "yes" }],

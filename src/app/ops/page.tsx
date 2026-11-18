@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { Button, Card, CardTitle } from "@/components/ui";
 import { opsList, postTransferResult } from "@/contracts/orders";
@@ -19,9 +18,8 @@ export default function OpsPage() {
   const trade = useTrade(load);
   const [notice, setNotice] = useState("");
   const denied = trade.failure instanceof ApiError && trade.failure.status === 403;
-  return <AppShell title="Đối soát SIM" icon={{ icon: "account_balance_wallet", tone: "amber" }} bare>
+  return <AppShell title="Đối soát SIM" icon={{ icon: "account_balance_wallet", tone: "amber" }} backHref="/orders" bare>
     <div className="grid gap-4">
-      <Link href="/orders" className="ui-btn ui-btn--secondary justify-self-start">Về đơn hàng</Link>
       {denied ? <Card><p role="alert">Màn hình này dành cho tài khoản vận hành.</p></Card> :
         <TradeStatus {...trade} retry={() => void trade.refresh()} />}
       {notice && <p role="status">{notice}</p>}
