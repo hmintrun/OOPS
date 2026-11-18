@@ -15,6 +15,10 @@ const nextConfig: NextConfig = {
     // Keep compilation in the build process on Windows runners with restricted child workers.
     webpackBuildWorker: false,
     cpus: process.platform === "win32" ? 1 : undefined,
+    staleTimes: {
+      dynamic: 30,
+      static: 300,
+    },
   },
 };
 

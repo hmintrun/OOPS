@@ -10,6 +10,7 @@ import {
   ApiError, getCart, getCatalog, getGroup, getMe, getNeeds,
   newIdempotencyKey, publishCampaign, putCart, type PutCartBody,
 } from "@/lib/api-client";
+import { invalidateClientCache, readClientCache, writeClientCache } from "@/lib/client-cache";
 import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
 import { defaultFamilyStatus, readSavedFamilyStatus } from "@/lib/family-status";
 import { ReceivingContactCard } from "@/app/groups/ReceivingContactCard";
@@ -45,6 +46,7 @@ function toDraft(cart: Cart | null): Draft {
   };
 }
 
+const detailCacheKey = (campaignId: string) => `campaign-detail:${campaignId}`;
 async function loadCampaign(id: string): Promise<Data> {
   const context = getMe().then(async profile => {
     if (!profile.groupId) throw new Error("Bạn chưa tham gia nhóm.");
@@ -73,13 +75,14 @@ async function loadCampaign(id: string): Promise<Data> {
 export function CampaignDetail({ campaignId }: { campaignId: string }) {
   const cartFormId = useId();
   const router = useRouter();
-  const [data, setData] = useState<Data>();
-  const [draft, setDraft] = useState<Draft>(toDraft(null));
+  const [data, setData] = useState<Data | undefined>(() => readClientCache<Data>(detailCacheKey(campaignId))?.value);
+  const [draft, setDraft] = useState<Draft>(() => toDraft(readClientCache<Data>(detailCacheKey(campaignId))?.value.cart ?? null));
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [reload, setReload] = useState(0);
   const [pendingAction, setPendingAction] = useState<CartAction>();
   const [needsStatus, setNeedsStatus] = useState<"ready" | "loading" | "error">("ready");
+  const dirtyRef = useRef(false);
   const [walletNotReady, setWalletNotReady] = useState(false);
   const [suggestionOpenedFor, setSuggestionOpenedFor] = useState<string>();
   const busy = useRef(false);
@@ -89,24 +92,45 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
 
   useEffect(() => {
     let active = true;
+    const key = detailCacheKey(campaignId);
+    const entry = readClientCache<Data>(key);
+    const cached = reload === 0 ? entry : undefined;
     setError("");
     setNeedsStatus("ready");
     setWalletNotReady(false);
-    setData(undefined);
+
+    if (cached) {
+      setData(cached.value);
+      setDraft(toDraft(cached.value.cart));
+      dirtyRef.current = false;
+      if (cached.isFresh) {
+        return () => { active = false; needsRequest.current++; };
+      }
+    } else if (!entry) {
+      setData(undefined);
+      setDraft(toDraft(null));
+      dirtyRef.current = false;
+    }
+
     void loadCampaign(campaignId).then(value => {
       if (!active) return;
+      writeClientCache(key, value);
       setData(value);
-      setDraft(toDraft(value.cart));
+      if (!dirtyRef.current || reload > 0) {
+        setDraft(toDraft(value.cart));
+        dirtyRef.current = false;
+      }
     }).catch((error: unknown) => {
       if (!active) return;
       if (error instanceof ApiError && error.status === 401) router.replace("/login");
-      else setError(error instanceof Error ? error.message : "Không tải được đợt gom.");
+      else if (!cached) setError(error instanceof Error ? error.message : "Không tải được đợt gom.");
     });
     return () => { active = false; needsRequest.current++; };
   }, [campaignId, reload, router]);
 
   function edit(update: (previous: Draft) => Draft) {
     setDraft(update);
+    dirtyRef.current = true;
     setNotice("");
     setWalletNotReady(false);
     retry.current = undefined;
@@ -126,8 +150,13 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
       const result = await run(key);
       retry.current = undefined;
       setNotice(success);
-      if (apply) apply(result);
-      else setReload(value => value + 1);
+      if (apply) {
+        apply(result);
+      } else {
+        invalidateClientCache();
+        router.refresh();
+        setReload(value => value + 1);
+      }
     } catch (error) {
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
         retry.current = undefined;
@@ -146,7 +175,12 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     try {
       const needs = await getNeeds(campaignId);
       if (request !== needsRequest.current) return;
-      setData(current => current && { ...current, needs });
+      setData(current => {
+        if (!current) return current;
+        const next = { ...current, needs };
+        writeClientCache(detailCacheKey(campaignId), next);
+        return next;
+      });
       setNeedsStatus("ready");
     } catch (failure) {
       if (request !== needsRequest.current) return;
@@ -169,9 +203,21 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     && !isPast(campaign.needBy) && needs.items.length > 0;
 
   function applyCart(savedCart: Cart) {
-    setData(previous => previous && { ...previous, cart: savedCart });
+    setData(previous => {
+      if (!previous) return previous;
+      const next = { ...previous, cart: savedCart };
+      writeClientCache(detailCacheKey(campaignId), next);
+      return next;
+    });
     setDraft(toDraft(savedCart));
-    if (cart?.state === "CONFIRMED" || savedCart.state === "CONFIRMED") void refreshNeeds();
+    dirtyRef.current = false;
+    if (cart?.state === "CONFIRMED" || savedCart.state === "CONFIRMED") {
+      invalidateClientCache("campaigns:");
+      invalidateClientCache("feed:");
+      invalidateClientCache("orders:");
+      router.refresh();
+      void refreshNeeds();
+    }
     if (savedCart.state === "CONFIRMED") return;
     if (savedCart.confirmationEligibilityUnavailable) {
       setNotice("Đã lưu giỏ nháp. Fuji chưa phản hồi. Bạn có thể bấm Lưu giỏ để thử lại.");

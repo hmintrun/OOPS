@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, Card, CardTitle, IconTile } from "@/components/ui";
+import { clearClientCache } from "@/lib/client-cache";
 import { createBrowserClient } from "@supabase/ssr";
 
 /** Màn xác nhận đăng xuất: Supabase signOut rồi về /login. */
@@ -23,6 +24,8 @@ export function SignOutSection() {
         const { error } = await supabase.auth.signOut();
         if (error) throw error;
       }
+      clearClientCache();
+      router.refresh();
       router.replace("/login");
     } catch {
       setSigningOut(false);

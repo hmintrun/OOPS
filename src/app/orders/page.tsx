@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
 import { contractList, type Contract } from "@/contracts/orders";
 import { ApiError, apiFetch } from "@/lib/api-client";
+import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { dateTime, useTrade, vnd } from "../trade/trade-client";
 import { TradeStatus } from "../trade/TradeStatus";
 import { orderStates } from "./order-labels";
@@ -19,7 +20,21 @@ import { readGroupDemandOrders, type GroupDemandOrder } from "./group-demands";
 const pageSize = 12;
 
 type OrderPageData = { items: Contract[]; nextCursor?: string };
+type FirstOrderPageData = OrderPageData & { groupDemands: GroupDemandOrder[]; demandError: string };
+type OrderTabState = { activeTab: string; page: number };
+type LoadedOrderPages = { first: FirstOrderPageData; data: OrderPageData };
 type OrderEntry = { kind: "contract"; order: Contract } | { kind: "demand"; demand: GroupDemandOrder };
+
+function mergeOrderPages(first: OrderPageData, loaded: OrderPageData): OrderPageData {
+  if (!first.nextCursor) return first;
+  const seen = new Set(first.items.map(item => item.contractId));
+  const extra = loaded.items.filter(item => !seen.has(item.contractId));
+  if (!extra.length) return first;
+  return {
+    items: [...first.items, ...extra],
+    nextCursor: loaded.nextCursor,
+  };
+}
 
 function readOrders(role: string, cursor?: string) {
   const query = new URLSearchParams({ limit: String(pageSize) });
@@ -29,7 +44,7 @@ function readOrders(role: string, cursor?: string) {
 }
 
 export default function OrdersPage() {
-  const [role, setRole] = useState("");
+  const [role, setRole] = useState(() => readClientCache<string>("orders:role")?.value ?? "");
   return <AppShell title="Đơn hàng" subtitle="Theo dõi đơn, bàn giao và thanh toán." illustration="parcel" bare
     pageActions={(
       <nav aria-label="Tiện ích đơn hàng" className="orders-shortcuts">
@@ -48,7 +63,14 @@ export default function OrdersPage() {
       <OrdersNotificationBar />
       <label className="orders-role-filter">
         <span className="text-label">Vai trò</span>
-        <select value={role} onChange={event => setRole(event.target.value)}>
+        <select
+          value={role}
+          onChange={event => {
+            const nextRole = event.target.value;
+            writeClientCache("orders:role", nextRole);
+            setRole(nextRole);
+          }}
+        >
           <option value="">Tất cả vai trò</option>
           <option value="buyer">Đơn mua</option>
           <option value="seller">Đơn bán</option>
@@ -61,7 +83,8 @@ export default function OrdersPage() {
 
 function OrderResults({ role }: { role: string }) {
   const router = useRouter();
-  const load = useCallback(async () => {
+  const isDemo = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
+  const load = useCallback(async (): Promise<FirstOrderPageData> => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1") {
       const now = Date.now();
       const iso = (hoursFromNow: number) => new Date(now + hoursFromNow * 3600_000).toISOString();
@@ -182,15 +205,34 @@ function OrderResults({ role }: { role: string }) {
     ]);
     return { ...contracts, groupDemands: groupDemands.items, demandError: groupDemands.error };
   }, [role]);
-  const trade = useTrade(load);
-  const [activeTab, setActiveTab] = useState(orderTabs[0].key);
-  const [page, setPage] = useState(0);
-  const [loadedPages, setLoadedPages] = useState<{ first: OrderPageData; data: OrderPageData }>();
+  const trade = useTrade(load, isDemo ? `orders:demo:${role}` : `orders:first:${role}`);
+  const tabCacheKey = `orders:tab:${role}`;
+  const pagesCacheKey = `orders:pages:${role}`;
+  const [{ activeTab, page }, setTabState] = useState<OrderTabState>(() => {
+    const saved = readClientCache<OrderTabState>(tabCacheKey)?.value;
+    if (saved && orderTabs.some(tab => tab.key === saved.activeTab) && Number.isInteger(saved.page) && saved.page >= 0) {
+      return saved;
+    }
+    return { activeTab: orderTabs[0].key, page: 0 };
+  });
+  const [loadedPages, setLoadedPages] = useState<LoadedOrderPages | undefined>(() =>
+    isDemo ? undefined : readClientCache<LoadedOrderPages>(pagesCacheKey)?.value,
+  );
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<{ tab: string; page: number; message: string }>();
   const fetchingMore = useRef(false);
+  const updateTabState = useCallback((next: OrderTabState) => {
+    setTabState(next);
+    writeClientCache(tabCacheKey, next);
+  }, [tabCacheKey]);
   const first = trade.data;
-  const results = loadedPages?.first === first ? loadedPages?.data : first;
+  const results = !first
+    ? undefined
+    : !loadedPages
+      ? first
+      : loadedPages.first === first
+        ? loadedPages.data
+        : mergeOrderPages(first, loadedPages.data);
   const orders = results?.items ?? [];
   const groupDemands = first?.groupDemands ?? [];
   const tabs = orderTabs.map(tab => {
@@ -204,21 +246,74 @@ function OrderResults({ role }: { role: string }) {
     return { ...tab, orders: entries };
   });
   const filteredOrders = tabs.find(tab => tab.key === activeTab)?.orders ?? [];
-  const displayedOrders = filteredOrders.slice(page * pageSize, (page + 1) * pageSize);
+  const maxPage = results && !results.nextCursor ? Math.max(0, Math.ceil(filteredOrders.length / pageSize) - 1) : page;
+  const currentPage = Math.min(page, maxPage);
+  const displayedOrders = filteredOrders.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+
+  useEffect(() => {
+    if (currentPage !== page) updateTabState({ activeTab, page: currentPage });
+  }, [currentPage, page, activeTab, updateTabState]);
+
+  useEffect(() => {
+    if (!first || !loadedPages || loadedPages.first === first || fetchingMore.current) return;
+    if (!first.nextCursor) {
+      const nextLoaded = { first, data: first };
+      setLoadedPages(nextLoaded);
+      writeClientCache(pagesCacheKey, nextLoaded);
+      return;
+    }
+    let cancelled = false;
+    const targetCount = loadedPages.data.items.length;
+    const tabConfig = orderTabs.find(item => item.key === activeTab);
+    const targetMatches = (currentPage + 1) * pageSize;
+    async function syncExtraPages() {
+      const items = [...first!.items];
+      const seenIds = new Set(items.map(item => item.contractId));
+      const seenCursors = new Set<string>();
+      let cursor = first!.nextCursor;
+      let matches = tabConfig?.states.length
+        ? items.filter(item => tabConfig.states.includes(item.state)).length
+        : items.length;
+      try {
+        while (cursor && (items.length < targetCount || matches < targetMatches)) {
+          if (cancelled || fetchingMore.current || seenCursors.has(cursor)) return;
+          seenCursors.add(cursor);
+          const next = await readOrders(role, cursor);
+          if (cancelled || fetchingMore.current) return;
+          for (const item of next.items) {
+            if (seenIds.has(item.contractId)) continue;
+            seenIds.add(item.contractId);
+            items.push(item);
+            if (!tabConfig?.states.length || tabConfig.states.includes(item.state)) matches++;
+          }
+          cursor = next.nextCursor;
+        }
+        if (cancelled || fetchingMore.current) return;
+        const nextLoaded = { first: first!, data: { items, nextCursor: cursor } };
+        setLoadedPages(nextLoaded);
+        writeClientCache(pagesCacheKey, nextLoaded);
+      } catch (error) {
+        if (!cancelled && error instanceof ApiError && error.status === 401) {
+          router.replace("/login?next=%2Forders");
+        }
+      }
+    }
+    void syncExtraPages();
+    return () => { cancelled = true; };
+  }, [first, loadedPages, activeTab, currentPage, role, pagesCacheKey, router]);
 
   async function changePage(tabKey: string, nextPage: number) {
     if (!first || !results || fetchingMore.current) return;
     setMoreError(undefined);
-    setActiveTab(tabKey);
-    if (tabKey !== activeTab) setPage(0);
+    if (tabKey !== activeTab) updateTabState({ activeTab: tabKey, page: 0 });
     const tab = tabs.find(item => item.key === tabKey);
     if (!tab) return;
     if (tabKey === "negotiating") {
-      setPage(nextPage);
+      updateTabState({ activeTab: tabKey, page: nextPage });
       return;
     }
     if (tab.orders.length >= (nextPage + 1) * pageSize || !results.nextCursor) {
-      setPage(nextPage);
+      updateTabState({ activeTab: tabKey, page: nextPage });
       return;
     }
 
@@ -241,9 +336,11 @@ function OrderResults({ role }: { role: string }) {
           if (!tab.states.length || tab.states.includes(item.state)) matches++;
         }
         cursor = next.nextCursor;
-        setLoadedPages({ first, data: { items: [...items], nextCursor: cursor } });
+        const nextLoaded = { first, data: { items: [...items], nextCursor: cursor } };
+        setLoadedPages(nextLoaded);
+        writeClientCache(pagesCacheKey, nextLoaded);
       }
-      if (matches > nextPage * pageSize) setPage(nextPage);
+      if (matches > nextPage * pageSize) updateTabState({ activeTab: tabKey, page: nextPage });
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) router.replace("/login?next=%2Forders");
       setMoreError({ tab: tabKey, page: nextPage, message: error instanceof Error ? error.message : "Không tải được danh sách đơn." });
@@ -266,7 +363,7 @@ function OrderResults({ role }: { role: string }) {
               disabled={loadingMore}
               aria-pressed={tab.key === activeTab} onClick={event => {
                 event.currentTarget.scrollIntoView({ block: "nearest", inline: "center" });
-                if (tab.key !== activeTab || page > 0) void changePage(tab.key, 0);
+                if (tab.key !== activeTab || currentPage > 0) void changePage(tab.key, 0);
               }}>
               {tab.label}{results?.nextCursor && tab.key !== "negotiating" ? null : <span>{tab.orders.length}</span>}
             </Button>
@@ -388,9 +485,9 @@ function OrderResults({ role }: { role: string }) {
           <Button variant="secondary" full={false} onClick={() => void changePage(moreError.tab, moreError.page)}>Thử lại</Button>
         </Card>}
         <div className="ui-actions">
-          {page > 0 && <Button variant="secondary" full={false} disabled={loadingMore} onClick={() => setPage(page - 1)}>Trang trước</Button>}
-          {(((activeTab !== "negotiating") && results?.nextCursor) || (page + 1) * pageSize < filteredOrders.length) &&
-            <Button variant="secondary" full={false} loading={loadingMore} onClick={() => void changePage(activeTab, page + 1)}>Trang sau</Button>}
+          {currentPage > 0 && <Button variant="secondary" full={false} disabled={loadingMore} onClick={() => updateTabState({ activeTab, page: currentPage - 1 })}>Trang trước</Button>}
+          {(((activeTab !== "negotiating") && results?.nextCursor) || (currentPage + 1) * pageSize < filteredOrders.length) &&
+            <Button variant="secondary" full={false} loading={loadingMore} onClick={() => void changePage(activeTab, currentPage + 1)}>Trang sau</Button>}
         </div>
       </>}
   </>;

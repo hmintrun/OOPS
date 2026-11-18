@@ -96,7 +96,8 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
       throw error;
     }
   }, [path, id, buyerOnly, demand?.missing]);
-  const trade = useTrade(load);
+  const isDemo = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
+  const trade = useTrade(load, isDemo ? `offers:demo:${id}` : `offers:${id}:${buyerOnly ? "buyer" : "all"}`);
   const [formError, setFormError] = useState("");
   const [isGift, setIsGift] = useState(initialGift);
   const [startTime, setStartTime] = useState("");

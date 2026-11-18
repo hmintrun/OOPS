@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
+import { invalidateClientCache } from "@/lib/client-cache";
 import { parseGroupInviteEntry } from "@/lib/group-invite";
 
 /** Kết quả thành công của POST /api/v1/invites/accept (contract `membership`). */
@@ -144,6 +145,8 @@ function AcceptInvite({ token }: { token: string }) {
           return;
         }
         startedRef.current = true;
+        invalidateClientCache();
+        router.refresh();
         setState({ kind: "success", membership });
         return;
       }

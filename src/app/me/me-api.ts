@@ -4,6 +4,7 @@
  * (api-client dùng chung do worker khác sở hữu, không import vào đây).
  */
 import type { Me, PatchMeInput } from "@/contracts/foundation";
+import { clearClientCache, invalidateClientCache, writeClientCache } from "@/lib/client-cache";
 
 export type MeCallResult =
   | { ok: true; data: Me }
@@ -54,7 +55,17 @@ export async function callMe(
 
   const raw: unknown = await response.json().catch(() => undefined);
   if (response.ok) {
-    return { ok: true, data: raw as Me };
+    const data = raw as Me;
+    writeClientCache("me", data);
+    if (method === "PATCH") {
+      invalidateClientCache("campaigns:");
+      invalidateClientCache("campaign-detail:");
+      invalidateClientCache("orders:");
+    }
+    return { ok: true, data };
+  }
+  if (response.status === 401) {
+    clearClientCache();
   }
   return {
     ok: false,
