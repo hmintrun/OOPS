@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Button, Card, CardTitle } from "@/components/ui";
+import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
 import { createOfferInput, draft as draftSchema, offer, offers } from "@/contracts/negotiation";
 import type { DemandItem } from "@/contracts/foundation";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -47,12 +47,54 @@ export function OffersPanel({ id, standalone = false, demand, proposalId, onCrea
   const router = useRouter();
   const path = `/api/v1/needs/${encodeURIComponent(id)}/offers`;
   const load = useCallback(async () => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1") {
+      const startIso = new Date(Date.now() + 21 * 3600_000).toISOString();
+      const endIso = new Date(Date.now() + 36 * 3600_000).toISOString();
+      const voteIso = new Date(Date.now() + 3 * 3600_000).toISOString();
+      return {
+        items: [
+          {
+            proposalId: "20000000-0000-4000-8000-000000000001",
+            demandItemId: id,
+            state: "SUBMITTED" as const,
+            terms: {
+              qty: demand?.missing ?? 10,
+              unitPriceVnd: 0,
+              supportOffer: true,
+              handoffStart: startIso,
+              handoffBy: endIso,
+              handoffPrivate: "Sảnh B Chung cư Skyview, P.22, Bình Thạnh",
+            },
+            goodsVnd: 0,
+            depositVnd: 50_000,
+            voteDueAt: voteIso,
+            canOpenDraft: true,
+          },
+          {
+            proposalId: "20000000-0000-4000-8000-000000000002",
+            demandItemId: id,
+            state: "SELECTED" as const,
+            terms: {
+              qty: 8,
+              unitPriceVnd: 20_000,
+              supportOffer: false,
+              handoffStart: startIso,
+              handoffBy: endIso,
+              handoffPrivate: "Cổng bảo vệ Block A, Khu dân cư Thanh Đa",
+            },
+            goodsVnd: 160_000,
+            depositVnd: 50_000,
+            draftId: "30000000-0000-4000-8000-000000000001",
+          },
+        ],
+      };
+    }
     try { return await apiFetch(path, { schema: offers }); }
     catch (error) {
       if (id.startsWith("sample-") || (error instanceof ApiError && error.status === 404)) return { items: [] };
       throw error;
     }
-  }, [path, id]);
+  }, [path, id, demand?.missing]);
   const trade = useTrade(load);
   const [formError, setFormError] = useState("");
   const [isGift, setIsGift] = useState(initialGift);
@@ -492,36 +534,113 @@ export function OffersPanel({ id, standalone = false, demand, proposalId, onCrea
         <CardTitle as="h2">{proposalId ? "Theo dõi đề nghị" : "Đề nghị hiện có"}</CardTitle>
         {proposalId && displayedOffers.length === 0 && <p>Không tìm thấy đề nghị này trong tài khoản của bạn.</p>}
         {!proposalId && trade.data.items.length === 0 && <p>Chưa có đề nghị để xem.</p>}
-        {displayedOffers.map(item => <section key={item.proposalId} className="grid gap-2 rounded-input border border-line p-3">
-          <strong>{item.terms.qty} đơn vị · {vnd(item.terms.unitPriceVnd)} / đơn vị</strong>
-          <p>Tiền hàng tối đa {vnd(item.goodsVnd)} · Cọc cửa hàng {vnd(item.depositVnd)}</p>
-          {item.terms.supportOffer && <p>Giá hỗ trợ</p>}
-          {item.terms.handoffPrivate && <p>Địa điểm giao: {item.terms.handoffPrivate}</p>}
-          <p>Giao {dateTime(item.terms.handoffStart)} đến {dateTime(item.terms.handoffBy)}</p>
-          {item.voteDueAt && <>
-            <p>Hạn bỏ phiếu {dateTime(item.voteDueAt)}</p>
-            <VotePanel
-              proposalId={item.proposalId}
-              context={{ offer: item, unit: demand?.unit }}
-              offerState={item.state}
-              refreshSignal={`${item.state}:${item.voteDueAt}`}
-              onUpdated={() => void trade.refresh()}
-            />
-          </>}
-          {item.draftId ? <>
-            {item.state !== "SUBMITTED" && (
-              <p className="text-small text-navy-600">
-                {item.state === "SELECTED" ? "Đề nghị đã chốt đơn." : item.state === "REJECTED" ? "Đề nghị đã từ chối." : "Đề nghị đã hết hạn."}
+        {displayedOffers.map(item => {
+          const isFreeGift = item.terms.unitPriceVnd === 0;
+          const unitLabel = demand?.unit ?? "đơn vị";
+          const statusStyle = item.state === "SELECTED"
+            ? { bg: "var(--oops-green-100)", color: "var(--oops-green-700)", label: "Đã chốt đơn", icon: "check_circle" }
+            : item.state === "REJECTED"
+              ? { bg: "var(--oops-rose-tint)", color: "var(--oops-danger)", label: "Đã từ chối", icon: "cancel" }
+              : item.state === "EXPIRED"
+                ? { bg: "var(--oops-haze)", color: "var(--oops-navy-600)", label: "Đã hết hạn", icon: "timer_off" }
+                : { bg: "var(--oops-sky-tint)", color: "var(--oops-sky-ink)", label: "Đang mở thương lượng", icon: "hourglass_top" };
+
+          return <section key={item.proposalId} className="grid gap-3 rounded-card border border-line bg-surface p-4">
+            {/* Header gọn: Số lượng + Đơn giá bên trái, 1 badge trạng thái bên phải */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-line">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <strong className="text-title font-extrabold text-navy-900 tabular-nums">
+                  {item.terms.qty} {unitLabel}
+                </strong>
+                <span className="text-body font-extrabold text-green-700">
+                  {isFreeGift ? "· Miễn phí 0đ" : `· ${vnd(item.terms.unitPriceVnd)} / ${unitLabel}`}
+                </span>
+              </div>
+              <span
+                className="inline-flex items-center gap-1 rounded-pill px-3 py-1 text-small font-extrabold"
+                style={{ background: statusStyle.bg, color: statusStyle.color }}
+              >
+                <MaterialSymbol name={statusStyle.icon} size={15} />
+                {statusStyle.label}
+              </span>
+            </div>
+
+            {/* 1 khối thống nhất cho Tiền hàng & Cọc (nền trung tính dịu mắt, không chia ô nhiều màu) */}
+            <dl className="grid grid-cols-2 divide-x divide-line rounded-input border border-line" style={{ background: "var(--oops-haze)" }}>
+              <div className="p-3">
+                <dt className="text-small font-semibold text-navy-600">Tiền hàng tối đa</dt>
+                <dd className="mt-0.5 text-title font-extrabold text-navy-900 tabular-nums">{vnd(item.goodsVnd)}</dd>
+              </div>
+              <div className="p-3">
+                <dt className="text-small font-semibold text-navy-600">Cọc cam kết</dt>
+                <dd className="mt-0.5 text-title font-extrabold text-navy-900 tabular-nums">{vnd(item.depositVnd)}</dd>
+              </div>
+            </dl>
+
+            {/* 1 danh sách sạch trên nền trắng cho Địa điểm & Thời gian (chỉ icon có màu nhẹ làm điểm nhấn) */}
+            <div className="grid divide-y divide-line rounded-input border border-line bg-surface">
+              {item.terms.handoffPrivate && (
+                <div className="flex items-center gap-3 px-3 py-2.5">
+                  <span className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-rose-tint text-danger">
+                    <MaterialSymbol name="location_on" size={18} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-small text-navy-600">Địa điểm giao</div>
+                    <strong className="text-body font-bold text-navy-900 break-words">{item.terms.handoffPrivate}</strong>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <span className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-sky-tint text-navy-600">
+                  <MaterialSymbol name="local_shipping" size={18} />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-small text-navy-600">Khung giờ giao</div>
+                  <strong className="text-body font-bold text-navy-900">
+                    {dateTime(item.terms.handoffStart)} → {dateTime(item.terms.handoffBy)}
+                  </strong>
+                </div>
+              </div>
+
+              {item.voteDueAt && (
+                <div className="flex items-center gap-3 px-3 py-2.5">
+                  <span className="inline-flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-amber-tint" style={{ color: "var(--oops-amber-ink)" }}>
+                    <MaterialSymbol name="schedule" size={18} />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-small text-navy-600">Hạn bỏ phiếu</div>
+                    <strong className="text-body font-bold text-navy-900">{dateTime(item.voteDueAt)}</strong>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {item.voteDueAt && (
+              <VotePanel
+                proposalId={item.proposalId}
+                context={{ offer: item, unit: demand?.unit }}
+                offerState={item.state}
+                refreshSignal={`${item.state}:${item.voteDueAt}`}
+                onUpdated={() => void trade.refresh()}
+              />
+            )}
+
+            {item.draftId ? (
+              <Link className="ui-btn ui-btn--secondary" href={`/trade/drafts/${item.draftId}`}>Xem thương lượng</Link>
+            ) : item.canOpenDraft ? (
+              <Button variant="secondary" disabled={trade.busy} onClick={() => void trade.run(
+                `draft:${item.proposalId}`, key => apiFetch(`/api/v1/offers/${item.proposalId}/draft`, {
+                  method: "POST", body: {}, schema: draftSchema, idempotencyKey: key,
+                }), value => router.push(`/trade/drafts/${value.draftId}`),
+              )}>Mở bản thương lượng</Button>
+            ) : (
+              <p className="rounded-input bg-sky-tint px-3 py-2 text-small font-semibold text-navy-600">
+                {item.state === "SUBMITTED" ? "Đang chờ hộ có nhu cầu mở bản thương lượng." : "Đề nghị đã đóng."}
               </p>
             )}
-            <Link className="ui-btn ui-btn--secondary" href={`/trade/drafts/${item.draftId}`}>Xem thương lượng</Link>
-          </> :
-            item.canOpenDraft ? <Button variant="secondary" disabled={trade.busy} onClick={() => void trade.run(
-              `draft:${item.proposalId}`, key => apiFetch(`/api/v1/offers/${item.proposalId}/draft`, {
-                method: "POST", body: {}, schema: draftSchema, idempotencyKey: key,
-              }), value => router.push(`/trade/drafts/${value.draftId}`),
-            )}>Mở bản thương lượng</Button> : <p>{item.state === "SUBMITTED" ? "Đang chờ hộ có nhu cầu mở thương lượng." : "Đề nghị đã đóng."}</p>}
-        </section>)}
+          </section>;
+        })}
       </Card>}
     </div>}
   </div>;
