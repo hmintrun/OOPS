@@ -64,6 +64,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
 }
 
 function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated: () => void }) {
+  const router = useRouter();
   const [collectUntil, setCollectUntil] = useState(() => toLocalInputValue(defaultCollectUntil()));
   const [needBy, setNeedBy] = useState(() => toLocalInputValue(defaultNeedBy()));
   const [supportRequested, setSupportRequested] = useState(false);
@@ -90,12 +91,13 @@ function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated
 
     setSaving(true);
     try {
-      await createCampaign(groupId, {
+      const created = await createCampaign(groupId, {
         collectUntil: collectIso!,
         needBy: needByIso!,
         supportRequested,
       });
       onCreated();
+      router.push(`/campaigns/${created.campaignId}`);
     } catch (submitError) {
       setError(submitError instanceof ApiError ? submitError.message : "Không tạo được đợt gom. Vui lòng thử lại.");
     } finally {
@@ -106,7 +108,7 @@ function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated
   return (
     <Card>
       <CardTitle>Tạo đợt gom mới</CardTitle>
-      <div className="grid gap-[12px]">
+      <form className="grid gap-[12px]" onSubmit={event => { event.preventDefault(); void submit(); }}>
         <Field
           label="Gom nhu cầu đến"
           error={fieldErrors.collectUntil}
@@ -116,7 +118,14 @@ function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated
             type="datetime-local"
             className={INPUT_CLASS}
             value={collectUntil}
-            onChange={(event) => setCollectUntil(event.target.value)}
+            min={toLocalInputValue(new Date(Date.now() + 60_000))}
+            onChange={(event) => {
+              const value = event.target.value;
+              setCollectUntil(value);
+              if (value && (!needBy || needBy <= value)) {
+                setNeedBy(toLocalInputValue(new Date(new Date(value).getTime() + 60_000)));
+              }
+            }}
             disabled={saving}
           />
         </Field>
@@ -129,23 +138,24 @@ function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated
             type="datetime-local"
             className={INPUT_CLASS}
             value={needBy}
+            min={collectUntil ? toLocalInputValue(new Date(new Date(collectUntil).getTime() + 60_000)) : toLocalInputValue(new Date(Date.now() + 120_000))}
             onChange={(event) => setNeedBy(event.target.value)}
             disabled={saving}
           />
         </Field>
         <CheckboxField
-          label="Cần giá hỗ trợ"
-          hint="Đánh dấu đợt này cần nhóm hỗ trợ giá khi kêu gọi người bán."
+          label="Đợt gom cần hỗ trợ"
+          hint="Kêu gọi tặng hàng hoặc trợ giá. Đại diện cập nhật liên hệ nhận hàng ở trang Nhóm."
           checked={supportRequested}
           disabled={saving}
           onChange={setSupportRequested}
         />
         {error && <Banner tone="error">{error}</Banner>}
-        <Button onClick={submit} loading={saving}>
+        <div className="ui-sticky-actions"><Button type="submit" loading={saving}>
           <span className="ui-btn__icon material-symbols-rounded">add</span>
           Tạo đợt gom
-        </Button>
-      </div>
+        </Button></div>
+      </form>
     </Card>
   );
 }

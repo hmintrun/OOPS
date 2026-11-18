@@ -19,7 +19,9 @@
   font-weight: 700;
   line-height: 1.2;
   text-align: center;
-  white-space: nowrap;
+  white-space: normal;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
   flex-shrink: 0;
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, transform 100ms ease, box-shadow 120ms ease;
@@ -120,6 +122,36 @@
 }
 
 /* ---------- Card ---------- */
+.ui-quantity { display: grid; gap: 8px; min-inline-size: 0; }
+.ui-quantity__controls { display: grid; grid-template-columns: 48px minmax(0, 1fr) 48px; gap: 8px; }
+.ui-quantity__controls input {
+  width: 100%; min-width: 0; min-height: 48px; padding: 8px;
+  border: 1px solid var(--oops-line); border-radius: var(--oops-radius-input);
+  background: var(--oops-surface); color: var(--oops-navy-900); text-align: center; font-size: 1rem;
+}
+.ui-quantity button {
+  min-height: 44px; padding: 8px 16px; border-radius: var(--oops-radius-input);
+  border: 1px solid var(--oops-line); background: var(--oops-green-100); color: var(--oops-green-700); font-weight: 700;
+}
+.ui-quantity button:disabled { opacity: .5; cursor: not-allowed; }
+.ui-quantity button[aria-pressed="true"] { border-color: var(--oops-green-700); }
+.ui-quantity :is(input, button):focus-visible { outline: 2px solid var(--oops-green-700); outline-offset: 2px; }
+.ui-quantity__presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.ui-progress-capsule { display: grid; gap: 8px; border-radius: var(--oops-radius-input); padding: 12px; background: var(--oops-green-100); }
+.ui-progress-capsule__track { height: 8px; border-radius: 999px; overflow: hidden; background: var(--oops-surface); }
+.ui-progress-capsule__track > span { display: block; height: 100%; border-radius: inherit; background: var(--oops-jade); }
+.ui-sticky-actions {
+  position: sticky; bottom: 0; z-index: 2; display: grid; gap: 8px;
+  padding: 12px 0 max(12px, env(safe-area-inset-bottom));
+  background: var(--oops-surface); border-block-start: 1px solid var(--oops-line);
+}
+.ui-sticky-actions .ui-btn { width: 100%; max-inline-size: 100%; white-space: normal; }
+.ui-app-page .ui-card .vote-actions .ui-btn { width: 100%; max-inline-size: 100%; min-height: 56px; }
+@media (width >= 40rem) {
+  .ui-sticky-actions { position: static; justify-items: start; }
+  .ui-sticky-actions .ui-btn { width: fit-content; }
+}
+
 .ui-card {
   min-inline-size: 0;
   background: var(--oops-surface);

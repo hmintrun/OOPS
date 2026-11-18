@@ -1,6 +1,10 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { ReceivingContactDetails } from "@/components/ReceivingContactDetails";
+import { QuantityInput } from "@/components/ui/QuantityInput";
+import { ProgressCapsule } from "@/components/ui/ProgressCapsule";
+
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
@@ -12,6 +16,7 @@ import { isPast } from "@/app/campaigns/_shared/dates";
 import { TradeStatus } from "@/app/trade/TradeStatus";
 import { dateTime, localDateTime, useRoundRefresh, useTrade, vnd } from "@/app/trade/trade-client";
 import { orderStates, paymentKinds } from "../order-labels";
+import "../orders.css";
 
 const chargeLabels = { PENDING: "Chờ ghi nhận", RECEIVED: "Đã nhận", EXPIRED: "Hết hạn", REVIEW: "Cần đối soát" };
 const transferLabels = { PENDING: "Chờ ghi nhận", POSTED: "Đã ghi nhận", REVIEW: "Cần đối soát" };
@@ -35,6 +40,14 @@ export default function OrderPage() {
   const [fileRevision, setFileRevision] = useState(0);
   const [proofInputVersion, setProofInputVersion] = useState(0);
   const order = trade.data?.order;
+  useEffect(() => {
+    if (!order) return;
+    const target = document.getElementById(window.location.hash.slice(1));
+    if (target) {
+      target.scrollIntoView({ block: "start" });
+      target.focus({ preventScroll: true });
+    }
+  }, [order?.contractId]);
   const userId = trade.data?.userId;
   useRoundRefresh(order?.state === "AWAIT_COMMITMENTS" && !trade.loading && !trade.busy, trade.refresh);
   const seller = userId === order?.sellerId && Boolean(order);
@@ -65,7 +78,7 @@ export default function OrderPage() {
       <TradeStatus {...trade} retry={() => void trade.refresh()} />
       {formError && <p role="alert">{formError}</p>}
       {order && <div className="ui-card-grid">
-        <Card className="grid gap-3">
+        <Card id="commitments" tabIndex={-1} className="order-stage grid gap-3">
           <CardTitle as="h2">{orderStates[order.state]}</CardTitle>
           {order.reviewScope && <p>{order.reviewScope === "HANDOFF" ? "Đang đối soát bàn giao." : "Đang đối soát tiền cọc."}</p>}
           <dl className="grid gap-2">
@@ -90,9 +103,9 @@ export default function OrderPage() {
           )}
           {order.readyAt && <p>Cửa hàng đã báo sẵn sàng.</p>}
           {order.handoffPrivate && <p className="break-words">Điểm nhận · {order.handoffPrivate}</p>}
-          {order.repContact && <p className="break-words">Liên hệ đại diện · {order.repContact}</p>}
+          {order.repContact && <ReceivingContactDetails value={order.repContact} />}
         </Card>
-        <Card className="grid gap-3">
+        <Card id="settlement" tabIndex={-1} className="order-stage grid gap-3">
           <CardTitle as="h2">Thu và quyết toán</CardTitle>
           <p className="text-small">Các khoản thu trong bản MVP được ghi bằng SIM.</p>
           {order.charges.length === 0 && order.disbursements.length === 0 && <p>Chưa có khoản nào hiển thị cho bạn.</p>}
@@ -130,7 +143,7 @@ export default function OrderPage() {
             {payment.postedAt ? ` · ${dateTime(payment.postedAt)}` : ""}
           </p>)}
         </Card>
-        {((party && canHandoff) || evidenceIds.length > 0 || Boolean(currentReceipt)) && <Card className="grid gap-3">
+        {(canHandoff || evidenceIds.length > 0 || Boolean(currentReceipt)) && <Card id="handoff" tabIndex={-1} className="order-stage grid gap-3">
           <CardTitle as="h2">Bàn giao và biên nhận</CardTitle>
           {seller && order.state === "AWAIT_HANDOFF" && !order.readyAt && <Button disabled={trade.busy || trade.loading}
             onClick={() => {
@@ -163,7 +176,19 @@ export default function OrderPage() {
             {proof?.id === evidenceId && <a href={proof.url} target="_blank" rel="noreferrer" className="underline">Mở ảnh · Hết hạn {dateTime(proof.expiresAt)}</a>}
           </div>)}
           {currentReceipt && <>
-            <p>Biên nhận {currentReceipt.version} · Thực nhận {currentReceipt.lines.reduce((sum, line) => sum + line.receivedQty, 0)} đơn vị</p>
+            <ProgressCapsule value={currentReceipt.lines.reduce((sum, line) => sum + line.receivedQty, 0)}
+              total={order.allocations.reduce((sum, line) => sum + line.qty, 0)}
+              label={currentReceipt.state === "APPROVED" ? "Đã nhận theo biên nhận" : "Thực nhận chờ duyệt"} />
+            <p className="text-small">Biên nhận {currentReceipt.version}</p>
+            <ul className="grid gap-2">
+              {order.allocations.map((part, index) => {
+                const received = currentReceipt.lines.find(line => line.allocationId === part.allocationId)?.receivedQty ?? 0;
+                return <li key={part.allocationId} className="flex flex-wrap justify-between gap-2 rounded-input bg-sky-tint p-3 text-small">
+                  <strong>{party ? `Phần hộ ${index + 1}` : "Phần của bạn"}</strong>
+                  <span>{currentReceipt.state === "APPROVED" ? "Đã nhận" : "Chờ duyệt"} {received}/{part.qty} đơn vị</span>
+                </li>;
+              })}
+            </ul>
             <p>{currentReceipt.approvals.length}/2 bên đã duyệt · Giao lúc {dateTime(currentReceipt.handedAt)}</p>
             {party && canHandoff && currentReceipt.state === "DRAFT" &&
               !currentReceipt.approvals.some(entry => entry.role === (seller ? "SELLER" : "REP")) &&
@@ -196,12 +221,13 @@ export default function OrderPage() {
                 method: "POST", body, schema: receipt, idempotencyKey: key,
               }));
             }}>
-              <label className="grid gap-1">Giờ bàn giao thực tế<input className={INPUT_CLASS} name="handedAt" type="datetime-local" max={localDateTime(new Date())} required /></label>
-              {order.allocations.map((part, index) => <label key={part.allocationId} className="grid gap-1">Phần {index + 1} · nhận tối đa {part.qty}
-                <input className={INPUT_CLASS} name={part.allocationId} type="number" min="0" max={part.qty} required defaultValue={currentReceipt?.lines.find(line => line.allocationId === part.allocationId)?.receivedQty ?? part.qty} />
-              </label>)}
+              <label className="grid gap-1">Giờ bàn giao thực tế<input className={INPUT_CLASS} name="handedAt" type="datetime-local"
+                defaultValue={localDateTime(new Date())} max={localDateTime(new Date())} disabled={trade.busy} required /></label>
+              {order.allocations.map((part, index) => <QuantityInput key={part.allocationId}
+                label={`Phần ${index + 1} · nhận tối đa ${part.qty}`} name={part.allocationId} max={part.qty} showAll
+                disabled={trade.busy} defaultValue={currentReceipt?.lines.find(line => line.allocationId === part.allocationId)?.receivedQty ?? part.qty} />)}
               {evidenceIds.map((evidenceId, index) => <label key={evidenceId} className="flex gap-2"><input type="checkbox" name="proof" value={evidenceId} defaultChecked /> Ảnh {index + 1}</label>)}
-              <Button type="submit" disabled={trade.busy}>Gửi biên nhận</Button>
+              <div className="ui-sticky-actions"><Button type="submit" loading={trade.busy}>Gửi biên nhận</Button></div>
             </form>
           </details>}
           {party && canHandoff && <details>
