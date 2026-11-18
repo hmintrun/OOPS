@@ -17,7 +17,7 @@ export const pageQuery = {
 export const emptyInput = z.strictObject({});
 export const receivedLine = z.strictObject({ allocationId: uuid, receivedQty: qty });
 export const receiptInput = z.strictObject({
-  handedAt: isoDateTime,
+  handedAt: isoDateTime.optional(),
   lines: z.array(receivedLine).min(1).refine(lines => new Set(lines.map(line => line.allocationId)).size === lines.length),
   evidenceIds: z.array(uuid).refine(ids => new Set(ids).size === ids.length),
 });

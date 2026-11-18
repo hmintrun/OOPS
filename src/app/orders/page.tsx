@@ -5,11 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
+import { sentOfferList, type SentOffer } from "@/contracts/negotiation";
 import { contractList, type Contract } from "@/contracts/orders";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { dateTime, useTrade, vnd } from "../trade/trade-client";
 import { TradeStatus } from "../trade/TradeStatus";
+import { offerProgressHref } from "../trade/offer-links";
 import { orderStates } from "./order-labels";
 import { orderProgress, orderStageDetail, orderTabs } from "./order-progress";
 import { readReceivingContact } from "@/lib/receiving-contact";
@@ -20,10 +22,22 @@ import { readGroupDemandOrders, type GroupDemandOrder } from "./group-demands";
 const pageSize = 12;
 
 type OrderPageData = { items: Contract[]; nextCursor?: string };
-type FirstOrderPageData = OrderPageData & { groupDemands: GroupDemandOrder[]; demandError: string };
+type FirstOrderPageData = OrderPageData & {
+  groupDemands: GroupDemandOrder[];
+  demandError: string;
+  sentOffers: SentOffer[];
+  offerError: string;
+};
 type OrderTabState = { activeTab: string; page: number };
 type LoadedOrderPages = { first: FirstOrderPageData; data: OrderPageData };
-type OrderEntry = { kind: "contract"; order: Contract } | { kind: "demand"; demand: GroupDemandOrder };
+type OrderEntry = { kind: "contract"; order: Contract } | { kind: "demand"; demand: GroupDemandOrder } | { kind: "offer"; offer: SentOffer };
+
+const sentOfferLabels: Record<SentOffer["state"], string> = {
+  SUBMITTED: "Đã gửi đề nghị",
+  SELECTED: "Đã chốt đơn",
+  REJECTED: "Đã từ chối",
+  EXPIRED: "Đã hết hạn",
+};
 
 function mergeOrderPages(first: OrderPageData, loaded: OrderPageData): OrderPageData {
   if (!first.nextCursor) return first;
@@ -41,6 +55,34 @@ function readOrders(role: string, cursor?: string) {
   if (role) query.set("role", role);
   if (cursor) query.set("cursor", cursor);
   return apiFetch(`/api/v1/contracts?${query}`, { schema: contractList });
+}
+
+async function readSentOffers() {
+  const items: SentOffer[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const url = cursor ? `/api/v1/offers?${new URLSearchParams({ cursor })}` : "/api/v1/offers";
+    const page = await apiFetch(url, { schema: sentOfferList });
+    items.push(...page.items);
+    cursor = page.nextCursor;
+    if (cursor && seenCursors.has(cursor)) throw new Error("Không tải được trang đề nghị tiếp theo.");
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor);
+  return items;
+}
+
+function SentOfferCard({ offer }: { offer: SentOffer }) {
+  const status = sentOfferLabels[offer.state];
+  return <Card className="order-card" data-stage={offer.state === "SUBMITTED" ? "amber" : "rose"}>
+    <span className="order-card__status"><MaterialSymbol name="handshake" size={16} />{status}</span>
+    <CardTitle as="h2" className="ui-card__title--flush">{offer.itemName}</CardTitle>
+    <p className="font-semibold">{offer.terms.qty} {offer.unit} · {offer.terms.unitPriceVnd === 0 ? "Tặng miễn phí" : `${vnd(offer.terms.unitPriceVnd)}/${offer.unit}`}</p>
+    <p className="text-small">Hạn giao đề xuất · {dateTime(offer.terms.handoffBy)}</p>
+    <Link prefetch={false} href={offerProgressHref(offer)} className="ui-btn ui-btn--primary order-card__cta">
+      Theo dõi đề nghị
+    </Link>
+  </Card>;
 }
 
 export default function OrdersPage() {
@@ -192,9 +234,9 @@ function OrderResults({ role }: { role: string }) {
           receivingName: "Cô Mai (Đại diện tầng 5)",
         },
       ];
-      return { items: sampleContracts, groupDemands: sampleGroupDemands, demandError: "" };
+      return { items: sampleContracts, groupDemands: sampleGroupDemands, demandError: "", sentOffers: [], offerError: "" };
     }
-    const [contracts, groupDemands] = await Promise.all([
+    const [contracts, groupDemands, sentOffers] = await Promise.all([
       readOrders(role),
       role === "seller" ? Promise.resolve({ items: [] as GroupDemandOrder[], error: "" }) : readGroupDemandOrders()
         .then(items => ({ items, error: "" }))
@@ -202,8 +244,17 @@ function OrderResults({ role }: { role: string }) {
           if (error instanceof ApiError && error.status === 401) throw error;
           return { items: [] as GroupDemandOrder[], error: "Chưa tải được nhu cầu của nhóm. Hãy cập nhật để thử lại." };
         }),
+      role === "buyer" ? Promise.resolve({ items: [] as SentOffer[], error: "" }) : readSentOffers()
+        .then(items => ({ items, error: "" }))
+        .catch(error => {
+          if (error instanceof ApiError && error.status === 401) throw error;
+          return { items: [] as SentOffer[], error: "Chưa tải được đề nghị đã gửi. Hãy cập nhật để thử lại." };
+        }),
     ]);
-    return { ...contracts, groupDemands: groupDemands.items, demandError: groupDemands.error };
+    return {
+      ...contracts, groupDemands: groupDemands.items, demandError: groupDemands.error,
+      sentOffers: sentOffers.items, offerError: sentOffers.error,
+    };
   }, [role]);
   const trade = useTrade(load, isDemo ? `orders:demo:${role}` : `orders:first:${role}`);
   const tabCacheKey = `orders:tab:${role}`;
@@ -235,11 +286,15 @@ function OrderResults({ role }: { role: string }) {
         : mergeOrderPages(first, loadedPages.data);
   const orders = results?.items ?? [];
   const groupDemands = first?.groupDemands ?? [];
+  const sentOffers = first?.sentOffers ?? [];
   const tabs = orderTabs.map(tab => {
     const needs = tab.key === "all" || tab.key === "negotiating" ? groupDemands : [];
+    const proposals = tab.key === "all" ? sentOffers : tab.key === "negotiating" ?
+      sentOffers.filter(offer => offer.state === "SUBMITTED") : [];
     const selected = tab.key === "negotiating" ? [] :
       tab.states.length ? orders.filter(order => tab.states.includes(order.state)) : orders;
     const entries: OrderEntry[] = [
+      ...proposals.map(offer => ({ kind: "offer" as const, offer })),
       ...needs.map(demand => ({ kind: "demand" as const, demand })),
       ...selected.map(order => ({ kind: "contract" as const, order })),
     ];
@@ -354,6 +409,7 @@ function OrderResults({ role }: { role: string }) {
       <TradeStatus {...trade} retry={() => void trade.refresh()} />
       {first && <>
         {first.demandError && <p role="alert" className="rounded-input bg-amber-tint p-3 text-small">{first.demandError}</p>}
+        {first.offerError && <p role="alert" className="rounded-input bg-amber-tint p-3 text-small">{first.offerError}</p>}
         <Button variant="secondary" full={false} disabled={trade.loading || trade.busy} onClick={() => void trade.refresh()}>
           Cập nhật đơn hàng
         </Button>
@@ -369,10 +425,11 @@ function OrderResults({ role }: { role: string }) {
             </Button>
           ))}
         </div>
-        {displayedOrders.length === 0 && (!results?.nextCursor || activeTab === "negotiating") && !first.demandError &&
+        {displayedOrders.length === 0 && (!results?.nextCursor || activeTab === "negotiating") && !first.demandError && !first.offerError &&
           <Card className="ui-status-card"><p>Chưa có đơn hàng ở mục này.</p></Card>}
         {displayedOrders.length > 0 && <div className="ui-card-grid">
           {displayedOrders.map(entry => {
+            if (entry.kind === "offer") return <SentOfferCard key={entry.offer.proposalId} offer={entry.offer} />;
             if (entry.kind === "demand") return <Card key={entry.demand.id} className="order-card" data-stage="amber">
               <span className="order-card__status">
                 <MaterialSymbol name={entry.demand.state === "waiting" ? "hourglass_top" : "handshake"} size={16} />

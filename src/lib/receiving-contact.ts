@@ -1,10 +1,9 @@
 import { z } from "zod";
 
-export const PHONE_MAX_LENGTH = 32;
+export const PHONE_PATTERN = "[0-9]{10}";
+export const PHONE_FORMAT_MESSAGE = "Số điện thoại phải có đúng 10 chữ số.";
 export const phoneInput = z.string().trim().min(1, "Vui lòng nhập số điện thoại.")
-  .max(PHONE_MAX_LENGTH, "Số điện thoại quá dài.")
-  .refine(value => /^\+?[0-9 ().-]+$/.test(value) && /^\d{7,15}$/.test(value.replace(/\D/g, "")),
-    "Số điện thoại không hợp lệ.");
+  .regex(new RegExp(`^${PHONE_PATTERN}$`), PHONE_FORMAT_MESSAGE);
 
 export type ReceivingContact = {
   name: string;
@@ -14,12 +13,15 @@ export type ReceivingContact = {
 };
 
 const labels = { name: "Người nhận", phone: "SĐT", address: "Điểm nhận" } as const;
+const legacyPhonePattern = /^\+?[0-9 ().-]+$/;
 
 /** Keep older free-text contacts editable without discarding their contents. */
 export function readReceivingContact(value = ""): ReceivingContact {
   const contact: ReceivingContact = { name: "", phone: "", address: "", notes: "" };
-  const phone = phoneInput.safeParse(value);
-  if (phone.success) return { ...contact, phone: phone.data };
+  const phone = value.trim();
+  if (phone.length <= 32 && legacyPhonePattern.test(phone) && /^\d{7,15}$/.test(phone.replace(/\D/g, ""))) {
+    return { ...contact, phone };
+  }
 
   const notes: string[] = [];
   for (const line of value.split("\n")) {
@@ -34,6 +36,12 @@ export function readReceivingContact(value = ""): ReceivingContact {
   }
   contact.notes = notes.join("\n").trim();
   return contact;
+}
+
+export function receivingContactPhone(value: string): string {
+  const text = value.trim();
+  if (legacyPhonePattern.test(text) && /[0-9]/.test(text)) return text;
+  return readReceivingContact(value).phone.trim();
 }
 
 export function writeReceivingContact(contact: ReceivingContact): string {

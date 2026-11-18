@@ -7,7 +7,7 @@ import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/
 import { DISPLAY_NAME_MAX_LENGTH } from "@/contracts/foundation";
 import { resolveLoginNext } from "@/lib/login-next";
 import { accountErrorMessage, confirmationUrl, MIN_SIGNUP_PASSWORD_LENGTH, registrationInput } from "@/lib/account-auth";
-import { PHONE_MAX_LENGTH } from "@/lib/receiving-contact";
+import { PHONE_FORMAT_MESSAGE, PHONE_PATTERN } from "@/lib/receiving-contact";
 import { LocationFields } from "@/components/location-fields";
 import { HCM_PROVINCE_CODE } from "@/lib/locations";
 import { signUp } from "./signup";
@@ -242,11 +242,11 @@ export function LoginForm() {
           </fieldset>
         )}
         {register && <label className="grid gap-2">
-          <span className="text-label">Số điện thoại</span>
+          <span className="text-label">Số điện thoại (10 chữ số)</span>
           <span className={FIELD_ROW}>
             <IconTile icon="call" tone="sky" size="sm" />
-            <input className={FIELD_INPUT} type="tel" name="phone" autoComplete="tel"
-              maxLength={PHONE_MAX_LENGTH} required value={phone} disabled={pending}
+            <input className={FIELD_INPUT} type="tel" name="phone" autoComplete="tel" inputMode="numeric"
+              pattern={PHONE_PATTERN} title={PHONE_FORMAT_MESSAGE} required value={phone} disabled={pending}
               onChange={event => setPhone(event.target.value)} />
           </span>
         </label>}

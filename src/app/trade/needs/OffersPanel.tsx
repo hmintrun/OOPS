@@ -15,6 +15,7 @@ import { VotePanel } from "../VotePanel";
 import { QuantityInput } from "@/components/ui/QuantityInput";
 import { offerAmounts } from "@/lib/offer-preview";
 import { offerDeliveryWindow } from "@/lib/offer-schedule";
+import { offerProgressHref } from "../offer-links";
 
 function OfferModeArtwork({ gift }: { gift: boolean }) {
   if (gift) {
@@ -39,7 +40,7 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
   id: string;
   standalone?: boolean;
   buyerOnly?: boolean;
-  demand?: Pick<DemandItem, "missing" | "needBy" | "unit">;
+  demand?: Pick<DemandItem, "missing" | "offerable" | "needBy" | "unit">;
   proposalId?: string;
   onCreated?: () => void;
   initialGift?: boolean;
@@ -104,7 +105,7 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
   const [endTime, setEndTime] = useState("");
   const [showCustomTime, setShowCustomTime] = useState(false);
   const [timePreset, setTimePreset] = useState<"earliest" | "midpoint" | "latest" | "custom">("earliest");
-  const [quantity, setQuantity] = useState(String(demand?.missing ?? 1));
+  const [quantity, setQuantity] = useState(String(Math.max(1, demand?.offerable ?? 1)));
   const [price, setPrice] = useState("20000");
   const [now, setNow] = useState(() => Date.now());
   const effectiveLeadHours = leadHours && leadHours > 0 ? leadHours : 20;
@@ -269,9 +270,7 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
             method: "POST", body: parsed.data, schema: offer, idempotencyKey: key,
           }), created => {
             onCreated?.();
-            router.push(created.draftId
-              ? `/trade/drafts/${encodeURIComponent(created.draftId)}?proposal=${encodeURIComponent(created.proposalId)}&need=${encodeURIComponent(id)}&created=1`
-              : `/trade/needs/${encodeURIComponent(id)}?proposal=${encodeURIComponent(created.proposalId)}`);
+            router.push(offerProgressHref(created, true));
           });
         }}>
           {/* Cột 1: Số lượng */}
@@ -282,9 +281,12 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
               value={quantity} onChange={setQuantity} disabled={trade.busy} />
             {demand && (
               <p className="text-body font-bold text-navy-600">
-                Còn thiếu {demand.missing} {demand.unit} · Cần trước {dateTime(demand.needBy)}.
+                Có thể chốt thêm {demand.offerable} {demand.unit} · Cần trước {dateTime(demand.needBy)}.
               </p>
             )}
+            {demand && demand.offerable < demand.missing && <p className="text-small text-navy-600">
+              Có thể chào dự phòng đến {demand.missing} {demand.unit} nếu phần đang giữ tạm được giải phóng.
+            </p>}
           </div>
 
           {/* Cột 2: Đơn giá — Căn thẳng hàng ngang tuyệt đối với Số lượng */}

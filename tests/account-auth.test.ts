@@ -10,6 +10,7 @@ describe("account registration input", () => {
   it.each([
     { name: "   " }, { name: "a".repeat(81) }, { email: "" }, { email: "bad-email" },
     { phone: undefined }, { phone: " " }, { phone: "abc1234567" },
+    { phone: "090123456" }, { phone: "09012345678" }, { phone: "090 123 4567" }, { phone: "+84901234567" },
     { location: undefined }, { location: { provinceCode: "79", wardCode: "" } },
     { password: "", confirmPassword: "" }, { password: "12345678", confirmPassword: "12345678" },
     { confirmPassword: "different" },

@@ -14,7 +14,7 @@ import { apiFetch, getMe } from "@/lib/api-client";
 import { Chip, INPUT_CLASS } from "@/app/campaigns/_shared/ui";
 import { isPast } from "@/app/campaigns/_shared/dates";
 import { TradeStatus } from "@/app/trade/TradeStatus";
-import { dateTime, localDateTime, useRoundRefresh, useTrade, vnd } from "@/app/trade/trade-client";
+import { dateTime, useRoundRefresh, useTrade, vnd } from "@/app/trade/trade-client";
 import { orderStates, orderStateTones, paymentKinds } from "../order-labels";
 import "../orders.css";
 
@@ -50,7 +50,6 @@ export default function OrderPage() {
     }
   }, [order?.contractId]);
   const userId = trade.data?.userId;
-  useRoundRefresh(order?.state === "AWAIT_COMMITMENTS" && !trade.loading && !trade.busy, trade.refresh);
   const seller = userId === order?.sellerId && Boolean(order);
   const rep = userId === order?.repId && Boolean(order);
   const party = seller || rep;
@@ -58,6 +57,8 @@ export default function OrderPage() {
     (order.state === "NEEDS_REVIEW" && order.reviewScope === "HANDOFF"));
   const currentReceipt = order?.receipt;
   const evidenceIds = order?.evidenceIds ?? [];
+  useRoundRefresh((order?.state === "AWAIT_COMMITMENTS" || (party && canHandoff === true)) &&
+    !trade.loading && !trade.busy, trade.refresh);
   const canCancel = order && ["AWAIT_COMMITMENTS", "AWAIT_DEPOSIT", "AWAIT_PAYMENT", "AWAIT_HANDOFF"].includes(order.state);
 
   async function viewProof(evidenceId: string) {
@@ -201,10 +202,10 @@ export default function OrderPage() {
                 </li>;
               })}
             </ul>
-            <p>{currentReceipt.approvals.length}/2 bên đã duyệt · Giao lúc {dateTime(currentReceipt.handedAt)}</p>
+            <p aria-live="polite">{currentReceipt.approvals.length}/2 bên đã duyệt · Giao lúc {dateTime(currentReceipt.handedAt)}</p>
             {party && canHandoff && currentReceipt.state === "DRAFT" &&
               !currentReceipt.approvals.some(entry => entry.role === (seller ? "SELLER" : "REP")) &&
-              <Button disabled={trade.busy || trade.loading} onClick={() => {
+              <Button loading={trade.busy} disabled={trade.loading} onClick={() => {
                 setFormError("");
                 void trade.run(`approve:${currentReceipt.receiptId}:${currentReceipt.version}`, key =>
                   apiFetch(`/api/v1/receipts/${currentReceipt.receiptId}/approve`, {
@@ -217,24 +218,33 @@ export default function OrderPage() {
             <form className="mt-3 grid gap-3" key={currentReceipt?.receiptId} onSubmit={event => {
               event.preventDefault();
               setFormError("");
-              const fields = new FormData(event.currentTarget);
-              const date = new Date(String(fields.get("handedAt")));
-              if (!Number.isFinite(date.getTime())) { setFormError("Chọn thời điểm bàn giao."); return; }
+              const form = event.currentTarget;
+              const fields = new FormData(form);
+              const time = String(fields.get("handedAt") ?? "");
+              const date = time ? new Date(time) : undefined;
+              if (date && !Number.isFinite(date.getTime())) { setFormError("Chọn thời điểm bàn giao hợp lệ."); return; }
               const body = {
-                handedAt: date.toISOString(),
+                handedAt: date?.toISOString() ?? currentReceipt?.handedAt,
                 lines: order.allocations.map(part => ({ allocationId: part.allocationId, receivedQty: Number(fields.get(part.allocationId)) })),
                 evidenceIds: fields.getAll("proof").map(String),
               };
-              if (!receiptInput.safeParse(body).success || (body.lines.some(line => line.receivedQty > 0) && !body.evidenceIds.length)) {
-                setFormError("Kiểm tra số lượng và chọn bằng chứng nếu có hàng thực nhận.");
+              if (body.lines.some(line => line.receivedQty > 0) && !body.evidenceIds.length) {
+                setFormError("Chọn ít nhất một ảnh của cửa hàng nếu có hàng thực nhận.");
                 return;
               }
-              void trade.run(`receipt:${order.version}:${JSON.stringify(body)}`, key => apiFetch(`${path}/receipts`, {
+              if (!receiptInput.safeParse(body).success) { setFormError("Kiểm tra lượng thực nhận của từng hộ."); return; }
+              void trade.run(`receipt:${currentReceipt?.receiptId ?? "new"}:${JSON.stringify(body)}`, key => apiFetch(`${path}/receipts`, {
                 method: "POST", body, schema: receipt, idempotencyKey: key,
-              }));
+              }), () => {
+                const details = form.closest("details");
+                if (details) details.open = false;
+              });
             }}>
               <label className="grid gap-1">Giờ bàn giao thực tế<input className={INPUT_CLASS} name="handedAt" type="datetime-local"
-                defaultValue={localDateTime(new Date())} max={localDateTime(new Date())} disabled={trade.busy} required /></label>
+                step={1} disabled={trade.busy} />
+                <span className="text-small">{currentReceipt ? "Bỏ trống để giữ giờ trên biên nhận hiện tại." : "Bỏ trống để dùng giờ gửi biên nhận."}</span>
+              </label>
+              {evidenceIds.length === 0 && <p className="text-small">Nếu có hàng thực nhận, cửa hàng cần tải ảnh bàn giao trước.</p>}
               {order.allocations.map((part, index) => <QuantityInput key={part.allocationId}
                 label={`Phần ${index + 1} · nhận tối đa ${part.qty} ${unit}`} name={part.allocationId} max={part.qty} showAll
                 disabled={trade.busy} defaultValue={currentReceipt?.lines.find(line => line.allocationId === part.allocationId)?.receivedQty ?? part.qty} />)}

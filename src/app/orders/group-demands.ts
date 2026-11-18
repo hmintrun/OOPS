@@ -28,13 +28,12 @@ async function campaignDemands(campaign: Campaign): Promise<GroupDemandOrder[]> 
     const proposals = await apiFetch(`/api/v1/needs/${item.demandItemId}/offers`, { schema: offers });
     const active = proposals.items.filter(proposal => proposal.state === "SUBMITTED");
     if (!active.length && item.offerable === 0) return undefined;
+    const status = active.length ? `${active.length} đề nghị đang thương lượng` : "Chưa có đề nghị đang mở";
     return {
       id: item.demandItemId,
       name: item.name,
       state: active.length ? "negotiating" as const : "waiting" as const,
-      detail: active.length
-        ? `${active.length} đề nghị đang thương lượng · Còn thiếu ${item.missing} ${item.unit}`
-        : `Chưa có đề nghị đang mở · Còn thiếu ${item.missing} ${item.unit}`,
+      detail: `${status} · Có thể chốt thêm ${item.offerable} ${item.unit}`,
       needBy: item.needBy,
       href: `/orders/by-demand/${item.demandItemId}`,
     };

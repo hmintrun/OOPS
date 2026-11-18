@@ -16,6 +16,7 @@ import { POST as postPublish } from "@/app/api/v1/campaigns/[id]/publish/route";
 import { GET as getFeed } from "@/app/api/v1/feed/route";
 import { GET as getOffers, POST as postOffer } from "@/app/api/v1/needs/[id]/offers/route";
 import { POST as postDraft } from "@/app/api/v1/offers/[id]/draft/route";
+import { GET as getSentOffers } from "@/app/api/v1/offers/route";
 import { GET as getVote, POST as postVote } from "@/app/api/v1/offers/[id]/vote/route";
 import { GET as getDraft } from "@/app/api/v1/drafts/[id]/route";
 import { PUT as putDraftLine } from "@/app/api/v1/drafts/[id]/my-line/route";
@@ -40,7 +41,7 @@ import { GET as getOps } from "@/app/api/v1/ops/disbursements/route";
 import { GET as getNotices } from "@/app/api/v1/notifications/route";
 import { PATCH as patchNotice } from "@/app/api/v1/notifications/[id]/route";
 import { POST as postCartAi } from "@/app/api/v1/campaigns/[id]/cart/ai/route";
-import { confirmationRound, draft, draftVersion, offer, offers, offerVoting, sellerDraftView } from "@/contracts/negotiation";
+import { confirmationRound, draft, draftVersion, offer, offers, offerVoting, sellerDraftView, sentOfferList } from "@/contracts/negotiation";
 import { contract, evidenceResult, notificationList, opsList, postTransferResult, receipt, signedEvidence, terminationResult } from "@/contracts/orders";
 import { closeDatabase, transaction } from "@/server/db";
 import { readBuyerDemand } from "@/server/campaigns";
@@ -388,6 +389,22 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     });
     expect(invalid.status).toBe(422);
     expect(me.parse((await call(getMe, userId)).data)).toEqual(expected);
+
+    const updateContact = (contactPrivate: string) => call(patchMe, userId, { method: "PATCH", body: { contactPrivate } });
+    for (const contact of ["090123456", "SĐT: 09012345678", "SĐT: 090 123 4567"]) {
+      expect(await updateContact(contact)).toMatchObject({
+        status: 422, data: { error: { message: "Số điện thoại phải có đúng 10 chữ số." } },
+      });
+    }
+    expect(me.parse((await call(getMe, userId)).data)).toEqual(expected);
+
+    const oldPhone = "+84 901 234 567";
+    await transaction(db => db.query("update public.profiles set contact_private = $2 where id = $1", [userId, oldPhone]));
+    const legacyContact = `SĐT: ${oldPhone}\nĐiểm nhận: Sảnh A`;
+    expect(await updateContact(legacyContact)).toMatchObject({ status: 200, data: { contactPrivate: legacyContact } });
+    const currentContact = "SĐT: 0901234567\nĐiểm nhận: Sảnh A";
+    expect(await updateContact(currentContact)).toMatchObject({ status: 200, data: { contactPrivate: currentContact } });
+
     const membership = group.parse((await call(getGroup, userId, { id: initial.groupId })).data);
     expect(membership.members).toEqual([expect.objectContaining({ userId, displayName: "Hộ Bến Thành" })]);
   });
@@ -450,13 +467,22 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
   });
 
   it.each(["paid", "free", "expired"])("processes parallel commitments for a %s order", async mode => {
-    const { rep, second, third, seller, item } = await negotiationWithDraft(48);
+    const { rep, second, third, seller, item, campaignId } = await negotiationWithDraft(48);
     const price = mode === "free" ? 0 : 2_000;
     const proposal = offer.parse((await call(postOffer, seller, { id: item.demandItemId, method: "POST", body: {
       qty: mode === "paid" ? 7 : 10, unitPriceVnd: price, supportOffer: price === 0,
       handoffStart: dateIn(48), handoffBy: dateIn(49), handoffPrivate: "Sảnh A",
     } })).data);
     const draftId = proposal.draftId!;
+    const sent = (actor: string, query = "") => call(getSentOffers, actor, { path: `/api/v1/offers${query}` });
+    const sellerOffers = sentOfferList.parse((await sent(seller, "?limit=1")).data);
+    expect(sellerOffers.nextCursor).toBeDefined();
+    const rest = sentOfferList.parse((await sent(seller, `?limit=1&cursor=${sellerOffers.nextCursor}`)).data);
+    expect(rest.nextCursor).toBeUndefined();
+    const tracking = [...sellerOffers.items, ...rest.items].find(row => row.proposalId === proposal.proposalId);
+    expect(tracking).toMatchObject({ draftId, itemName: item.name, unit: "chai", state: "SUBMITTED" });
+    expect(tracking?.terms.handoffPrivate).toBeUndefined();
+    expect((await sent(rep)).data).toEqual({ items: [] });
     const vote = (actor: string, qty: number) => call(postVote, actor, { id: proposal.proposalId, method: "POST",
       body: { round: 1, choice: "YES", qty, unitPriceVnd: price } });
     expect(offerVoting.parse((await call(getVote, rep, { id: proposal.proposalId })).data).availableQty).toBe(2);
@@ -492,6 +518,13 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     });
     const contractId = approved.contractId!;
     const roundId = approved.roundId!;
+    const remainingOffers = sentOfferList.parse((await sent(seller)).data);
+    expect(remainingOffers.items.map(row => row.proposalId)).not.toContain(proposal.proposalId);
+    const demand = async () => needs.parse((await call(getNeeds, rep, { id: campaignId })).data).items[0];
+    const pendingDemand = { target: 12, pending: 7, reserved: 0, received: 0, offerable: 5 };
+    expect(await demand()).toMatchObject(pendingDemand);
+    expect(feed.parse((await call(getFeed, seller)).data).items.find(row => row.demandItemId === item.demandItemId))
+      .toMatchObject(pendingDemand);
     expect((await finalize(draftId, rep, "new-contract")).status).toBe(409);
     const sellerOrder = await orderFor(contractId, seller);
     const deposit = sellerOrder.charges[0];
@@ -548,6 +581,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       expect((await orderFor(contractId, seller)).disbursements).toMatchObject([{ kind: "DEPOSIT_REFUND", amountVnd: 50_000 }]);
       expect((await orderFor(contractId, rep)).disbursements).toMatchObject([{ kind: "GOODS_REFUND", amountVnd: 4_000 }]);
       expect(await stock()).toEqual({ pending: 0, reserved: 0 });
+      expect(await demand()).toMatchObject({ offerable: 12 });
     } else {
       await sign(second);
       await sign(third);
@@ -559,6 +593,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       }
       expect((await orderFor(contractId, seller)).state).toBe("AWAIT_HANDOFF");
       expect(await stock()).toEqual({ pending: 0, reserved: 7 });
+      expect(await demand()).toMatchObject({ offerable: 5, received: 0 });
     }
   });
 
@@ -1071,9 +1106,18 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     }
     expect((await call(postCancel, seller, { id: orderId, method: "POST", body: { reason: "SELLER_CANCEL" } })).status).toBe(409);
     const lines = order.allocations.map(part => ({ allocationId: part.allocationId, receivedQty: part.qty }));
-    const handoff = receipt.parse((await call(postReceipt, rep, { id: orderId, method: "POST", body: {
-      handedAt: await databaseTime(), evidenceIds: [evidenceId], lines,
-    } })).data);
+    const submission = { id: orderId, method: "POST", key: "receipt-now", body: { evidenceIds: [evidenceId], lines } };
+    const before = await databaseTime();
+    const created = await call(postReceipt, rep, submission);
+    expect(created.status).toBe(201);
+    const handoff = receipt.parse(created.data);
+    expect(Date.parse(handoff.handedAt)).toBeGreaterThanOrEqual(Date.parse(before));
+    expect(Date.parse(handoff.handedAt)).toBeLessThanOrEqual(Date.parse(await databaseTime()));
+    expect(await call(postReceipt, rep, submission)).toMatchObject({ status: 201, data: handoff });
+    expect((await call(postReceipt, rep, { ...submission, key: "invalid-replacement", body: {
+      ...submission.body, handedAt: "2000-01-01T00:00:00.000Z",
+    } })).status).toBe(422);
+    expect((await orderFor(orderId, seller)).receipt).toEqual(handoff);
     const approve = (actor: string) => call(postApprove, actor, { id: handoff.receiptId, method: "POST", body: { version: handoff.version } });
     expect(receipt.parse((await approve(seller)).data).approvals).toHaveLength(1);
     expect((await orderFor(orderId, seller)).state).toBe("AWAIT_APPROVAL");

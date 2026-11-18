@@ -8,7 +8,7 @@ import { DISPLAY_NAME_MAX_LENGTH, patchMeInput, type Me } from "@/contracts/foun
 import { CopyButton } from "./CopyButton";
 import { callMe, shortenMiddle } from "./me-api";
 import { HCM_PROVINCE_CODE, locationLabel } from "@/lib/locations";
-import { PHONE_MAX_LENGTH, phoneInput, readReceivingContact, writeReceivingContact } from "@/lib/receiving-contact";
+import { PHONE_FORMAT_MESSAGE, PHONE_PATTERN, phoneInput, readReceivingContact, writeReceivingContact } from "@/lib/receiving-contact";
 
 export function AccountSection({ data, onData, onUnauthorized }: {
   data: Me;
@@ -125,13 +125,15 @@ export function AccountSection({ data, onData, onUnauthorized }: {
               />
             </label>
             <label className="grid min-w-0 gap-2 text-label">
-              Số điện thoại
+              Số điện thoại (10 chữ số)
               <input
                 className="me-input"
                 type="tel"
                 name="phone"
                 autoComplete="tel"
-                maxLength={PHONE_MAX_LENGTH}
+                inputMode="numeric"
+                pattern={changedPhone ? PHONE_PATTERN : undefined}
+                title={PHONE_FORMAT_MESSAGE}
                 value={draft.phone}
                 disabled={saving}
                 onChange={event => setDraft({ ...draft, phone: event.target.value })}

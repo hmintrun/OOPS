@@ -32,7 +32,8 @@ export function DemandCard({
   const name = item.name.toLowerCase();
   const fallbackCategory = name.includes("nước") ? "WATER" : /gạo|mì/.test(name) ? "FOOD" : "ESSENTIALS";
   const visual = demandCategoryVisual[category ?? fallbackCategory];
-  const fulfilled = item.supportRequested ? item.received : Math.max(0, item.target - item.missing);
+  const fulfilled = item.supportRequested ? item.received : item.target - item.offerable;
+  const progressLabel = item.supportRequested ? "Đã nhận" : "Đã có đơn";
   const pct = Math.min(100, Math.round((fulfilled / item.target) * 100));
   const action = (
     <>
@@ -64,7 +65,7 @@ export function DemandCard({
 
         <div className="feed-card__summary">
           <div className="feed-card__progress-label">
-            <strong>Còn thiếu {item.missing} {item.unit}</strong>
+            <strong>Có thể chốt thêm {item.offerable} {item.unit}</strong>
             <span className="feed-card__percent">{pct}%</span>
           </div>
           <div
@@ -73,18 +74,15 @@ export function DemandCard({
             aria-valuemin={0}
             aria-valuemax={item.target}
             aria-label={item.supportRequested ? "Tiến độ nhận hỗ trợ" : "Tiến độ gom"}
-            aria-valuetext={`${item.supportRequested ? "Đã nhận" : "Đã gom"} ${fulfilled} trên ${item.target} ${item.unit}`}
+            aria-valuetext={`${progressLabel} ${fulfilled} trên ${item.target} ${item.unit}`}
             className="feed-card__track"
           >
             <div className="feed-card__progress" style={{ width: `${pct}%` }} />
           </div>
           <div className="feed-card__quantities">
-            <span>{item.supportRequested ? "Đã nhận" : "Đã gom"} {fulfilled} / {item.target} {item.unit}</span>
+            <span>{progressLabel} {fulfilled} / {item.target} {item.unit}</span>
             {item.supportRequested && item.reserved > 0 && <span>Chờ giao {item.reserved} {item.unit}</span>}
-            {item.supportRequested && item.pending > 0 && <span>Chờ chốt {item.pending} {item.unit}</span>}
-            {item.offerable !== item.missing && (
-              <span>Có thể chốt thêm <strong>{item.offerable} {item.unit}</strong></span>
-            )}
+            {item.pending > 0 && <span>Đang giữ tạm {item.pending} {item.unit}</span>}
           </div>
         </div>
 
