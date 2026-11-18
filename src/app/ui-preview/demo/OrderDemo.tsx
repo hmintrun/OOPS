@@ -272,57 +272,189 @@ export function OrderDemo({
         )}
       </div>
 
-      {/* Thẻ tóm tắt đơn hàng */}
-      <Card className="demo-stack demo-order-summary">
-        <div className="demo-order-summary__hero">
-          <CardTitle as="h2" className="ui-card__title--flush">
-            Đề nghị từ {supplier}
-          </CardTitle>
-          <img src="/assets/groceries-box.webp" width={1024} height={1024} alt="" />
-        </div>
-        <p className="demo-order-meta font-bold text-navy-900">{name}</p>
-        <div className="demo-order-quantity-flow">
-          <dl>
-            <dt>Cửa hàng chào</dt>
-            <dd>
-              {offerQty} <span>{unit}</span>
-            </dd>
-          </dl>
-          <MaterialSymbol name="arrow_forward" size={22} />
-          <dl>
-            <dt>Các hộ góp</dt>
-            <dd>
-              {qty} <span>{unit}</span>
-            </dd>
-          </dl>
-        </div>
-        <dl className="demo-cost">
-          <div>
-            <dt>Đơn giá</dt>
-            <dd>{unitPrice === 0 ? "0 đ (Tặng)" : `${money(unitPrice)} / ${unit}`}</dd>
-          </div>
-          <div>
-            <dt>Tiền hàng</dt>
-            <dd>{money(goods)}</dd>
-          </div>
-          <div>
-            <dt>Cọc cửa hàng</dt>
-            <dd>{money(deposit)}</dd>
-          </div>
-          {role === "household" && (
-            <div>
-              <dt>Phần hộ đang chọn</dt>
-              <dd>
-                {lines[person]} {unit} · {money(lines[person] * unitPrice)}
-              </dd>
+      {/* Thẻ tóm tắt đơn hàng thương lượng */}
+      <Card className="demo-stack demo-order-summary demo-negotiation-summary">
+        {/* Banner cửa hàng */}
+        <div className="demo-negotiation-store-banner">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="demo-store-avatar">
+              <MaterialSymbol name="storefront" size={20} />
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-extrabold text-amber-900 uppercase tracking-wider">
+                  Cửa hàng chào giá
+                </span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                  Đang thương lượng
+                </span>
+              </div>
+              <h2 className="text-base font-extrabold text-navy-950 truncate m-0">
+                {supplier}
+              </h2>
             </div>
-          )}
-        </dl>
-        <p className="demo-note">
-          Dự kiến giao: {deliveryTime}
-          {note.trim() ? ` · ${note.trim()}` : ""}
-        </p>
-        <p className="demo-note">Cọc bằng 10% tiền hàng, tối thiểu 50.000 ₫.</p>
+          </div>
+          <div className="demo-store-badge">
+            <MaterialSymbol name="verified" size={15} className="text-emerald-700" />
+            <span>Đối tác OOPS</span>
+          </div>
+        </div>
+
+        {/* Thông tin mặt hàng tiêu điểm */}
+        <div className="demo-product-spotlight">
+          <div className="demo-product-thumb">
+            <img src="/assets/groceries-box.webp" width={80} height={80} alt={name} />
+          </div>
+          <div className="demo-product-info">
+            <span className="demo-product-tag">Nhu yếu phẩm khẩn cấp</span>
+            <h3 className="demo-product-title">{name}</h3>
+            <p className="demo-product-meta">
+              <MaterialSymbol name="inventory_2" size={14} className="text-emerald-700 shrink-0" />
+              <span>Đóng gói tiêu chuẩn phòng ngừa lũ lụt</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Thanh tiến độ gom hàng trực quan so với lượng chào */}
+        <div className="demo-nego-progress-card">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5">
+              <MaterialSymbol name="handshake" size={18} className="text-amber-800" />
+              <span className="text-xs font-bold text-navy-900">
+                Tiến độ các hộ đăng ký góp
+              </span>
+            </div>
+            <span className="text-xs font-black text-emerald-900 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300">
+              {qty} / {offerQty} {unit} ({Math.min(100, Math.round((qty / offerQty) * 100))}%)
+            </span>
+          </div>
+
+          <div className="demo-nego-track">
+            <div
+              className="demo-nego-fill"
+              style={{
+                width: `${Math.min(100, Math.round((qty / offerQty) * 100))}%`,
+              }}
+            />
+          </div>
+
+          <div className="demo-nego-flow-grid">
+            <div className="demo-nego-flow-box demo-nego-flow-box--offer">
+              <span className="demo-nego-flow-label">Cửa hàng chào tối đa</span>
+              <span className="demo-nego-flow-val">
+                {offerQty} <small>{unit}</small>
+              </span>
+            </div>
+            <div className="demo-nego-flow-box demo-nego-flow-box--actual">
+              <span className="demo-nego-flow-label">Các hộ đã chốt</span>
+              <span className="demo-nego-flow-val">
+                {qty} <small>{unit}</small>
+              </span>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-navy-600 mt-2 flex items-center gap-1 font-medium">
+            <MaterialSymbol name="info" size={14} className="text-amber-700 shrink-0" />
+            {qty < offerQty
+              ? `Còn ${offerQty - qty} ${unit} nữa để đạt chỉ tiêu toàn bộ lô chào.`
+              : `Đã đủ số lượng ${offerQty} ${unit}! Sẵn sàng lập hợp đồng.`}
+          </p>
+        </div>
+
+        {/* Lưới 4 thẻ chỉ số tài chính & giao hàng */}
+        <div className="demo-metric-tiles">
+          {/* Đơn giá */}
+          <div className="demo-metric-tile demo-metric-tile--emerald">
+            <div className="demo-metric-icon text-emerald-700">
+              <MaterialSymbol name="sell" size={18} />
+            </div>
+            <div className="demo-metric-body">
+              <span className="demo-metric-label text-emerald-800">Đơn giá</span>
+              <strong className="demo-metric-value text-emerald-950">
+                {unitPrice === 0 ? "0 đ (Tặng)" : `${money(unitPrice)} / ${unit}`}
+              </strong>
+              <span className="demo-metric-sub text-emerald-800">Giá gom chung</span>
+            </div>
+          </div>
+
+          {/* Tiền hàng tạm tính */}
+          <div className="demo-metric-tile demo-metric-tile--sky">
+            <div className="demo-metric-icon text-sky-700">
+              <MaterialSymbol name="shopping_bag" size={18} />
+            </div>
+            <div className="demo-metric-body">
+              <span className="demo-metric-label text-sky-800">Tiền hàng ({qty} {unit})</span>
+              <strong className="demo-metric-value text-sky-950">
+                {money(goods)}
+              </strong>
+              <span className="demo-metric-sub text-sky-800">Theo lượng thực góp</span>
+            </div>
+          </div>
+
+          {/* Cọc cửa hàng */}
+          <div className="demo-metric-tile demo-metric-tile--amber">
+            <div className="demo-metric-icon text-amber-700">
+              <MaterialSymbol name="security" size={18} />
+            </div>
+            <div className="demo-metric-body">
+              <span className="demo-metric-label text-amber-900">Cọc bảo đảm</span>
+              <strong className="demo-metric-value text-amber-950">
+                {money(deposit)}
+              </strong>
+              <span className="demo-metric-sub text-amber-900">10% · Khóa SIM/Fuji</span>
+            </div>
+          </div>
+
+          {/* Dự kiến giao */}
+          <div className="demo-metric-tile demo-metric-tile--slate">
+            <div className="demo-metric-icon text-slate-700">
+              <MaterialSymbol name="local_shipping" size={18} />
+            </div>
+            <div className="demo-metric-body">
+              <span className="demo-metric-label text-slate-700">Dự kiến giao</span>
+              <strong className="demo-metric-value text-slate-900 text-xs">
+                {deliveryTime.includes("T")
+                  ? new Date(deliveryTime).toLocaleString("vi-VN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      day: "2-digit",
+                      month: "2-digit",
+                    })
+                  : deliveryTime}
+              </strong>
+              <span className="demo-metric-sub text-slate-600 truncate">
+                {note.trim() ? note.trim() : "Giao tận sảnh"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Khẩu phần của hộ đang chọn */}
+        {role === "household" && (
+          <div className="demo-household-quota-pill">
+            <span className="w-8 h-8 rounded-full bg-emerald-200/80 text-emerald-900 flex items-center justify-center shrink-0">
+              <MaterialSymbol name="family_restroom" size={20} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <span className="text-xs font-bold text-emerald-950 block truncate">
+                Phần {households[person]}: <strong>{lines[person]} {unit}</strong>
+              </span>
+              <span className="text-[11px] text-emerald-800 font-medium block">
+                Thành tiền: {money(lines[person] * unitPrice)}
+              </span>
+            </div>
+            <span
+              className={`text-[11px] font-black px-2.5 py-0.5 rounded-full shrink-0 ${
+                votes[person] !== undefined
+                  ? "bg-emerald-600 text-white shadow-xs"
+                  : "bg-amber-100 text-amber-900 border border-amber-300"
+              }`}
+            >
+              {votes[person] !== undefined ? "Đã xác nhận" : "Chờ bỏ phiếu"}
+            </span>
+          </div>
+        )}
       </Card>
 
       {/* Thẻ thao tác chính theo từng chặng */}
@@ -361,39 +493,238 @@ export function OrderDemo({
 
         {/* 1. THƯƠNG LƯỢNG: Mỗi hộ tự góp phần của mình */}
         {step === "draft" && role === "household" && (
-          <div className="grid gap-3">
-            <p>Đã đăng ký {qty}/{offerQty} {unit}. Vòng phiếu đóng khi đủ lượng chào hoặc hết hạn.</p>
-            <p>Hạn bỏ phiếu · {new Date(voteDueAt).toLocaleString("vi-VN")}</p>
-            {votes[person] !== undefined ? (
-              <p role="status">{votes[person] ? `Bạn đã chọn mua ${votes[person]} ${unit}.` : "Bạn đã chọn không mua."}</p>
-            ) : (
-              <>
-                <p>Phần hộ bạn có thể mua · {myShare} {unit} · {money(myShare * unitPrice)}</p>
-                <div className="ui-actions">
-                  <Button full={false} disabled={!myShare} onClick={() => castVote(true)}>Có, mua phần này</Button>
-                  <Button full={false} variant="secondary" onClick={() => castVote(false)}>Không mua</Button>
+          <div className="demo-vote-box">
+            {/* Đếm ngược hạn chốt bỏ phiếu */}
+            <div className="demo-vote-timer-banner">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="demo-timer-icon-wrap">
+                  <MaterialSymbol name="alarm" size={18} />
+                </span>
+                <div className="min-w-0">
+                  <span className="text-xs font-bold text-amber-950 block">
+                    Hạn bỏ phiếu trước khi lập hợp đồng
+                  </span>
+                  <span className="text-xs font-black text-amber-800 block truncate">
+                    {new Date(voteDueAt).toLocaleTimeString("vi-VN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}{" "}
+                    ngày {new Date(voteDueAt).toLocaleDateString("vi-VN")}
+                  </span>
                 </div>
-              </>
-            )}
-            <Button full={false} variant="ghost" onClick={() => setVoteDueAt(Date.now())}>
-              Mô phỏng hết hạn bỏ phiếu
-            </Button>
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-wider bg-amber-200/90 text-amber-950 px-2 py-0.5 rounded-full border border-amber-300 shrink-0">
+                Đang mở
+              </span>
+            </div>
+
+            {/* Quyết định của hộ gia đình */}
+            <div className="demo-vote-household-card">
+              <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-black text-sm shrink-0">
+                    {person + 1}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-bold text-navy-950 m-0 truncate">
+                      {households[person]}
+                    </h4>
+                    <span className="text-[11px] text-emerald-700 font-medium">
+                      Phân bổ giỏ nhu cầu
+                    </span>
+                  </div>
+                </div>
+                <span className="text-xs font-black text-navy-800 shrink-0">
+                  Có thể mua: {myShare} {unit}
+                </span>
+              </div>
+
+              {votes[person] !== undefined ? (
+                <div className="demo-vote-result-badge">
+                  {votes[person]! > 0 ? (
+                    <div className="flex items-center gap-2 text-emerald-900">
+                      <MaterialSymbol name="check_circle" size={22} className="text-emerald-600 shrink-0" />
+                      <div>
+                        <strong className="text-sm font-black block">
+                          Bạn đã đồng ý nhận {votes[person]} {unit}
+                        </strong>
+                        <span className="text-xs text-emerald-800 font-semibold">
+                          Số tiền: {money(votes[person]! * unitPrice)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-slate-700">
+                      <MaterialSymbol name="cancel" size={22} className="text-slate-400 shrink-0" />
+                      <div>
+                        <strong className="text-sm font-bold block">
+                          Bạn đã chọn không mua đợt này
+                        </strong>
+                        <span className="text-xs text-slate-500 font-medium">
+                          Nhường phần cho các hộ khác trong cụm
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between bg-emerald-50/70 p-3 rounded-xl border border-emerald-200">
+                    <div>
+                      <span className="text-xs text-navy-700 block font-medium">
+                        Số lượng đề xuất nhận:
+                      </span>
+                      <strong className="text-lg font-black text-emerald-900">
+                        {myShare} {unit}
+                      </strong>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs text-navy-700 block font-medium">
+                        Thành tiền tạm tính:
+                      </span>
+                      <strong className="text-base font-black text-navy-900">
+                        {money(myShare * unitPrice)}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={!myShare}
+                      onClick={() => castVote(true)}
+                      className="demo-btn-vote-accept"
+                    >
+                      <MaterialSymbol name="check_circle" size={18} />
+                      <span>Đồng ý ({myShare} {unit})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => castVote(false)}
+                      className="demo-btn-vote-decline"
+                    >
+                      <MaterialSymbol name="close" size={18} />
+                      <span>Không mua</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Bảng minh bạch tiến độ từng hộ trong cụm */}
+            <div className="demo-neighbors-status-card">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-navy-800 flex items-center gap-1.5">
+                  <MaterialSymbol name="group" size={16} className="text-emerald-700" />
+                  Tiến độ từng hộ ({qty}/{offerQty} {unit})
+                </span>
+                <span className="text-[11px] text-navy-500 font-medium">
+                  Chạm để chuyển hộ
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {households.map((hName, idx) => {
+                  const voteVal = votes[idx];
+                  const hasVoted = voteVal !== undefined;
+                  const isMe = idx === person;
+                  return (
+                    <div
+                      key={hName}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setPerson(idx)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") setPerson(idx);
+                      }}
+                      className={`demo-neighbor-row ${
+                        isMe ? "demo-neighbor-row--active" : ""
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                            hasVoted
+                              ? voteVal > 0
+                                ? "bg-emerald-600 text-white"
+                                : "bg-slate-300 text-slate-700"
+                              : "bg-amber-100 text-amber-900 border border-amber-300"
+                          }`}
+                        >
+                          {hasVoted ? (voteVal > 0 ? "✓" : "✕") : idx + 1}
+                        </span>
+                        <span className="text-xs font-bold text-navy-900 truncate">
+                          {hName} {isMe && <small className="text-emerald-700 font-bold">(Đang xem)</small>}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-xs font-black text-navy-800">
+                          {hasVoted ? voteVal : [2, 2, 3][idx]} {unit}
+                        </span>
+                        <span
+                          className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                            hasVoted
+                              ? voteVal > 0
+                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                : "bg-slate-100 text-slate-600 border border-slate-300"
+                              : "bg-amber-100 text-amber-900 border border-amber-300"
+                          }`}
+                        >
+                          {hasVoted ? (voteVal > 0 ? "Đã nhận" : "Bỏ qua") : "Chờ vote"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Nút mô phỏng hết hạn bỏ phiếu */}
+            <button
+              type="button"
+              onClick={() => setVoteDueAt(Date.now())}
+              className="demo-btn-sim-deadline"
+            >
+              <MaterialSymbol name="bolt" size={16} />
+              <span>Mô phỏng đóng vòng bỏ phiếu sớm để chuyển sang Cửa hàng</span>
+            </button>
           </div>
         )}
-        {step === "expired" && <p>Không có hộ chọn mua trước hạn. Nhu cầu vẫn có thể nhận đề nghị khác.</p>}
+        {step === "expired" && (
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium">
+            Không có hộ chọn mua trước hạn. Nhu cầu vẫn có thể nhận đề nghị khác từ các cửa hàng quanh khu vực.
+          </div>
+        )}
 
         {/* CỬA HÀNG PHẢN HỒI ĐỀ NGHỊ */}
         {step === "submitted" && role === "seller" && (
-          <div className="flex flex-col gap-3">
-            <label className="demo-check">
+          <div className="demo-seller-response-box">
+            <div className="demo-seller-summary-banner">
+              <div className="flex items-center gap-2 mb-1.5">
+                <MaterialSymbol name="inventory_2" size={18} className="text-sky-800" />
+                <span className="text-xs font-black text-sky-950 uppercase tracking-wide">
+                  Đề nghị từ các hộ dân
+                </span>
+              </div>
+              <p className="text-xs text-sky-900 m-0 font-medium">
+                Các hộ trong nhóm đã thống nhất đăng ký chốt <strong>{qty} / {offerQty} {unit}</strong>.
+                Tổng giá trị tiền hàng: <strong>{money(goods)}</strong>.
+              </p>
+            </div>
+
+            <label className="demo-check p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 flex items-center gap-2.5 cursor-pointer">
               <input
                 type="checkbox"
                 checked={walletsReady}
                 onChange={(event) => setWalletsReady(event.target.checked)}
+                className="w-4 h-4 rounded text-emerald-700 accent-emerald-700"
               />
-              Tất cả hộ có ví hợp lệ trên Fuji (mẫu)
+              <span className="text-xs font-bold text-emerald-950">
+                Tất cả hộ có ví hợp lệ trên mạng Avalanche Fuji (Mẫu demo)
+              </span>
             </label>
-            <Button
+
+            <button
+              type="button"
               onClick={() => {
                 if (walletsReady) {
                   advance("confirm");
@@ -402,17 +733,29 @@ export function OrderDemo({
                   setNotice("Có hộ chưa đủ điều kiện xác nhận ví. Bản đang chờ.");
                 }
               }}
+              className="demo-btn-vote-accept w-full justify-center text-sm py-3"
             >
-              Chấp thuận bản {qty} {unit} &amp; Mở vòng ký
-            </Button>
-            <div className="ui-actions">
-              {/* Cửa hàng yêu cầu sửa: auto mở lại bản nháp luôn */}
-              <Button full={false} variant="secondary" onClick={handleSellerRequestRevision}>
-                Yêu cầu sửa (Tự động mở nháp)
-              </Button>
-              <Button full={false} variant="secondary" onClick={() => advance("rejected")}>
-                Từ chối đề nghị
-              </Button>
+              <MaterialSymbol name="task_alt" size={20} />
+              <span>Chấp thuận {qty} {unit} &amp; Mở vòng ký Fuji</span>
+            </button>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleSellerRequestRevision}
+                className="demo-btn-vote-decline justify-center"
+              >
+                <MaterialSymbol name="edit_note" size={18} />
+                <span>Yêu cầu sửa lại</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => advance("rejected")}
+                className="demo-btn-vote-decline justify-center text-rose-700 border-rose-200 hover:bg-rose-50"
+              >
+                <MaterialSymbol name="cancel" size={18} />
+                <span>Từ chối</span>
+              </button>
             </div>
           </div>
         )}
