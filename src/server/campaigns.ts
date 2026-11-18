@@ -17,6 +17,7 @@ type CampaignRow = {
   support_requested: boolean;
 };
 type CartRow = { id: string; version: number; state: Cart["state"]; household_size: number; support_requested: boolean };
+type CartEligibility = Awaited<ReturnType<typeof prepareProfileEligibility>>;
 
 export async function createCampaign(client: PoolClient, userId: string, groupId: string, body: z.output<typeof createCampaignInput>) {
   await requireRepresentative(client, userId, groupId);
@@ -72,23 +73,27 @@ async function findCart(client: PoolClient, campaignId: string, membershipId: st
   return cart;
 }
 
-async function cartDto(client: PoolClient, row: CartRow): Promise<Cart> {
-  const { rows: lines } = await client.query<Cart["lines"][number]>(
-    `select sku_id as "skuId", stock_qty as "stockQty", need_qty as "needQty"
-     from public.cart_items where cart_id = $1 order by sku_id`,
-    [row.id],
-  );
+function cartDto(row: CartRow, lines: Cart["lines"]): Cart {
   return {
     cartId: row.id, version: row.version, state: row.state,
     householdSize: row.household_size, supportRequested: row.support_requested, lines,
   };
 }
 
+async function readCartDto(client: PoolClient, row: CartRow): Promise<Cart> {
+  const { rows: lines } = await client.query<Cart["lines"][number]>(
+    `select sku_id as "skuId", stock_qty as "stockQty", need_qty as "needQty"
+     from public.cart_items where cart_id = $1 order by sku_id`,
+    [row.id],
+  );
+  return cartDto(row, lines);
+}
+
 export async function readCart(client: PoolClient, userId: string, campaignId: string) {
   const { member } = await getCampaign(client, userId, campaignId);
   const row = await findCart(client, campaignId, member.id);
   if (!row) throw notFound();
-  return cartDto(client, row);
+  return readCartDto(client, row);
 }
 
 export async function assertCartAiAvailable(client: PoolClient, userId: string, campaignId: string) {
@@ -96,46 +101,68 @@ export async function assertCartAiAvailable(client: PoolClient, userId: string, 
   await requireOpenCart(client, row);
 }
 
-export async function putCart(client: PoolClient, userId: string, campaignId: string, body: z.output<typeof putCartInput>) {
+async function hasEligibleWallet(client: PoolClient, userId: string, eligibility?: CartEligibility) {
+  if (!eligibility?.eligible) return false;
+  const { rows: [wallet] } = await client.query<{ address: string }>(
+    "select address from public.wallets where user_id = $1 and verification_state = 'VERIFIED' for share", [userId],
+  );
+  return wallet?.address === eligibility.address;
+}
+
+export async function putCart(
+  client: PoolClient, userId: string, campaignId: string, body: z.output<typeof putCartInput>, eligibility?: CartEligibility,
+) {
   const { row, member } = await getCampaign(client, userId, campaignId, true);
   await requireOpenCart(client, row);
-  const current = await findCart(client, campaignId, member.id);
-  if ((current?.version ?? 0) !== body.version) throw conflict("Phiên bản giỏ đã thay đổi.");
-  const catalogRows = await client.query("select id from public.catalog_items where id = any($1::uuid[])",
-    [body.lines.map(line => line.skuId)]);
-  if (catalogRows.rowCount !== body.lines.length) throw invalid("Giỏ có SKU không tồn tại.");
+  const { rows: [current] } = await client.query<{ version: number; valid_skus: boolean }>(
+    `select coalesce((select version from public.carts where campaign_id = $1 and membership_id = $2), 0) as version,
+       (select count(*) from public.catalog_items where id = any($3::uuid[])) = cardinality($3::uuid[]) as valid_skus`,
+    [campaignId, member.id, body.lines.map(line => line.skuId)],
+  );
+  if (current.version !== body.version) throw conflict("Phiên bản giỏ đã thay đổi.");
+  if (!current.valid_skus) throw invalid("Giỏ có SKU không tồn tại.");
+  const confirmed = body.includeInNeeds && await hasEligibleWallet(client, userId, eligibility);
   const { rows: [saved] } = await client.query<CartRow>(
     `insert into public.carts (campaign_id, membership_id, household_size, support_requested, state, version)
-     values ($1, $2, $3, $4, 'DRAFT', 1)
+     values ($1, $2, $3, $4, $5, 1)
      on conflict (campaign_id, membership_id) do update set
        household_size = excluded.household_size, support_requested = excluded.support_requested,
-       state = 'DRAFT', version = carts.version + 1
+       state = excluded.state, version = carts.version + 1
      returning id, version, state, household_size, support_requested`,
-    [campaignId, member.id, body.householdSize, body.supportRequested],
+    [campaignId, member.id, body.householdSize, body.supportRequested, confirmed ? "CONFIRMED" : "DRAFT"],
   );
-  await client.query("delete from public.cart_items where cart_id = $1", [saved.id]);
-  await client.query(
-    `insert into public.cart_items (cart_id, sku_id, stock_qty, need_qty)
-     select $1, "skuId", "stockQty", "needQty" from jsonb_to_recordset($2::jsonb)
-     as line("skuId" uuid, "stockQty" int, "needQty" int)`,
+  // The two writes touch disjoint SKU sets, so PostgreSQL can apply them in one statement.
+  const { rows: lines } = await client.query<Cart["lines"][number]>(
+    `with incoming as (
+       select * from jsonb_to_recordset($2::jsonb) as line("skuId" uuid, "stockQty" int, "needQty" int)
+     ), removed as (
+       delete from public.cart_items item where item.cart_id = $1
+       and not exists (select 1 from incoming where "skuId" = item.sku_id)
+     )
+     insert into public.cart_items (cart_id, sku_id, stock_qty, need_qty)
+     select $1, "skuId", "stockQty", "needQty" from incoming order by "skuId"
+     on conflict (cart_id, sku_id) do update set
+       stock_qty = excluded.stock_qty, need_qty = excluded.need_qty, rule_ref = excluded.rule_ref
+     returning sku_id as "skuId", stock_qty as "stockQty", need_qty as "needQty"`,
     [saved.id, JSON.stringify(body.lines)],
   );
-  return cartDto(client, saved);
+  lines.sort((a, b) => a.skuId.localeCompare(b.skuId));
+  return {
+    ...cartDto(saved, lines),
+    ...(body.includeInNeeds && eligibility?.eligible === null && { confirmationEligibilityUnavailable: true }),
+  };
 }
 
 export async function confirmCart(
   client: PoolClient, userId: string, campaignId: string, version: number,
-  eligibility?: Awaited<ReturnType<typeof prepareProfileEligibility>>,
+  eligibility?: CartEligibility,
 ) {
   const { row, member } = await getCampaign(client, userId, campaignId, true);
   await requireOpenCart(client, row);
   const current = await findCart(client, campaignId, member.id);
   if (!current) throw notFound();
   if (current.version !== version) throw conflict("Phiên bản giỏ đã thay đổi.");
-  const { rows: [wallet] } = await client.query<{ address: string }>(
-    "select address from public.wallets where user_id = $1 and verification_state = 'VERIFIED' for share", [userId],
-  );
-  if (!wallet || !eligibility?.eligible || wallet.address !== eligibility.address) {
+  if (!await hasEligibleWallet(client, userId, eligibility)) {
     throw new ApiFailure(409, "WALLET_NOT_READY", "Hãy liên kết hoặc xác minh ví đủ điều kiện Fuji trước khi xác nhận giỏ.");
   }
   const { rows: [saved] } = await client.query<CartRow>(
@@ -143,7 +170,7 @@ export async function confirmCart(
      returning id, version, state, household_size, support_requested`,
     [current.id],
   );
-  return cartDto(client, saved);
+  return readCartDto(client, saved);
 }
 
 // Both the draft preview and the published snapshot use exactly the same source rows.
@@ -177,6 +204,19 @@ const demandFrom = `from public.demand_items d
   join public.campaigns c on c.id = d.campaign_id
   join public.groups g on g.id = c.group_id
   join public.catalog_items s on s.id = d.sku_id`;
+
+export async function readBuyerDemand(client: PoolClient, userId: string, demandItemId: string) {
+  const { rows: [row] } = await client.query<{ name: string; unit: string; missing: number; needBy: Date }>(
+    `select s.name, s.unit, d.target - d.reserved - d.received as missing, c.need_by as "needBy"
+     ${demandFrom}
+     where d.id = $1 and c.status = 'PUBLISHED' and exists (
+       select 1 from public.memberships m where m.group_id = c.group_id and m.user_id = $2 and m.left_at is null
+     )`,
+    [demandItemId, userId],
+  );
+  if (!row) throw notFound();
+  return { ...row, needBy: row.needBy.toISOString() };
+}
 
 export async function readNeeds(client: PoolClient, userId: string, campaignId: string): Promise<Needs> {
   const { row, member } = await getCampaign(client, userId, campaignId);

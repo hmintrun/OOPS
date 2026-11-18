@@ -43,7 +43,7 @@ flowchart LR
 
 ## Vòng đời hợp đồng
 
-1. Hộ lưu giỏ trong đợt nháp. Khi xác nhận giỏ đã lưu, backend kiểm phiên bản, ví đã xác minh và quyền Fuji. Đại diện đăng nhu cầu để chụp lượng theo hộ và món từ giỏ đã xác nhận. Feed hiển thị lượng còn thiếu và lượng còn có thể chốt.
+1. Hộ lưu giỏ trong đợt nháp. Backend kiểm phiên bản, ví đã xác minh và quyền Fuji khi lưu giỏ để cộng vào nhu cầu. Đại diện đăng nhu cầu để chụp lượng theo hộ và món từ các giỏ `CONFIRMED`. Feed hiển thị lượng còn thiếu và lượng còn có thể chốt.
 2. Người bán chào một món với lượng tối đa đến `missing`. Backend mở vòng phiếu ngay khi tạo đề nghị. Hộ có phần chọn Có hoặc Không theo lượng khả dụng hiển thị từ phần đã chụp, giới hạn bởi lượng còn trống của đề nghị. Phiếu chiếm chỗ trong đề nghị. Lượng khả dụng chung chỉ giảm khi chốt đơn.
 3. Vòng đóng khi đủ lượng chào hoặc tới hạn. Backend chụp lượng của các hộ tham gia thành phiên bản bất biến, tính tiền theo đơn giá đề nghị và ghi mã băm. Nếu không còn hộ chọn Có khi đóng, đề nghị chuyển `EXPIRED`.
 4. Người bán chấp thuận, từ chối hoặc yêu cầu mở vòng phiếu mới. Khi chấp thuận, backend kiểm lượng theo món và từng hộ dưới khóa, xác minh lại ví hợp lệ và duy nhất của mọi hộ có phần, rồi tạo vòng Fuji, một hợp đồng `AWAIT_COMMITMENTS`, lượng `pending`, khoản cọc và các khoản tiền hàng trong cùng giao dịch. Thiếu lượng ghi `STOCK_CONFLICT` và trả `409`. Thiếu ví giữ bản `SUBMITTED`.

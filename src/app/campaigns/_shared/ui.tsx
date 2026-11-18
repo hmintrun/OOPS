@@ -71,11 +71,11 @@ export function CampaignStateChip({ state }: { state: keyof typeof CAMPAIGN_STAT
 export function CartStateChip({ state }: { state: "DRAFT" | "CONFIRMED" }) {
   return state === "CONFIRMED" ? (
     <Chip tone="green" icon="check_circle">
-      Đã xác nhận
+      Đã góp nhu cầu
     </Chip>
   ) : (
     <Chip tone="amber" icon="edit_note">
-      Đang sửa
+      Đã lưu nháp
     </Chip>
   );
 }
