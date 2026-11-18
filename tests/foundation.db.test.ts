@@ -43,12 +43,14 @@ import { POST as postCartAi } from "@/app/api/v1/campaigns/[id]/cart/ai/route";
 import { confirmationRound, draft, draftVersion, offer, offers, offerVoting, sellerDraftView } from "@/contracts/negotiation";
 import { contract, evidenceResult, notificationList, opsList, postTransferResult, receipt, signedEvidence, terminationResult } from "@/contracts/orders";
 import { closeDatabase, transaction } from "@/server/db";
+import { readBuyerDemand } from "@/server/campaigns";
 import { expireSellerResponse } from "@/server/negotiation/versions";
 import { advanceVerifiedRound, approveWithFujiEligibility, expireFujiStage, fujiRoundKey, recordVerifiedRoundOpening } from "@/server/negotiation/rounds";
 import { expireOfferVoting } from "@/server/negotiation/votes";
 import * as profiles from "@/server/profiles";
 import { applySimFundEvent, expireOrderDeadline } from "@/server/orders/collections";
 import { persistNotifications } from "@/server/orders/ops";
+import { listOrdersForDemand } from "@/server/orders/records";
 import { householdNeeds, waterSkuId } from "./fixtures/foundation";
 
 vi.mock("server-only", () => ({}));
@@ -1005,6 +1007,15 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     const order = contract.parse(results[0].data);
     const orderId = order.contractId;
     expect(order).toMatchObject({ state: "AWAIT_DEPOSIT", qty: 7, goodsVnd: 0, depositVnd: 50_000 });
+    await transaction(async db => {
+      for (const userId of [rep, second, seller]) {
+        expect(await listOrdersForDemand(db, userId, item.demandItemId)).toEqual([
+          expect.objectContaining({ contractId: orderId, qty: 7, unit: "chai" }),
+        ]);
+      }
+      expect(await listOrdersForDemand(db, spare, item.demandItemId)).toEqual([]);
+      expect(await listOrdersForDemand(db, rep, randomUUID())).toEqual([]);
+    }, true);
     expect((await call(postLeave, second, leaveRequest)).data).toMatchObject({ error: { code: "ACTIVE_COMMITMENT" } });
     await expect(changeWallet()).rejects.toMatchObject({ code: "23514", constraint: "wallet_active_commitment" });
     expect(order.paymentDueAt).toBeUndefined();
@@ -1329,6 +1340,40 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     } finally {
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
+    }
+  });
+
+  it("saves and includes an eligible cart in needs in one versioned write", async () => {
+    const rep = await newUser();
+    const campaignId = await newCampaign(rep, await newGroup(rep));
+    const request = { id: campaignId, method: "PUT", body: {
+      householdSize: 2, supportRequested: true, includeInNeeds: true, version: 0,
+      lines: [{ skuId: waterSkuId, stockQty: 0, needQty: 7 }],
+    } };
+    expect(cart.parse((await call(saveCart, rep, request)).data)).toMatchObject({ state: "DRAFT", version: 1 });
+    expect(needs.parse((await call(getNeeds, rep, { id: campaignId })).data).items).toEqual([]);
+
+    const address = walletOf(rep);
+    await transaction(db => db.query("insert into public.wallets (user_id, address, verification_state) values ($1, $2, 'VERIFIED')", [rep, address]));
+    const eligibility = vi.spyOn(profiles, "prepareProfileEligibility").mockResolvedValue({ address, eligible: true });
+    try {
+      const include = { ...request, body: { ...request.body, version: 1 }, key: "save-and-include" };
+      const saved = await call(saveCart, rep, include);
+      expect(cart.parse(saved.data)).toMatchObject({ state: "CONFIRMED", version: 2 });
+      expect(await call(saveCart, rep, include)).toEqual(saved);
+      expect(needs.parse((await call(getNeeds, rep, { id: campaignId })).data).items).toMatchObject([{ skuId: waterSkuId, target: 7 }]);
+
+      const cleared = await call(saveCart, rep, { ...request, body: { ...request.body, version: 2, lines: [] } });
+      expect(cart.parse(cleared.data)).toMatchObject({ state: "CONFIRMED", version: 3, lines: [] });
+      expect(needs.parse((await call(getNeeds, rep, { id: campaignId })).data).items).toEqual([]);
+
+      expect((await call(saveCart, rep, { ...request, body: { ...request.body, version: 3 } })).status).toBe(200);
+      const { items: [item] } = publishResult.parse((await publish(rep, campaignId)).data);
+      expect(await transaction(db => listOrdersForDemand(db, rep, item.demandItemId), true)).toEqual([]);
+      expect(await transaction(db => readBuyerDemand(db, rep, item.demandItemId), true)).toMatchObject({ unit: "chai", missing: 7 });
+      await expect(transaction(db => readBuyerDemand(db, randomUUID(), item.demandItemId), true)).rejects.toMatchObject({ status: 404 });
+    } finally {
+      eligibility.mockRestore();
     }
   });
 

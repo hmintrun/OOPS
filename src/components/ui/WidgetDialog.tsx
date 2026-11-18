@@ -3,11 +3,12 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { MaterialSymbol } from "./MaterialSymbol";
 
-export function WidgetDialog({ title, icon, onClose, children }: {
+export function WidgetDialog({ title, icon, onClose, children, className }: {
   title: string;
   icon: string;
   onClose: () => void;
   children: ReactNode;
+  className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -18,7 +19,7 @@ export function WidgetDialog({ title, icon, onClose, children }: {
   }, []);
 
   return (
-    <dialog ref={ref} className="ui-widget-dialog" aria-labelledby={titleId}
+    <dialog ref={ref} className={className ? `ui-widget-dialog ${className}` : "ui-widget-dialog"} aria-labelledby={titleId}
       onCancel={event => { event.preventDefault(); onClose(); }}
       onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
       <div className="ui-widget-dialog__panel">

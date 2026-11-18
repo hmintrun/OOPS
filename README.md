@@ -16,7 +16,7 @@ Tài khoản đại diện seed là `oops-dev-household-1@example.test`. Hộ c�
 
 1. Mở `/` để vào ứng dụng. Đăng nhập tại `/login`, hoặc chọn **Tạo tài khoản mới** (`/login?mode=signup`). Nhập tên hiển thị, nơi sinh sống, số điện thoại, email và mật khẩu có ít nhất 9 ký tự, rồi nhập lại mật khẩu. Nếu Supabase yêu cầu xác nhận, mở link mới nhất trong email; màn chờ có nút gửi lại và quay về đăng nhập. Nếu Supabase trả phiên ngay, app mở nhóm trực tiếp. Liên kết mời được giữ xuyên suốt đăng ký/xác nhận/đăng nhập.
 2. Tại **Nhóm của tôi**, đại diện chọn **Lấy liên kết và mã nhóm**. Cùng một link hoặc mã 8 ký tự có thể chia sẻ cho nhiều hộ. Người nhận mở link hoặc chọn **Tham gia nhóm qua lời mời** rồi dán link hoặc nhập mã.
-3. Mở một đợt. Hộ điền **Đang có** và **Còn thiếu**, lưu giỏ rồi xác nhận. Đại diện xem tổng đã xác nhận và **Đăng nhu cầu** trước hạn cần hàng.
+3. Mở một đợt. Hộ nhập số lượng cần mua ở cột bên phải hoặc mở **Gợi ý bằng AI** để trả lời số ngày dự trữ và mô tả nhu cầu. Bấm **Lưu giỏ** để cập nhật nhu cầu khi ví Fuji đã sẵn sàng. Đại diện có thể đăng tổng nhu cầu trước hạn cần hàng. Nút **Xem đơn** mở tiến độ và các đề nghị của đúng món trong tab Đơn hàng hoặc mở chi tiết đơn khi đã chốt.
 4. Dùng một phiên người bán để mở **Feed** và tìm bài vừa đăng. Trang **Tài khoản** hiển thị hồ sơ, liên hệ riêng và trạng thái ví từ API.
 
 Mở `/ui-preview` để xem các component thiết kế. Phần ví trong bản này hiển thị dữ liệu của backend nền. Giao dịch Fuji thuộc mốc tích hợp tiếp theo.

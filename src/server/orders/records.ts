@@ -47,6 +47,10 @@ const orderFrom = `from public.contracts c join public.proposals p on p.id = c.p
   join public.catalog_items ci on ci.id = d.sku_id
   join public.profiles rep on rep.id = c.rep_id`;
 const orderColumns = "c.*, p.demand_item_id, p.seller_id, p.handoff_private, ci.unit, rep.contact_private as rep_contact";
+const buyerOfOrder = `(c.rep_id = $1 or exists (
+  select 1 from public.allocations a join public.memberships m on m.id = a.membership_id
+  where a.contract_id = c.id and m.user_id = $1
+))`;
 
 export async function findOrder(db: PoolClient, id: string, lock = false) {
   const { rows: [order] } = await db.query<OrderRow>(
@@ -195,10 +199,7 @@ export async function listOrders(db: PoolClient, actorId: string, filters: z.out
   const { rows } = await db.query<OrderRow>(
     `select ${orderColumns} ${orderFrom} where (
        ($2::text is distinct from 'buyer' and p.seller_id = $1)
-       or ($2::text is distinct from 'seller' and (c.rep_id = $1 or exists (
-         select 1 from public.allocations a join public.memberships m on m.id = a.membership_id
-         where a.contract_id = c.id and m.user_id = $1
-       )))
+       or ($2::text is distinct from 'seller' and ${buyerOfOrder})
      ) and ($3::text is null or c.state = $3) and ($4::uuid is null or c.id > $4)
      order by c.id limit $5`,
     [actorId, filters.role ?? null, filters.state ?? null, filters.cursor ?? null, limit + 1],
@@ -207,4 +208,17 @@ export async function listOrders(db: PoolClient, actorId: string, filters: z.out
     items: await Promise.all(rows.slice(0, limit).map(row => orderDto(db, row, actorId))),
     ...(rows.length > limit && { nextCursor: rows[limit - 1].id }),
   };
+}
+
+export async function listOrdersForDemand(db: PoolClient, actorId: string, demandItemId: string) {
+  const { rows } = await db.query<{
+    contractId: string; itemName: string; state: Contract["state"]; qty: number; unit: string; handoffStart: Date;
+  }>(
+    `select c.id as "contractId", ci.name as "itemName", c.state, c.qty, ci.unit, c.handoff_start as "handoffStart"
+     ${orderFrom}
+     where p.demand_item_id = $2 and (p.seller_id = $1 or ${buyerOfOrder})
+     order by c.handoff_start desc, c.id`,
+    [actorId, demandItemId],
+  );
+  return rows;
 }

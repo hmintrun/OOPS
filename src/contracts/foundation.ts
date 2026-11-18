@@ -48,6 +48,7 @@ export const putCartInput = z.strictObject({
   supportRequested: z.boolean(),
   lines: z.array(cartLine).refine(lines => new Set(lines.map(line => line.skuId)).size === lines.length),
   version: count,
+  includeInNeeds: z.boolean().optional(),
 });
 export const confirmCartInput = z.strictObject({ version: count });
 export const householdStatus = z.strictObject({
@@ -136,6 +137,7 @@ export const cart = z.strictObject({
   householdSize: positiveCount,
   supportRequested: z.boolean(),
   lines: z.array(cartLine),
+  confirmationEligibilityUnavailable: z.literal(true).optional(),
 });
 export const demandShare = z.strictObject({ target: positiveCount, pending: count, reserved: count, received: count });
 export const demandPreview = z.strictObject({
