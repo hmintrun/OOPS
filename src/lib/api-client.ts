@@ -8,7 +8,6 @@ import {
   category,
   confirmCartInput,
   createCampaignInput,
-  createGroupInput,
   createInviteInput,
   feed,
   group,
@@ -43,7 +42,6 @@ export type PublishResult = z.infer<typeof publishResult>;
 export type Feed = z.infer<typeof feed>;
 
 export type LinkWalletBody = z.input<typeof walletLinkInput>;
-export type CreateGroupBody = z.input<typeof createGroupInput>;
 export type CreateInviteBody = z.input<typeof createInviteInput>;
 export type CreateCampaignBody = z.input<typeof createCampaignInput>;
 export type PutCartBody = z.input<typeof putCartInput>;
@@ -189,12 +187,6 @@ export function linkWallet(input: LinkWalletBody, idempotencyKey?: string): Prom
   return apiFetch("/api/v1/wallet/link", { method: "POST", body, idempotencyKey, schema: walletLinkResult });
 }
 
-/** `POST /api/v1/groups` → 201 Membership. */
-export function createGroup(input: CreateGroupBody): Promise<Membership> {
-  const body = createGroupInput.parse(input);
-  return apiFetch("/api/v1/groups", { method: "POST", body, schema: membership });
-}
-
 /** `GET /api/v1/groups/{id}` — nhóm, thành viên và các đợt gom. */
 export function getGroup(groupId: string): Promise<Group> {
   return apiFetch(`/api/v1/groups/${encodeURIComponent(groupId)}`, { schema: group });
@@ -291,6 +283,7 @@ export function publishCampaign(campaignId: string, idempotencyKey?: string): Pr
 }
 
 export type FeedFilters = {
+  province?: string;
   district?: string;
   ward?: string;
   category?: Category;
@@ -302,6 +295,7 @@ export type FeedFilters = {
 /** `GET /api/v1/feed?district&ward&category&cursor&limit` */
 export function getFeed(filters: FeedFilters = {}): Promise<Feed> {
   const params = new URLSearchParams();
+  if (filters.province) params.set("province", filters.province);
   if (filters.district) params.set("district", filters.district);
   if (filters.ward) params.set("ward", filters.ward);
   if (filters.category) params.set("category", filters.category);

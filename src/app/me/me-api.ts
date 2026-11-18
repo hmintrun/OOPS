@@ -3,7 +3,7 @@
  * Nhẹ nhất có thể: chỉ kiểu DTO chung và error envelope, không dùng thư viện ngoài
  * (api-client dùng chung do worker khác sở hữu, không import vào đây).
  */
-import type { Me } from "@/contracts/foundation";
+import type { Me, PatchMeInput } from "@/contracts/foundation";
 
 export type MeCallResult =
   | { ok: true; data: Me }
@@ -31,7 +31,7 @@ function readErrorMessage(raw: unknown): string | undefined {
 
 export async function callMe(
   method: "GET" | "PATCH",
-  body?: { contactPrivate: string },
+  body?: PatchMeInput,
 ): Promise<MeCallResult> {
   let response: Response;
   try {

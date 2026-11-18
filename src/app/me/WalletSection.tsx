@@ -68,7 +68,7 @@ export function WalletSection({
             <p className="me-hint">Theo chính sách xác minh ví trên Fuji.</p>
           </div>
           <span className={`me-chip ${data.confirmationEligible ? "me-chip--verified" : "me-chip--pending"}`}>
-            {data.confirmationEligible ? "Có" : "Chưa"}
+            {data.confirmationEligibilityUnavailable ? "Chưa kiểm tra được" : data.confirmationEligible ? "Có" : "Chưa"}
           </span>
         </div>
         <div>

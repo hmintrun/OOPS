@@ -18,7 +18,6 @@ type State =
   | { phase: "error"; message: string }
   | { phase: "ready"; data: Me };
 
-/** Màn Tài khoản: đọc GET /api/v1/me, sửa liên hệ riêng qua PATCH, xem ví Fuji, đăng xuất. */
 export default function MePage() {
   const router = useRouter();
   const [state, setState] = useState<State>({ phase: "loading" });
@@ -41,8 +40,10 @@ export default function MePage() {
     setState({ phase: "error", message: result.message });
   }, [goLogin]);
 
-  function onData(data: Me) {
-    setState({ phase: "ready", data });
+  function mergeData(fields: Partial<Me>) {
+    setState(current => current.phase === "ready"
+      ? { phase: "ready", data: { ...current.data, ...fields } }
+      : current);
   }
 
   useEffect(() => {
@@ -85,9 +86,22 @@ export default function MePage() {
 
         {state.phase === "ready" && (
           <>
-            <AccountSection data={state.data} />
-            <ContactSection data={state.data} onData={onData} onUnauthorized={goLogin} />
-            <WalletSection data={state.data} onData={onData} onUnauthorized={goLogin} />
+            <AccountSection
+              data={state.data}
+              onData={({ displayName, location }) => mergeData({ displayName, location })}
+              onUnauthorized={goLogin}
+            />
+            <ContactSection
+              data={state.data}
+              onData={({ contactPrivate }) => mergeData({ contactPrivate })}
+              onUnauthorized={goLogin}
+            />
+            <WalletSection
+              data={state.data}
+              onData={({ wallet, confirmationEligible, confirmationEligibilityUnavailable }) =>
+                mergeData({ wallet, confirmationEligible, confirmationEligibilityUnavailable })}
+              onUnauthorized={goLogin}
+            />
             <SignOutSection />
           </>
         )}

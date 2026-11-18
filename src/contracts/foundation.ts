@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { userLocation } from "@/lib/locations";
 
 export const uuid = z.uuid().transform(value => value.toLowerCase());
 export const isoDateTime = z.iso.datetime({ offset: true });
@@ -11,7 +12,18 @@ export const memberRole = z.enum(["MEMBER", "REP"]);
 export const campaignState = z.enum(["DRAFT", "PUBLISHED"]);
 export const roundState = z.enum(["OPENING", "OPEN", "CONFIRMED", "CLOSED"]);
 
-export const patchMeInput = z.strictObject({ contactPrivate: z.string() });
+export const DISPLAY_NAME_MAX_LENGTH = 80;
+export const displayNameInput = z.string().trim()
+  .min(1, "Vui lòng nhập tên hiển thị.")
+  .max(DISPLAY_NAME_MAX_LENGTH, `Tên hiển thị tối đa ${DISPLAY_NAME_MAX_LENGTH} ký tự.`);
+export const patchMeInput = z.strictObject({
+  displayName: displayNameInput.optional(),
+  contactPrivate: z.string().optional(),
+  location: userLocation.optional(),
+}).refine(
+  body => body.displayName !== undefined || body.contactPrivate !== undefined || body.location !== undefined,
+  "Cần thông tin để cập nhật.",
+);
 export const evmAddress = z.string().regex(/^0x[a-fA-F0-9]{40}$/, "Địa chỉ ví EVM không hợp lệ.");
 export const txHash = z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Mã giao dịch Fuji không hợp lệ.");
 export const bytes32Hex = z.string().regex(/^0x[a-fA-F0-9]{64}$/, "Giá trị bytes32 không hợp lệ.");
@@ -20,9 +32,6 @@ export const walletLinkInput = z.strictObject({
   address: evmAddress,
   proofTx: txHash,
   nonce: uuid,
-});
-export const createGroupInput = z.strictObject({
-  name: nonBlank, districtCode: nonBlank, wardCode: nonBlank, pickupPrivate: z.string().optional(),
 });
 export const createInviteInput = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("JOIN"), targetUserId: uuid.optional() }),
@@ -41,7 +50,21 @@ export const putCartInput = z.strictObject({
   version: count,
 });
 export const confirmCartInput = z.strictObject({ version: count });
-export const cartAiInput = z.strictObject({ text: nonBlank.max(4_000), householdSize: positiveCount.optional() });
+export const householdStatus = z.strictObject({
+  members: z.number().int().min(1).max(30),
+  adults: z.number().int().min(0).max(20),
+  children: z.number().int().min(0).max(20),
+  elderly: z.number().int().min(0).max(20),
+  housingType: z.enum(["kienco", "bankienco", "cap4", "vungtrung"]),
+  incomeLevel: z.enum(["low", "medium", "high"]).optional(),
+  notes: z.string().trim().max(1_000),
+});
+export const cartAiInput = z.strictObject({
+  text: z.string().max(4_000).optional().default(""),
+  householdSize: positiveCount.optional(),
+  days: z.number().int().min(1).max(365).optional().default(3),
+  householdStatus: householdStatus.optional(),
+});
 export const cartAiResult = z.strictObject({
   draft: z.strictObject({
     householdSize: positiveCount.optional(),
@@ -49,12 +72,14 @@ export const cartAiResult = z.strictObject({
       skuId: uuid, stockQty: count.optional(), needQty: count.optional(),
     }).refine(line => line.stockQty !== undefined || line.needQty !== undefined)),
   }),
+  encouragement: z.string().optional(),
   unresolved: z.array(z.string()),
   ruleRefs: z.array(z.string()),
 });
 export const publishInput = z.strictObject({});
 export const catalogQuery = z.strictObject({ category: category.optional() });
 export const feedQuery = z.strictObject({
+  province: z.string().regex(/^\d{2}$/).optional(),
   district: nonBlank.optional(),
   ward: nonBlank.optional(),
   category: category.optional(),
@@ -68,11 +93,14 @@ export const apiError = z.strictObject({
 });
 export const me = z.strictObject({
   userId: uuid,
+  displayName: z.string(),
+  location: userLocation.optional(),
   groupId: uuid.optional(),
   wallet: z.strictObject({
     address: z.string(), verificationState: walletVerificationState,
   }).optional(),
   confirmationEligible: z.boolean(),
+  confirmationEligibilityUnavailable: z.literal(true).optional(),
   contactPrivate: z.string().optional(),
 });
 export const walletChallenge = z.strictObject({
@@ -93,8 +121,12 @@ export const campaign = z.strictObject({
 });
 export const group = z.strictObject({
   groupId: uuid, repId: uuid, members: z.array(member), campaigns: z.array(campaign),
+  location: userLocation.optional(),
 });
-export const invite = z.strictObject({ inviteId: uuid, inviteUrl: z.url(), expiresAt: isoDateTime });
+export const invite = z.union([
+  z.strictObject({ inviteId: uuid, inviteUrl: z.url(), joinCode: z.string().regex(/^[A-Z0-9]{8}$/) }),
+  z.strictObject({ inviteId: uuid, inviteUrl: z.url(), expiresAt: isoDateTime }),
+]);
 export const catalogItem = z.strictObject({ skuId: uuid, name: z.string(), category, unit: z.string() });
 export const catalog = z.strictObject({ items: z.array(catalogItem) });
 export const cart = z.strictObject({
@@ -113,6 +145,7 @@ export const demandItem = demandPreview.extend({
   demandItemId: uuid,
   campaignId: uuid,
   districtCode: z.string(),
+  provinceCode: z.string().regex(/^\d{2}$/).optional(),
   wardCode: z.string(),
   needBy: isoDateTime,
   pending: count,
@@ -139,6 +172,7 @@ export const feed = z.strictObject({ items: z.array(demandItem), nextCursor: z.s
 
 export type ApiError = z.infer<typeof apiError>;
 export type Me = z.infer<typeof me>;
+export type PatchMeInput = z.infer<typeof patchMeInput>;
 export type WalletChallenge = z.infer<typeof walletChallenge>;
 export type WalletLinkInput = z.infer<typeof walletLinkInput>;
 export type WalletLinkResult = z.infer<typeof walletLinkResult>;

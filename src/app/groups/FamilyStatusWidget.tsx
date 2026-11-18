@@ -3,39 +3,7 @@
 import { WidgetDialog } from "@/components/ui/WidgetDialog";
 import { useEffect, useState } from "react";
 import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
-
-export type FamilyStatusData = {
-  members: number;
-  adults: number;
-  children: number;
-  elderly: number;
-  housingType: "kienco" | "bankienco" | "cap4" | "vungtrung";
-  incomeLevel: "low" | "medium" | "high";
-  notes: string;
-};
-
-const DEFAULT_FAMILY_STATUS: FamilyStatusData = {
-  members: 4,
-  adults: 2,
-  children: 1,
-  elderly: 1,
-  housingType: "kienco",
-  incomeLevel: "medium",
-  notes: "Tầng 5, có người cao tuổi cần trữ nước sạch sẵn.",
-};
-
-export function readFamilyStatus(): FamilyStatusData {
-  try {
-    const saved = localStorage.getItem("oops_family_status");
-    if (saved) {
-      const data = JSON.parse(saved) as FamilyStatusData;
-      if (Number.isInteger(data?.members) && data.members >= 1 && data.members <= 30) return data;
-    }
-  } catch {
-    // Storage may be unavailable.
-  }
-  return DEFAULT_FAMILY_STATUS;
-}
+import { defaultFamilyStatus, readFamilyStatus, saveFamilyStatus, type FamilyStatusData } from "@/lib/family-status";
 
 const HOUSING_LABELS: Record<FamilyStatusData["housingType"], { label: string; icon: string; desc: string }> = {
   kienco: { label: "Nhà kiên cố", icon: "apartment", desc: "Chung cư / nhà lầu bê tông an toàn" },
@@ -44,47 +12,42 @@ const HOUSING_LABELS: Record<FamilyStatusData["housingType"], { label: string; i
   vungtrung: { label: "Vùng trũng ngập", icon: "flood", desc: "Dễ bị ngập lụt hoặc chia cắt" },
 };
 
-const INCOME_LABELS: Record<FamilyStatusData["incomeLevel"], { label: string; badge: string; desc: string }> = {
+const INCOME_LABELS: Record<NonNullable<FamilyStatusData["incomeLevel"]>, { label: string; badge: string; desc: string }> = {
   low: { label: "Dưới 5 tr/tháng", badge: "Cần trợ cấp 100%", desc: "Hộ khó khăn hoặc người già neo đơn" },
   medium: { label: "5 - 10 tr/tháng", badge: "Trợ giá sỉ gom chung", desc: "Thu nhập trung bình ổn định" },
   high: { label: "Trên 10 tr/tháng", badge: "Tự túc / Góp thêm", desc: "Sẵn sàng hỗ trợ thêm các hộ khác" },
 };
 
 export function FamilyStatusWidget({
+  userId,
   onMembersSaved,
   onStatusSaved,
 }: {
+  userId?: string;
   onMembersSaved?: (members: number) => void;
   onStatusSaved?: (data: FamilyStatusData) => void;
 }) {
-  const [data, setData] = useState<FamilyStatusData>(DEFAULT_FAMILY_STATUS);
+  const [data, setData] = useState(defaultFamilyStatus);
   const [isOpen, setIsOpen] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
 
   // Load from localStorage if present
   useEffect(() => {
-    const status = readFamilyStatus();
+    const status = readFamilyStatus(userId);
     setData(status);
     onMembersSaved?.(status.members);
     onStatusSaved?.(status);
-  }, [onMembersSaved, onStatusSaved]);
+  }, [userId, onMembersSaved, onStatusSaved]);
 
   const handleSave = (newData: FamilyStatusData) => {
     setData(newData);
     onMembersSaved?.(newData.members);
     onStatusSaved?.(newData);
-    try {
-      localStorage.setItem("oops_family_status", JSON.stringify(newData));
-    } catch {
-      // Ignore
-    }
+    saveFamilyStatus(newData, userId);
     setIsOpen(false);
     setShowSavedToast(true);
     setTimeout(() => setShowSavedToast(false), 3000);
   };
-
-  // Công thức Chuẩn Be Ready 72h
-  const waterLitres72h = data.members * 2 * 3; // 2L/người/ngày * 3 ngày
 
   return (
     <>
@@ -105,7 +68,7 @@ export function FamilyStatusWidget({
             </div>
             <div>
               <CardTitle as="h2" className="ui-card__title--flush">Hiện trạng gia đình</CardTitle>
-              <p className="family-status__subtitle">{data.members} người · Ước tính {waterLitres72h} lít / 72 giờ</p>
+              <p className="family-status__subtitle">{data.members} người</p>
             </div>
           </div>
 
@@ -170,12 +133,9 @@ function FamilyStatusModalWidget({
       elderly: finalElderly,
       housingType,
       incomeLevel,
-      notes,
+      notes: notes.trim(),
     });
   };
-
-  const activeMembers = typeof members === "number" && members > 0 ? members : 1;
-  const waterLitres = activeMembers * 2 * 3;
 
   return (
     <WidgetDialog title="Hiện trạng gia đình" icon="family_restroom" onClose={onClose}>
@@ -203,10 +163,6 @@ function FamilyStatusModalWidget({
             {Object.entries(HOUSING_LABELS).map(([key, option]) => <option key={key} value={key}>{option.label}</option>)}
           </select>
         </label>
-        <p className="family-editor__estimate">
-          <MaterialSymbol name="water_drop" size={20} />
-          Ước tính cho 72 giờ <strong>{waterLitres} lít nước</strong>
-        </p>
         <details className="family-editor__more">
           <summary>Thông tin thêm (tùy chọn)</summary>
           <div className="family-editor__people">
@@ -244,13 +200,14 @@ function FamilyStatusModalWidget({
           </div>
           <label className="family-editor__field">
             Mức thu nhập
-            <select value={incomeLevel} onChange={event => setIncomeLevel(event.target.value as FamilyStatusData["incomeLevel"])}>
+            <select value={incomeLevel ?? ""} onChange={event => setIncomeLevel((event.target.value || undefined) as FamilyStatusData["incomeLevel"])}>
+              <option value="">Chưa chọn</option>
               {Object.entries(INCOME_LABELS).map(([key, option]) => <option key={key} value={key}>{option.label}</option>)}
             </select>
           </label>
           <label className="family-editor__field">
             Ghi chú
-            <input value={notes} onChange={event => setNotes(event.target.value)} />
+            <input value={notes} maxLength={1_000} onChange={event => setNotes(event.target.value)} />
           </label>
         </details>
         <div className="family-editor__actions">

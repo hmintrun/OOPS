@@ -9,7 +9,8 @@ import { WidgetDialog } from "@/components/ui/WidgetDialog";
 import { DemandCard } from "@/app/feed/DemandCard";
 import { FEED_PAGE_SIZE, FeedPagination } from "@/app/feed/FeedPagination";
 import { OfferModalWidget, type OfferSubmitData } from "@/app/feed/OfferModalWidget";
-import { FamilyStatusWidget, readFamilyStatus, type FamilyStatusData } from "@/app/groups/FamilyStatusWidget";
+import { FamilyStatusWidget } from "@/app/groups/FamilyStatusWidget";
+import { defaultFamilyStatus, readFamilyStatus, type FamilyStatusData } from "@/lib/family-status";
 import { PwaInstallCard } from "@/components/pwa";
 import { CAMPAIGN_STATUS_LABEL, campaignDisplayState, formatDateTime, toLocalInputValue } from "@/app/campaigns/_shared/dates";
 import type { CatalogItem, DemandItem } from "@/contracts/foundation";
@@ -331,7 +332,7 @@ const INITIAL_DEMO_ORDERS: DemoOrderItem[] = [
 
 export function OopsDemo() {
   const [tab, setTab] = useState<Tab>("groups");
-  const [people, setPeople] = useState(() => readFamilyStatus().members);
+  const [people, setPeople] = useState(defaultFamilyStatus.members);
   const [itemQuantities, setItemQuantities] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [isCampaignManageOpen, setIsCampaignManageOpen] = useState(false);

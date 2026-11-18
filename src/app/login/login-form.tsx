@@ -1,10 +1,13 @@
 "use client";
 
 import { createBrowserClient } from "@supabase/ssr";
-import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import { resolveLoginNext } from "@/lib/login-next";
+import { accountErrorMessage, confirmationUrl, registrationInput } from "@/lib/account-auth";
+import { LocationFields } from "@/components/location-fields";
+import { HCM_PROVINCE_CODE } from "@/lib/locations";
 
 /**
  * Ô nhập dựng theo quy ước control của design/STYLE.md mục 6 (trắng, viền line,
@@ -21,8 +24,6 @@ const FIELD_INPUT = [
 ].join(" ");
 
 const CONFIG_MESSAGE = "Dịch vụ tài khoản chưa sẵn sàng. Vui lòng thử lại sau.";
-
-const FALLBACK_MESSAGE = "Không đăng nhập được. Vui lòng kiểm tra kết nối và thử lại.";
 
 type BrowserClient = ReturnType<typeof createBrowserClient>;
 
@@ -55,63 +56,155 @@ type FormState = { kind: "idle" } | { kind: "error" | "notice"; message: string 
 
 /** Form đăng nhập bằng email/mật khẩu; phiên Supabase ghi cookie mà /api/v1 đọc. */
 export function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const [register, setRegister] = useState(false);
+  const [register, setRegister] = useState(searchParams.get("mode") === "signup");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [wardCode, setWardCode] = useState("");
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
+  const [resendSeconds, setResendSeconds] = useState(0);
+  const [showPassword, setShowPassword] = useState(false);
   const [pending, setPending] = useState(false);
+  const inFlight = useRef(false);
   const [state, setState] = useState<FormState>({ kind: "idle" });
 
+  useEffect(() => {
+    if (resendSeconds <= 0) return;
+    const timer = window.setTimeout(() => setResendSeconds(value => Math.max(0, value - 1)), 1_000);
+    return () => window.clearTimeout(timer);
+  }, [resendSeconds]);
+
+  function clearPasswords() {
+    setPassword("");
+    setConfirmPassword("");
+    setShowPassword(false);
+  }
+
+  function waitForConfirmation(address: string) {
+    setConfirmationEmail(address);
+    clearPasswords();
+    setState({ kind: "idle" });
+  }
+
+  async function resendConfirmation() {
+    if (inFlight.current || resendSeconds > 0) return;
+    const address = (confirmationEmail ?? email).trim();
+    if (!address || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+      setState({ kind: "error", message: "Nhập email tài khoản để gửi lại xác nhận." });
+      return;
+    }
+    const client = supabaseBrowser();
+    if (!client) {
+      setState({ kind: "error", message: CONFIG_MESSAGE });
+      return;
+    }
+    inFlight.current = true;
+    setPending(true);
+    setState({ kind: "idle" });
+    try {
+      const { error } = await client.auth.resend({
+        type: "signup", email: address,
+        options: { emailRedirectTo: confirmationUrl(window.location.origin, searchParams.get("next")) },
+      });
+      if (error) throw error;
+      waitForConfirmation(address);
+      setResendSeconds(60);
+      setState({ kind: "notice", message: "Đã yêu cầu gửi lại email. Hãy kiểm tra cả thư mục thư rác và mở liên kết mới nhất." });
+    } catch (error) {
+      setState({ kind: "error", message: accountErrorMessage(error, "resend") });
+      if ((error as { status?: number })?.status === 429) setResendSeconds(60);
+    } finally {
+      inFlight.current = false;
+      setPending(false);
+    }
+  }
+
   async function handleSubmit() {
-    if (pending) return;
+    if (inFlight.current) return;
     const client = supabaseBrowser();
     if (!client) {
       setState({ kind: "error", message: CONFIG_MESSAGE });
       return;
     }
     const address = email.trim();
-    if (!address || !password || (register && !name.trim())) {
+    if (!address || !password) {
       setState({ kind: "error", message: "Vui lòng nhập email và mật khẩu." });
       return;
     }
+    if (register) {
+      const parsed = registrationInput.safeParse({ name, email: address, password, confirmPassword,
+        location: { provinceCode: HCM_PROVINCE_CODE, wardCode } });
+      if (!parsed.success) {
+        setState({ kind: "error", message: parsed.error.issues[0].message });
+        return;
+      }
+    }
 
+    inFlight.current = true;
     setPending(true);
     setState({ kind: "idle" });
-    let message: string | null = null;
     try {
-      const next = resolveLoginNext(searchParams.get("next"));
       if (register) {
-        const callback = new URL("/login/confirm", window.location.origin);
-        callback.searchParams.set("next", next);
         const { data, error } = await client.auth.signUp({
           email: address,
           password,
-          options: { data: { display_name: name.trim() }, emailRedirectTo: callback.toString() },
+          options: {
+            data: { display_name: name.trim(), location: { provinceCode: HCM_PROVINCE_CODE, wardCode } },
+            emailRedirectTo: confirmationUrl(window.location.origin, searchParams.get("next")),
+          },
         });
-        if (!error && !data.session) {
-          setPending(false);
-          setPassword("");
-          setState({ kind: "notice", message: "Kiểm tra email để xác nhận tài khoản trên trình duyệt này." });
+        if (error) throw error;
+        if (!data.user) throw new Error("Missing signup user");
+        if (!data.session) {
+          waitForConfirmation(address);
+          setResendSeconds(60);
           return;
         }
-        message = error ? "Không đăng ký được. Kiểm tra email và yêu cầu mật khẩu rồi thử lại." : null;
       } else {
-        const { error } = await client.auth.signInWithPassword({ email: address, password });
-        message = error ? "Không đăng nhập được. Hãy kiểm tra email, mật khẩu và xác nhận email." : null;
+        const { data, error } = await client.auth.signInWithPassword({ email: address, password });
+        if (error?.code === "email_not_confirmed") {
+          waitForConfirmation(address);
+          return;
+        }
+        if (error) throw error;
+        if (!data.session) throw new Error("Missing login session");
       }
-    } catch {
-      message = FALLBACK_MESSAGE;
-    }
-    if (message) {
+      // A full navigation makes the server read the new cookies, including after a prefetched guest page.
+      window.location.replace(resolveLoginNext(searchParams.get("next")));
+    } catch (error) {
+      setState({ kind: "error", message: accountErrorMessage(error, register ? "signup" : "login") });
+    } finally {
+      inFlight.current = false;
       setPending(false);
-      setState({ kind: "error", message });
-      return;
     }
-    // Giữ trạng thái loading tới khi màn hình kế tiếp render.
-    router.replace(resolveLoginNext(searchParams.get("next")));
   }
+
+  if (confirmationEmail) return (
+    <Card className="login-form-card" padding="flush">
+      <div className="login-form-heading">
+        <IconTile icon="mark_email_unread" tone="sky" />
+        <div><CardTitle as="h2">Xác nhận email</CardTitle><p>Còn một bước để bắt đầu.</p></div>
+      </div>
+      <div className="grid gap-3">
+        <p role="status" className="text-body text-navy-900 break-words">
+          Kiểm tra hộp thư <strong>{confirmationEmail}</strong> và mở liên kết xác nhận mới nhất trên trình duyệt này.
+        </p>
+        <p className="text-body text-navy-600">Nếu đã xác nhận hoặc đã có tài khoản, hãy đăng nhập để tiếp tục.</p>
+        {state.kind !== "idle" && <p role={state.kind === "error" ? "alert" : "status"}>{state.message}</p>}
+        <Button variant="secondary" loading={pending} disabled={resendSeconds > 0} onClick={() => void resendConfirmation()}>
+          {resendSeconds > 0 ? `Gửi lại sau ${resendSeconds}s` : "Gửi lại email xác nhận"}
+        </Button>
+        <Button disabled={pending} onClick={() => {
+          setEmail(confirmationEmail); setConfirmationEmail(null); setRegister(false); setState({ kind: "idle" });
+        }}>Đã xác nhận, đăng nhập</Button>
+        <Button variant="ghost" disabled={pending} onClick={() => {
+          setConfirmationEmail(null); setRegister(true); setState({ kind: "idle" });
+        }}>Sửa địa chỉ email</Button>
+      </div>
+    </Card>
+  );
 
   return (
     <Card className="login-form-card" padding="flush">
@@ -133,10 +226,18 @@ export function LoginForm() {
         {register && <label className="grid gap-2">
           <span className="text-label">Tên hiển thị</span>
           <span className={FIELD_ROW}>
-            <input className={FIELD_INPUT} autoComplete="name" maxLength={80} required
+            <IconTile icon="person" tone="sky" size="sm" />
+            <input className={FIELD_INPUT} name="name" autoComplete="name" maxLength={80} required
+              placeholder="Tên của bạn hoặc hộ gia đình"
               value={name} disabled={pending} onChange={event => setName(event.target.value)} />
           </span>
         </label>}
+        {register && (
+          <fieldset className="grid min-w-0 gap-2">
+            <legend className="mb-2 text-label">Nơi sinh sống</legend>
+            <LocationFields wardCode={wardCode} onChange={setWardCode} disabled={pending} searchable={false} />
+          </fieldset>
+        )}
         <label className="grid gap-2">
           <span className="text-label">Email</span>
           <span className={FIELD_ROW}>
@@ -144,6 +245,7 @@ export function LoginForm() {
             <input
               className={FIELD_INPUT}
               type="email"
+              name="email"
               inputMode="email"
               autoComplete="email"
               autoCapitalize="none"
@@ -163,16 +265,32 @@ export function LoginForm() {
             <IconTile icon="lock" tone="rose" size="sm" />
             <input
               className={FIELD_INPUT}
-              type="password"
+              type={showPassword ? "text" : "password"}
+              name="password"
               autoComplete={register ? "new-password" : "current-password"}
               minLength={register ? 6 : undefined}
               required
-              placeholder="Mật khẩu của bạn"
+              placeholder={register ? "Ít nhất 6 ký tự" : "Mật khẩu của bạn"}
               value={password}
               disabled={pending}
               onChange={event => setPassword(event.target.value)}
             />
           </span>
+          {register && <span className="text-small text-navy-600">Ít nhất 6 ký tự. Nên kết hợp chữ, số và ký tự đặc biệt.</span>}
+        </label>
+
+        {register && <label className="grid gap-2">
+          <span className="text-label">Nhập lại mật khẩu</span>
+          <span className={FIELD_ROW}>
+            <IconTile icon="lock" tone="rose" size="sm" />
+            <input className={FIELD_INPUT} name="confirmPassword" type={showPassword ? "text" : "password"}
+              autoComplete="new-password" required placeholder="Nhập lại mật khẩu vừa tạo"
+              value={confirmPassword} disabled={pending} onChange={event => setConfirmPassword(event.target.value)} />
+          </span>
+        </label>}
+        <label className="login-password-toggle text-label">
+          <input type="checkbox" checked={showPassword} disabled={pending} onChange={event => setShowPassword(event.target.checked)} />
+          Hiện mật khẩu
         </label>
 
         {state.kind === "error" && (
@@ -188,7 +306,7 @@ export function LoginForm() {
         )}
         {state.kind === "notice" && <p role="status">{state.message}</p>}
         {state.kind === "idle" && searchParams.get("confirmation") === "failed" && (
-          <p role="alert">Không xác nhận được email. Hãy mở lại liên kết trên trình duyệt đã đăng ký.</p>
+          <p role="alert">Liên kết xác nhận đã hết hạn, đã được dùng hoặc mở trên trình duyệt khác. Hãy thử đăng nhập; nếu email chưa được xác nhận, bạn có thể gửi lại bên dưới.</p>
         )}
 
         <div className="mt-1">
@@ -197,15 +315,20 @@ export function LoginForm() {
             {register ? "Đăng ký" : "Đăng nhập"}
           </Button>
         </div>
+        {searchParams.get("confirmation") === "failed" && (
+          <Button variant="secondary" disabled={pending || resendSeconds > 0} onClick={() => void resendConfirmation()}>
+            {resendSeconds > 0 ? `Gửi lại sau ${resendSeconds}s` : "Gửi lại email xác nhận"}
+          </Button>
+        )}
         <Button variant="ghost" disabled={pending} onClick={() => {
           setRegister(!register);
-          setPassword("");
+          clearPasswords();
           setState({ kind: "idle" });
         }}>{register ? "Quay lại đăng nhập" : "Tạo tài khoản mới"}</Button>
 
       </form>
 
-      {process.env.NODE_ENV === "development" && !register && (
+      {process.env.NODE_ENV === "development" && !register && !pending && (
         <details className="login-sample">
           <summary>Tài khoản mẫu (local)</summary>
           <div className="login-sample__actions">

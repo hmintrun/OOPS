@@ -3,6 +3,7 @@ import type { Group } from "@/contracts/foundation";
 import { AppShell } from "@/components/app-shell";
 import { Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import { FamilyStatusWidget } from "./FamilyStatusWidget";
+import { ReceivingContactCard } from "./ReceivingContactCard";
 import { formatDateTime } from "./helpers";
 import { InviteForm } from "./[id]/invite-form";
 import { LeaveGroupButton } from "./[id]/leave-group-button";
@@ -12,8 +13,9 @@ export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
   const isRepresentative = data.repId === userId;
   return (
     <AppShell title="Nhóm của tôi" subtitle={`${data.members.length} hộ gia đình`} icon={{ icon: "groups", tone: "green" }} familyBackground bodyClassName="ui-stack" bare>
-      <FamilyStatusWidget />
+      <FamilyStatusWidget key={userId} userId={userId} />
       <div className="ui-card-grid">
+        {isRepresentative && <ReceivingContactCard key={userId} userId={userId} />}
         <Card>
           <div className="mb-3 flex items-center gap-3">
             <IconTile icon="shopping_basket" tone="amber" />
@@ -54,7 +56,15 @@ export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
           </ul>
         </Card>
         {isRepresentative && <InviteForm groupId={data.groupId} members={data.members.filter(member => member.role !== "REP")} />}
-        <LeaveGroupButton groupId={data.groupId} isRepresentative={isRepresentative} />
+        {isRepresentative && data.members.length === 1 && (
+          <Link href="/join" className="ui-btn ui-btn--secondary ui-btn--full">
+            <MaterialSymbol name="group_add" className="ui-btn__icon" />
+            Tham gia nhóm qua lời mời
+          </Link>
+        )}
+        {(!isRepresentative || data.members.length > 1) && (
+          <LeaveGroupButton groupId={data.groupId} isRepresentative={isRepresentative} />
+        )}
       </div>
     </AppShell>
   );

@@ -4,7 +4,6 @@ import { createClient } from "@supabase/supabase-js";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { apiError, campaign, cart, cartAiResult, feed, group, invite, leftGroup, me, membership, needs, publishResult } from "@/contracts/foundation";
 import { GET as getMe, PATCH as patchMe } from "@/app/api/v1/me/route";
-import { POST as postGroup } from "@/app/api/v1/groups/route";
 import { GET as getGroup } from "@/app/api/v1/groups/[id]/route";
 import { POST as postInvite } from "@/app/api/v1/groups/[id]/invites/route";
 import { POST as postLeave } from "@/app/api/v1/groups/[id]/leave/route";
@@ -69,7 +68,6 @@ const authFetch = globalThis.fetch.bind(globalThis);
 const users: string[] = [];
 const district = "OOPS_TEST_" + randomUUID();
 const dateIn = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
-const groupInput = { name: "Nhóm kiểm thử", districtCode: district, wardCode: "WARD", pickupPrivate: "private" };
 const origin = "http://localhost:3000";
 type Handler = (request: Request, context: { params: Promise<{ id?: string; version?: string }> }) => Promise<Response>;
 
@@ -114,7 +112,14 @@ async function newUser() {
 }
 
 async function newGroup(userId: string) {
-  return membership.parse((await call(postGroup, userId, { method: "POST", body: groupInput })).data).groupId;
+  const profile = me.parse((await call(getMe, userId)).data);
+  expect(profile.groupId).toBeDefined();
+  // Fixture for the old district-based Feed query and cleanup of its campaigns.
+  await transaction(client => client.query(
+    "update public.groups set district_code = $1, ward_code = 'WARD', pickup_private = 'private' where id = $2",
+    [district, profile.groupId],
+  ));
+  return profile.groupId!;
 }
 
 async function makeInvite(rep: string, id: string, target?: string, key?: string) {
@@ -327,6 +332,13 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
         await client.query(`delete from public.invites where group_id in ${groups}`, [district]);
         await client.query(`delete from public.memberships where group_id in ${groups}`, [district]);
         await client.query("delete from public.groups where district_code = $1", [district]);
+        // Groups provisioned when test users open /me or leave a group.
+        const soloGroups = "(select group_id from public.memberships where user_id = any($1::uuid[]))";
+        await client.query("delete from public.invites where group_id in " + soloGroups, [users]);
+        const { rows: solo } = await client.query<{ group_id: string }>(
+          "delete from public.memberships where user_id = any($1::uuid[]) returning group_id", [users],
+        );
+        await client.query("delete from public.groups where id = any($1::uuid[])", [solo.map(row => row.group_id)]);
         await client.query("delete from public.audit_events where actor_id = any($1::uuid[])", [users]);
         await client.query("delete from public.idempotency_keys where actor_id = any($1::uuid[])", [users]);
         await client.query("delete from public.wallets where user_id = any($1::uuid[])", [users]);
@@ -353,12 +365,37 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     }
   }, 180_000);
 
+  it("updates the signed-in profile without overwriting omitted fields", async () => {
+    const userId = await newUser();
+    const initial = me.parse((await call(getMe, userId)).data);
+    expect(initial.displayName).toBe("Hộ kiểm thử");
+    expect(initial.location).toBeUndefined();
+
+    const rename = await call(patchMe, userId, { method: "PATCH", body: { displayName: " Hộ Bến Thành " } });
+    expect(rename.status).toBe(200);
+    expect(me.parse(rename.data)).toEqual({ ...initial, displayName: "Hộ Bến Thành" });
+
+    const location = { provinceCode: "79", wardCode: "26743" };
+    const move = await call(patchMe, userId, { method: "PATCH", body: { location } });
+    expect(move.status).toBe(200);
+    const expected = { ...initial, displayName: "Hộ Bến Thành", location };
+    expect(me.parse(move.data)).toEqual(expected);
+
+    const invalid = await call(patchMe, userId, {
+      method: "PATCH", body: { displayName: "Tên khác", location: { ...location, wardCode: "99999" } },
+    });
+    expect(invalid.status).toBe(422);
+    expect(me.parse((await call(getMe, userId)).data)).toEqual(expected);
+    const membership = group.parse((await call(getGroup, userId, { id: initial.groupId })).data);
+    expect(membership.members).toEqual([expect.objectContaining({ userId, displayName: "Hộ Bến Thành" })]);
+  });
+
   it("publishes 12 confirmed units, protects private data, and paginates Feed", async () => {
     const [rep, ...others] = await Promise.all(Array.from({ length: 6 }, newUser));
     const buyerIds = [rep, ...others.slice(0, 4)];
     const outsider = others[4];
     expect((await call(getMe)).status).toBe(401);
-    expect(me.parse((await call(getMe, rep)).data)).toEqual({ userId: rep, confirmationEligible: false });
+    expect(me.parse((await call(getMe, rep)).data)).toMatchObject({ userId: rep, displayName: "Hộ kiểm thử", confirmationEligible: false });
     expect((await call(patchMe, rep, { method: "PATCH", origin: "https://elsewhere.test", body: { contactPrivate: "private" } })).status).toBe(403);
     expect(me.parse((await call(patchMe, rep, { method: "PATCH", body: { contactPrivate: "private" } })).data).contactPrivate).toBe("private");
 
@@ -523,29 +560,39 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     }
   });
 
-  it("makes idempotency atomic and a JOIN token usable by only one account", async () => {
+  it("shares a stable JOIN code across accounts and keeps targeted invites one-time", async () => {
     const [rep, first, second] = await Promise.all([newUser(), newUser(), newUser()]);
-    const options = { method: "POST", body: groupInput, key: "same-key", path: "/api/v1/groups" };
-    const [one, replay] = await Promise.all([call(postGroup, rep, options), call(postGroup, rep, options)]);
-    expect([one.status, replay.status]).toEqual([201, 201]);
-    expect(one.data).toEqual(replay.data);
-    expect((await call(postGroup, rep, { ...options, body: { ...groupInput, name: "Different" } })).status).toBe(409);
-    const id = membership.parse(one.data).groupId;
+    const id = await newGroup(rep);
 
-    const issued = await makeInvite(rep, id, undefined, "invite-replay");
+    const [issued, issuedAgain] = await Promise.all([
+      makeInvite(rep, id, undefined, "invite-replay"),
+      makeInvite(rep, id, undefined, "invite-other-request"),
+    ]);
+    expect(issued).toEqual(issuedAgain);
+    expect(issued).toMatchObject({ joinCode: issued.token });
+    expect(issued.token).toMatch(/^[A-Z0-9]{8}$/);
     expect(await makeInvite(rep, id, undefined, "invite-replay")).toEqual(issued);
-    const expired = await makeInvite(rep, id);
+    expect((await call(getMe, first)).status).toBe(200);
+    const targeted = await call(postInvite, rep, { id, method: "POST", body: { kind: "JOIN", targetUserId: first } });
+    expect(targeted.status).toBe(201);
+    const expired = invite.parse(targeted.data);
+    const expiredToken = new URL(expired.inviteUrl).searchParams.get("token")!;
     await transaction(client => client.query(
       "update public.invites set expires_at = clock_timestamp() - interval '1 second' where id = $1", [expired.inviteId],
     ));
-    expect((await accept(first, expired.token)).status).toBe(409);
-    const joined = await Promise.all([accept(first, issued.token), accept(second, issued.token)]);
-    expect(joined.map(result => result.status).sort()).toEqual([200, 409]);
-    const newRep = joined[0].status === 200 ? first : second;
+    expect((await accept(first, expiredToken)).status).toBe(409);
+    expect((await accept(first, "00000000")).status).toBe(409);
+    const joined = await Promise.all([accept(first, issued.token), accept(second, issued.token.toLowerCase())]);
+    expect(joined.map(result => result.status)).toEqual([200, 200]);
+    for (const result of joined) expect(membership.parse(result.data)).toMatchObject({ groupId: id, role: "MEMBER" });
+    expect((await accept(first, issued.token)).status).toBe(409);
+    const newRep = first;
     const roleInvite = await makeInvite(rep, id, newRep);
     expect((await accept(rep, roleInvite.token)).status).toBe(409);
     expect(membership.parse((await accept(newRep, roleInvite.token)).data).role).toBe("REP");
+    expect((await accept(newRep, roleInvite.token)).status).toBe(409);
     expect(group.parse((await call(getGroup, rep, { id })).data).repId).toBe(newRep);
+    expect(await makeInvite(newRep, id)).toEqual(issued);
     expect((await call(postInvite, rep, {
       id, method: "POST", body: { kind: "JOIN" }, key: "invite-replay",
     })).status).toBe(403);
@@ -599,11 +646,14 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
 
   it("prevents two active memberships when group creation races", async () => {
     const rep = await newUser();
-    const options = { method: "POST", body: groupInput };
-    const responses = await Promise.all([call(postGroup, rep, options), call(postGroup, rep, options)]);
-    expect(responses.map(result => result.status).sort()).toEqual([201, 409]);
-    const profile = me.parse((await call(getMe, rep)).data);
+    const [one, two] = await Promise.all([call(getMe, rep), call(getMe, rep)]);
+    expect([one.status, two.status]).toEqual([200, 200]);
+    const profile = me.parse(one.data);
     expect(profile.groupId).toBeDefined();
+    expect(me.parse(two.data).groupId).toBe(profile.groupId);
+    const data = group.parse((await call(getGroup, rep, { id: profile.groupId })).data);
+    expect(data.repId).toBe(rep);
+    expect(data.members).toHaveLength(1);
   });
 
   it("opens an offer and draft while enforcing roles, revisions and stock boundaries", async () => {
@@ -1261,6 +1311,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       expect(provider).not.toHaveBeenCalled();
       expect(cartAiResult.parse((await call(postCartAi, rep, request)).data)).toEqual({
         draft: { householdSize: 2, lines: [{ skuId: waterSkuId, stockQty: 3, needQty: 7 }] },
+        encouragement: expect.any(String),
         unresolved: ["Thực phẩm chưa rõ"], ruleRefs: [],
       });
       expect((await call(postCartAi, rep, request)).status).toBe(503);

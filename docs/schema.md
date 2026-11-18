@@ -4,6 +4,8 @@ Tài liệu mô tả các bảng, trường, khóa và ràng buộc cho [OOPS MV
 
 ## Quy ước
 
+Cập nhật 17/11/2026: migration `20261117000100_account_and_demand_locations.sql` bổ sung danh mục hành chính TP.HCM, vị trí hồ sơ/nhóm và snapshot vị trí trên nhu cầu. Xem [chi tiết ràng buộc và nguồn dữ liệu](locations.md).
+
 - `id` là khóa chính UUID, trừ bảng có khóa chính ghép ghi trong bảng.
 - `fk` là khóa ngoại UUID. `UQ` là ràng buộc duy nhất.
 - `ts` là `timestamptz`. `vnd` là `bigint` không âm, tính theo đồng.
@@ -18,7 +20,8 @@ Tài liệu mô tả các bảng, trường, khóa và ràng buộc cho [OOPS MV
 | `profiles` | `id uuid PK/FK auth.users, display_name text, contact_private text?` | Tạo từ Supabase Auth. Một tài khoản dùng được cả hai luồng. |
 | `wallets` | `user_id uuid PK/FK, address text UQ, verification_state enum, verified_at ts?, proof_tx text?` | Chuẩn hóa địa chỉ. verification_state gồm PENDING, VERIFIED, FAILED. Trạng thái đủ điều kiện do backend kiểm tra trên Fuji theo chính sách. |
 | `groups`<br>`memberships` | `groups(id, name text, district_code text, ward_code text, pickup_private text?)`<br>`memberships(id, group_id fk, user_id fk, role enum, joined_at ts, left_at ts?)` | Một membership là một hộ trong MVP. UQ user_id với left_at NULL. Tối đa một REP đang hoạt động mỗi nhóm. Nhóm chỉ được đăng bài khi có REP. |
-| `invites` | `id, group_id fk, kind enum, token_hash text UQ, target_user_id fk?, expires_at ts, used_at ts?` | JOIN dùng link một lần. REP chỉ thành viên đích nhận được. Nhận quyền đại diện và chuyển vai trò cũ cùng giao dịch. |
+| `group_join_codes` | `id uuid PK, group_id fk UQ, code text UQ` | Một mã 8 ký tự cố định mỗi nhóm, cấp ở lần đầu đại diện lấy link. Nhiều tài khoản có thể dùng mã này. |
+| `invites` | `id, group_id fk, kind enum, token_hash text UQ, target_user_id fk?, expires_at ts, used_at ts?` | Lời mời JOIN cũ hoặc chỉ định tài khoản, và lời mời REP, dùng một lần. REP chỉ thành viên đích nhận được. |
 | `catalog_items` | `id, code text UQ, name text, category enum, unit text` | Một SKU gắn đơn vị đếm chuẩn. Các nhóm gồm nước, thực phẩm và nhu yếu phẩm. |
 | `campaigns` | `id, group_id fk, collect_until ts, need_by ts, support_requested bool, status enum, published_at ts?` | Đợt gom DRAFT hoặc PUBLISHED. collect_until < need_by. Sửa và xác nhận giỏ khi đợt còn DRAFT và chưa đến collect_until. Đại diện có thể đăng sớm để đóng gom, và chỉ đăng trước need_by. |
 | `carts`<br>`cart_items` | `carts(id, campaign_id fk, membership_id fk, household_size int, support_requested bool, state enum, version int)`<br>`cart_items(cart_id fk, sku_id fk, stock_qty int, need_qty int, rule_ref text?)` | UQ (campaign_id, membership_id). PK (cart_id, sku_id). Giỏ và đợt cùng nhóm. household_size > 0. stock_qty ≥ 0 và need_qty ≥ 0. Giỏ ở DRAFT hoặc CONFIRMED. Chỉ giỏ CONFIRMED được chụp khi đăng. |

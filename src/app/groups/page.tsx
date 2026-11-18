@@ -1,8 +1,6 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
-import { Card, CardTitle, MaterialSymbol } from "@/components/ui";
-import { CreateGroupForm } from "./CreateGroupForm";
+import { Card } from "@/components/ui";
 import { FamilyStatusWidget } from "./FamilyStatusWidget";
 import { GroupDetail } from "./group-detail";
 import { loadGroupPage } from "./group-page-data";
@@ -10,32 +8,18 @@ import { loadGroupPage } from "./group-page-data";
 export default async function GroupsPage() {
   const result = await loadGroupPage();
   if (!result.ok && result.status === 401) redirect("/login");
-  if (result.ok && result.group) return <GroupDetail data={result.group} userId={result.userId} />;
+  if (result.ok) return <GroupDetail data={result.group} userId={result.userId} />;
 
   return (
     <AppShell title="Nhóm của tôi" icon={{ icon: "groups", tone: "green" }} familyBackground bare>
       <div className="space-y-4">
-        <FamilyStatusWidget />
-        {result.ok ? (
-          <div className="ui-card-grid">
-            <Card>
-              <CardTitle>Đã có lời mời?</CardTitle>
-              <p className="mb-3 text-body text-navy-600">Dán liên kết do đại diện gửi để vào nhóm.</p>
-              <Link href="/join" className="ui-btn ui-btn--secondary ui-btn--full">
-                <MaterialSymbol name="group_add" className="ui-btn__icon" />
-                Tham gia nhóm
-              </Link>
-            </Card>
-            <CreateGroupForm />
+        {result.userId && <FamilyStatusWidget key={result.userId} userId={result.userId} />}
+        <Card className="ui-empty ui-status-card">
+          <p role="alert">{result.message}</p>
+          <div className="ui-actions">
+            <a href="/groups" className="ui-btn ui-btn--secondary">Thử lại</a>
           </div>
-        ) : (
-          <Card className="ui-empty ui-status-card">
-            <p role="alert">{result.message}</p>
-            <div className="ui-actions">
-              <a href="/groups" className="ui-btn ui-btn--secondary">Thử lại</a>
-            </div>
-          </Card>
-        )}
+        </Card>
       </div>
     </AppShell>
   );
