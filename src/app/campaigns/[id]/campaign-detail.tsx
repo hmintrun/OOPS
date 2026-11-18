@@ -26,6 +26,8 @@ type Data = {
   needs: Needs;
   isRep: boolean;
   userId: string;
+  displayName: string;
+  contactPrivate?: string;
   householdSize: number;
 };
 type Draft = {
@@ -48,7 +50,10 @@ async function loadCampaign(id: string): Promise<Data> {
     const group = await getGroup(profile.groupId);
     const campaign = group.campaigns.find(item => item.campaignId === id);
     if (!campaign) throw new Error("Không tìm thấy đợt gom trong nhóm của bạn.");
-    return { campaign, isRep: group.repId === profile.userId, userId: profile.userId };
+    return {
+      campaign, isRep: group.repId === profile.userId, userId: profile.userId,
+      displayName: profile.displayName, contactPrivate: profile.contactPrivate,
+    };
   });
   const [groupContext, catalog, cart, needs] = await Promise.all([
     context,
@@ -139,7 +144,6 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     <Card>
       <Banner tone="error">{error}</Banner>
       <Button variant="secondary" onClick={() => setReload(value => value + 1)}>Thử lại</Button>
-      <LinkButton href="/campaigns">Các đợt gom</LinkButton>
     </Card>
   ) : <LoadingState />;
 
@@ -171,7 +175,6 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
 
   return (
     <div className="grid gap-4">
-      <LinkButton href="/campaigns" icon="arrow_back">Các đợt gom</LinkButton>
       <Card className="ui-campaign-status" data-campaign-status={displayState}>
         <CampaignStateChip state={displayState} />
         <p>Gom đến {formatDateTime(campaign.collectUntil)}</p>
@@ -257,7 +260,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         {needs.campaignState === "PUBLISHED" && <LinkButton href="/feed">Xem nhu cầu đã đăng</LinkButton>}
       </Card>
       {isRep && needs.items.some(item => item.supportRequested) && (
-        <ReceivingContactCard key={data.userId} userId={data.userId} />
+        <ReceivingContactCard displayName={data.displayName} contactPrivate={data.contactPrivate} />
       )}
     </div>
   );

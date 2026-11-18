@@ -7,6 +7,12 @@ describe("receiving contacts in the existing private contact field", () => {
     expect(readReceivingContact(writeReceivingContact(contact))).toEqual(contact);
   });
 
+  it("reads a legacy phone-only contact as a phone number", () => {
+    expect(readReceivingContact(" +84 901 234 567 ")).toEqual({
+      name: "", phone: "+84 901 234 567", address: "", notes: "",
+    });
+  });
+
   it("preserves old free-text contacts when adding structured contact details", () => {
     const previous = readReceivingContact("Liên hệ chị Mai qua bảo vệ\nCổng B");
     const updated = { ...previous, name: "Mai", phone: "0901234567", address: "Cổng B" };

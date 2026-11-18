@@ -1110,7 +1110,12 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     await readyDraft(id, rep, seller, [[rep, 2], [second, 2], [third, 3], [spare, 1]]);
     const order = contract.parse((await finalize(id, rep, "priced")).data);
     const orderId = order.contractId;
-    const [deposit] = (await orderFor(orderId, seller)).charges;
+    expect(order).toMatchObject({ unit: "chai", myShare: { qty: 2, goodsVnd: 4_000 } });
+    const sellerView = await orderFor(orderId, seller);
+    expect(sellerView.unit).toBe("chai");
+    expect(sellerView.myShare).toBeUndefined();
+    expect(await orderFor(orderId, third)).toMatchObject({ unit: "chai", myShare: { qty: 3, goodsVnd: 6_000 } });
+    const [deposit] = sellerView.charges;
     expect((await pay(deposit.chargeId, seller)).status).toBe(200);
     const paymentResults = await Promise.all([rep, second, third, spare].map(async userId => {
       const [goods] = (await orderFor(orderId, userId)).charges;

@@ -44,6 +44,8 @@ Cập nhật 17/11/2026: hồ sơ/nhóm hỗ trợ `location`, nhu cầu thêm `
 | demandItemId | UUID | Có | Dòng nhu cầu được đáp ứng. |
 | state | enum | Có | Xem bảng trạng thái trong [kiến trúc](architecture.md#trạng-thái-theo-dõi). |
 | qty | integer | Có | Số lượng cam kết trong đơn vị SKU. |
+| unit | string | Có khi đọc đơn | Đơn vị SKU theo danh mục, ví dụ `chai` hoặc `kg`. Phản hồi phát lại từ trước khi bổ sung trường này có thể thiếu `unit`. |
+| myShare | object | Khi người gọi có phần trong đơn | `qty` và `goodsVnd` của phần đã chốt cho tài khoản hiện tại. |
 | unitPriceVnd | integer | Có | Đơn giá, kể cả 0. |
 | goodsVnd | integer | Có | Tổng tiền hàng do backend tính. |
 | depositVnd | integer | Có | Cọc do người bán nộp. |

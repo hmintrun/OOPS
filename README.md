@@ -14,7 +14,7 @@ Tài khoản đại diện seed là `oops-dev-household-1@example.test`. Hộ c�
 
 ## Thử luồng trên giao diện
 
-1. Mở `/` để vào ứng dụng. Đăng nhập tại `/login`, hoặc chọn **Tạo tài khoản mới** (`/login?mode=signup`). Nhập tên, email và hai ô mật khẩu. Nếu Supabase yêu cầu xác nhận, mở link mới nhất trong email; màn chờ có nút gửi lại và quay về đăng nhập. Nếu Supabase trả phiên ngay, app mở nhóm trực tiếp. Liên kết mời được giữ xuyên suốt đăng ký/xác nhận/đăng nhập.
+1. Mở `/` để vào ứng dụng. Đăng nhập tại `/login`, hoặc chọn **Tạo tài khoản mới** (`/login?mode=signup`). Nhập tên hiển thị, nơi sinh sống, số điện thoại, email và mật khẩu có ít nhất 9 ký tự, rồi nhập lại mật khẩu. Nếu Supabase yêu cầu xác nhận, mở link mới nhất trong email; màn chờ có nút gửi lại và quay về đăng nhập. Nếu Supabase trả phiên ngay, app mở nhóm trực tiếp. Liên kết mời được giữ xuyên suốt đăng ký/xác nhận/đăng nhập.
 2. Tại **Nhóm của tôi**, đại diện chọn **Lấy liên kết và mã nhóm**. Cùng một link hoặc mã 8 ký tự có thể chia sẻ cho nhiều hộ. Người nhận mở link hoặc chọn **Tham gia nhóm qua lời mời** rồi dán link hoặc nhập mã.
 3. Mở một đợt. Hộ điền **Đang có** và **Còn thiếu**, lưu giỏ rồi xác nhận. Đại diện xem tổng đã xác nhận và **Đăng nhu cầu** trước hạn cần hàng.
 4. Dùng một phiên người bán để mở **Feed** và tìm bài vừa đăng. Trang **Tài khoản** hiển thị hồ sơ, liên hệ riêng và trạng thái ví từ API.
@@ -27,7 +27,7 @@ Các bảng nghiệp vụ không mở trực tiếp cho browser. Giữ thông ti
 
 Khi đăng ký, chọn phường/xã/đặc khu tại TP.HCM trong mục **Nơi sinh sống**. Tài khoản chưa vào nhóm nào có nhóm riêng ngay khi mở trang Nhóm hoặc Tài khoản và có thể tạo liên kết mời. Nhu cầu lưu vị trí của đại diện tại thời điểm đăng để lọc Feed. Áp hai migration vị trí ngày 17/11/2026 trước khi chạy bản này. [Nguồn dữ liệu và hợp đồng vị trí](docs/locations.md)
 
-Trong Supabase **Authentication → URL Configuration**, đặt **Site URL** là URL HTTPS của bản triển khai chính. Trong **Redirect URLs**, cho phép callback `/login/confirm` cùng query `next` và `sb_flow_id` của bản triển khai. Khi thử local, thêm `http://localhost:3000/**` hoặc `http://localhost:3001/**` cho đúng cổng đang chạy. Dùng cùng hostname khi mở app và đăng ký. Kiểm tra Email provider cho phép đăng ký.
+Trong Supabase **Authentication → URL Configuration**, đặt **Site URL** là URL HTTPS của bản triển khai chính. Trong **Redirect URLs**, cho phép callback `/login/confirm` cùng query `next` và `sb_flow_id` của bản triển khai. Khi thử local, thêm `http://localhost:3000/**` hoặc `http://localhost:3001/**` cho đúng cổng đang chạy. Dùng cùng hostname khi mở app và đăng ký. Kiểm tra Email provider cho phép đăng ký và đặt độ dài mật khẩu tối thiểu là 9 ở Supabase Auth để áp dụng cùng giới hạn cho API Auth.
 
 Callback hỗ trợ cả link mặc định có `code`/`sb_flow_id` (PKCE, cần trình duyệt đã đăng ký) và link có `token_hash` (`type=email` hoặc `signup`). Để xác nhận trên trình duyệt/thiết bị khác, có thể cấu hình **Confirm signup** email template:
 
