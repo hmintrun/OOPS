@@ -371,10 +371,9 @@
   color: #475569;
 }
 .ui-campaign-status[data-campaign-status="EXPIRED"] {
-  background: #e2e8f0;
-  border: 1px solid #cbd5e1;
-  color: #64748b;
-  opacity: 0.88;
+  background: var(--oops-rose-tint);
+  border: 1px solid color-mix(in srgb, var(--oops-rose-tint), var(--oops-rose-ink) 25%);
+  color: var(--oops-rose-ink);
 }
 
 @media (width >= 40rem) {

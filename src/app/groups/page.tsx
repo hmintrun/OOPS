@@ -33,9 +33,6 @@ export default async function GroupsPage() {
             <p role="alert">{result.message}</p>
             <div className="ui-actions">
               <a href="/groups" className="ui-btn ui-btn--secondary">Thử lại</a>
-              {process.env.NODE_ENV === "development" && result.status === 503 && (
-                <Link href="/ui-preview/demo" className="ui-btn ui-btn--primary">Mở bản thử</Link>
-              )}
             </div>
           </Card>
         )}

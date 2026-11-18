@@ -344,6 +344,29 @@ export function OopsDemo() {
   // Phân trang Feed demo
   const [currentPage, setCurrentPage] = useState(1);
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab") as Tab | null;
+      if (tabParam && ["groups", "feed", "orders", "me"].includes(tabParam)) {
+        setTab(tabParam);
+      }
+      const orderIdParam = params.get("orderId");
+      if (orderIdParam) {
+        setSelectedOrderId(orderIdParam);
+      }
+      if (params.get("offer") === "true") {
+        setSelectedDemand(SAMPLE_DEMANDS[0].item);
+      }
+      if (params.get("modal") === "campaigns") {
+        setIsCampaignListOpen(true);
+      } else if (params.get("modal") === "manage") {
+        setIsCampaignManageOpen(true);
+        setCampaignDraft(current => current ?? defaultCampaignDraft());
+      }
+    }
+  }, []);
+
   // Quản lý danh sách đơn hàng đa dạng kiểu Shopee
   const [orders, setOrders] = useState<DemoOrderItem[]>(INITIAL_DEMO_ORDERS);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -717,7 +740,17 @@ export function OopsDemo() {
                         <span>{t.label}</span>
                         <span
                           className={`rounded-full px-1.5 py-0.2 text-[10px] font-black ${
-                            isActive ? "bg-white text-emerald-800" : "bg-slate-200 text-navy-800"
+                            isActive
+                              ? "bg-white text-emerald-800"
+                              : t.key === "negotiation"
+                              ? "bg-amber-200/90 text-amber-900"
+                              : t.key === "fuji"
+                              ? "bg-sky-200/90 text-sky-900"
+                              : t.key === "handoff"
+                              ? "bg-purple-200/90 text-purple-900"
+                              : t.key === "complete"
+                              ? "bg-emerald-200/90 text-emerald-900"
+                              : "bg-slate-200 text-navy-800"
                           }`}
                         >
                           {count}
@@ -734,10 +767,19 @@ export function OopsDemo() {
                       <p>Không có đơn hàng nào trong mục này.</p>
                     </Card>
                   ) : (
-                    filteredOrders.map((ord) => (
+                    filteredOrders.map((ord) => {
+                      const stageBorder =
+                        ord.stage === "negotiation"
+                          ? "border-l-4 border-l-amber-500"
+                          : ord.stage === "fuji"
+                          ? "border-l-4 border-l-sky-500"
+                          : ord.stage === "handoff"
+                          ? "border-l-4 border-l-purple-500"
+                          : "border-l-4 border-l-emerald-500";
+                      return (
                       <Card
                         key={ord.id}
-                        className="p-3.5 space-y-3 border border-slate-200 hover:border-emerald-300 transition-all cursor-pointer shadow-xs"
+                        className={`p-3.5 space-y-3 border border-slate-200 hover:border-emerald-300 transition-all cursor-pointer shadow-xs rounded-2xl bg-white ${stageBorder}`}
                       >
                         {/* Header: Cửa hàng + Badge trạng thái */}
                         <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
@@ -783,7 +825,8 @@ export function OopsDemo() {
                           </button>
                         </div>
                       </Card>
-                    ))
+                    );
+                  })
                   )}
                 </div>
               </div>

@@ -72,23 +72,37 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
 }
 
 async function run() {
+  console.log(`[OOPS Worker 24/7] Khởi động chế độ ${runOnce ? "ONCE" : "CONTINUOUS 24/7"} (chu kỳ poll: ${pollMs}ms)...`);
   try {
     do {
-      const result = await runWorkerCycle();
-      const shouldLog =
-        runOnce ||
-        result.claimed > 0 ||
-        Boolean(result.fujiSyncError) ||
-        (result.fujiSync?.logsSeen ?? 0) > 0 ||
-        (result.fujiSync?.roundsAdvanced ?? 0) > 0;
-      if (shouldLog) {
-        console.log("worker_cycle", JSON.stringify(result));
+      try {
+        const result = await runWorkerCycle();
+        const shouldLog =
+          runOnce ||
+          result.claimed > 0 ||
+          Boolean(result.fujiSyncError) ||
+          (result.fujiSync?.logsSeen ?? 0) > 0 ||
+          (result.fujiSync?.roundsAdvanced ?? 0) > 0;
+        if (shouldLog) {
+          console.log("worker_cycle", JSON.stringify(result));
+        }
+      } catch (cycleErr) {
+        const msg = cycleErr?.message || String(cycleErr);
+        if (runOnce) {
+          throw cycleErr;
+        }
+        console.warn(`[OOPS Worker] Chu kỳ gặp lỗi hoặc chưa sẵn sàng kết nối DB: ${msg}. Sẽ thử lại trong ${pollMs}ms...`);
       }
       if (runOnce || stopping) break;
       await new Promise(resolve => setTimeout(resolve, pollMs));
     } while (!stopping);
   } finally {
-    await closeDatabase();
+    try {
+      await closeDatabase();
+    } catch {
+      // ignore
+    }
+    console.log("[OOPS Worker] Đã dừng tiến trình worker an toàn.");
   }
 }
 

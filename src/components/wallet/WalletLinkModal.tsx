@@ -125,14 +125,14 @@ export function WalletLinkModal({
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
           role="dialog"
           aria-modal="true"
           aria-labelledby="wallet-link-title"
         >
-          <div className="grid w-full max-w-md gap-4 rounded-card border border-line bg-surface p-5 shadow-xl">
+          <div className="grid max-h-full w-full min-w-0 max-w-md grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto overscroll-contain rounded-card border border-line bg-surface p-5 shadow-xl [overflow-wrap:anywhere]">
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <h3 id="wallet-link-title" className="text-lg font-bold text-navy-900">
                   {currentAddress ? "Đổi ví Avalanche Fuji" : "Liên kết Core Wallet (Fuji)"}
                 </h3>
@@ -142,7 +142,7 @@ export function WalletLinkModal({
               </div>
               <button
                 type="button"
-                className="rounded-input px-2 py-1 text-small font-semibold text-navy-600 hover:bg-sky-tint"
+                className="min-h-11 shrink-0 self-start whitespace-nowrap rounded-input px-2 text-small font-semibold text-navy-600 hover:bg-sky-tint"
                 disabled={busy}
                 onClick={() => setOpen(false)}
               >
@@ -209,11 +209,11 @@ export function WalletLinkModal({
               </p>
             )}
 
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button variant="ghost" full={false} disabled={busy} onClick={() => setOpen(false)}>
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-[auto_minmax(0,1fr)] sm:justify-self-end">
+              <Button variant="ghost" disabled={busy} onClick={() => setOpen(false)}>
                 Huỷ
               </Button>
-              <Button loading={busy} full={false} onClick={() => void runLinkFlow()}>
+              <Button loading={busy} onClick={() => void runLinkFlow()}>
                 {proof ? "Gửi lại xác minh" : currentAddress ? "Ký đổi ví trên Core Wallet" : "Kết nối & Ký trên Core Wallet"}
               </Button>
             </div>

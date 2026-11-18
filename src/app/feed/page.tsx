@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import {
   Button,
   Card,
@@ -49,6 +50,7 @@ function redirectExpiredSession(error: unknown): boolean {
 }
 
 export default function FeedPage() {
+  const router = useRouter();
   const [district, setDistrict] = useState("");
   const [ward, setWard] = useState("");
   const [applied, setApplied] = useState<AppliedFilters>({ category: "", district: "", ward: "" });
@@ -309,8 +311,24 @@ export default function FeedPage() {
       )}
 
       {selectedItemForOffer && (
-        <WidgetDialog title={selectedItemForOffer.name} icon="storefront" onClose={() => setSelectedItemForOffer(null)}>
-          <OffersPanel id={selectedItemForOffer.demandItemId} demand={selectedItemForOffer} />
+        <WidgetDialog
+          title={selectedItemForOffer.name}
+          icon="storefront"
+          onClose={() => setSelectedItemForOffer(null)}
+        >
+          <OffersPanel
+            id={selectedItemForOffer.demandItemId}
+            demand={selectedItemForOffer}
+            onClose={() => setSelectedItemForOffer(null)}
+            onSuccess={(createdOffer) => {
+              setSelectedItemForOffer(null);
+              if (createdOffer.draftId) {
+                router.push(`/trade/drafts/${createdOffer.draftId}`);
+              } else {
+                router.push("/orders");
+              }
+            }}
+          />
         </WidgetDialog>
       )}
     </AppShell>

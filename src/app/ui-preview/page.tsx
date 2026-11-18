@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { SHELL_NAV_ITEMS } from "@/components/app-shell";
 import { Button } from "@/components/ui/Button";
 import { Card, CardTitle } from "@/components/ui/Card";
@@ -20,10 +19,6 @@ export default function Page() {
       />
 
       <div className="ui-screen-body">
-        <Link href="/ui-preview/demo" className="ui-btn ui-btn--primary mb-4">
-          <MaterialSymbol name="play_arrow" className="ui-btn__icon" />
-          Mở bản thử tương tác (Demo)
-        </Link>
         <div className="ui-card-grid">
           <Card>
             <CardTitle>Chọn danh mục</CardTitle>

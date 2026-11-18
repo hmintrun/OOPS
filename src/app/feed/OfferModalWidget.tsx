@@ -197,13 +197,19 @@ export function OfferModalWidget({
           {/* Thời gian & ghi chú */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
             <div>
-              <label htmlFor={`${fieldsId}-delivery`} className="block font-bold text-navy-800 mb-0.5 text-xs">
-                Thời gian dự kiến
-              </label>
+              <div className="flex items-center justify-between mb-0.5">
+                <label htmlFor={`${fieldsId}-delivery`} className="block font-bold text-navy-800 text-xs">
+                  Thời gian giao dự kiến
+                </label>
+                <span className="text-[10px] text-amber-800 font-bold">
+                  Trước {formatDateTime(item.needBy)}
+                </span>
+              </div>
               <input
                 id={`${fieldsId}-delivery`}
                 type="datetime-local"
                 required
+                min={toLocalInputValue(new Date(Date.now() + 60 * 60 * 1000))}
                 max={toLocalInputValue(needBy)}
                 value={deliveryTime}
                 onChange={(e) => setDeliveryTime(e.target.value)}
@@ -241,8 +247,8 @@ export function OfferModalWidget({
               type="submit"
               full
             >
-              <MaterialSymbol name="send" size={18} />
-              Gửi chào hàng
+              <MaterialSymbol name="shopping_bag" size={18} />
+              Gửi chào hàng &amp; Đến trang đơn hàng
             </Button>
           </div>
         </form>
