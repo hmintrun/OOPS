@@ -396,12 +396,6 @@ export function VotePanel({
       {details ? <>
         <ProgressCapsule value={voting.totalQty} total={details.offer.terms.qty} label={`Đã đăng ký nhận (${unit})`} />
         <p className="text-small text-navy-600">Còn {Math.max(0, details.offer.terms.qty - voting.totalQty)} {unit} trong đề nghị.</p>
-        <dl className="grid grid-cols-2 gap-3">
-          <div className="rounded-input bg-sky-tint p-3"><dt className="text-small">Đơn giá</dt><dd className="mt-1 font-bold">{vnd(voting.unitPriceVnd)} / {unit}</dd></div>
-          <div className="rounded-input bg-green-100 p-3"><dt className="text-small">Tiền hàng tối đa</dt><dd className="mt-1 font-bold">{vnd(details.offer.goodsVnd)}</dd></div>
-          <div className="rounded-input bg-amber-tint p-3"><dt className="text-small">Cọc người bán</dt><dd className="mt-1 font-bold">{vnd(details.offer.depositVnd)}</dd></div>
-          <div className="rounded-input bg-sky-tint p-3"><dt className="text-small">Dự kiến giao</dt><dd className="mt-1 text-small font-semibold">{dateTime(details.offer.terms.handoffStart)} – {dateTime(details.offer.terms.handoffBy)}</dd></div>
-        </dl>
       </> : <p className="text-small">Tổng đã chọn Có · <strong>{voting.totalQty} {unit}</strong> · Đơn giá {vnd(voting.unitPriceVnd)} / {unit}</p>}
       {!voting.seller && details?.members && <section className="grid gap-2" aria-label="Các hộ trong cụm">
         <h3 className="font-bold">Các hộ trong cụm</h3>

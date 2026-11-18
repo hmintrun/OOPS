@@ -13,6 +13,7 @@ import { orderStates } from "./order-labels";
 import { orderProgress, orderStageDetail, orderTabs } from "./order-progress";
 import { readReceivingContact } from "@/lib/receiving-contact";
 import "./orders.css";
+import { OrdersNotificationBar } from "./OrdersNotificationBar";
 import { readGroupDemandOrders, type GroupDemandOrder } from "./group-demands";
 
 const pageSize = 12;
@@ -44,6 +45,7 @@ export default function OrdersPage() {
     )}
   >
     <div className="ui-stack">
+      <OrdersNotificationBar />
       <label className="orders-role-filter">
         <span className="text-label">Vai trò</span>
         <select value={role} onChange={event => setRole(event.target.value)}>
