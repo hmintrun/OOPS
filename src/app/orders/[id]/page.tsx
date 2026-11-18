@@ -4,11 +4,11 @@ import { ReceivingContactDetails } from "@/components/ReceivingContactDetails";
 import { QuantityInput } from "@/components/ui/QuantityInput";
 import { ProgressCapsule } from "@/components/ui/ProgressCapsule";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
-import { Button, Card, CardTitle } from "@/components/ui";
+import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
 import { chargeResult, contract, evidenceResult, issueInput, receipt, receiptInput, signedEvidence, terminationResult } from "@/contracts/orders";
 import { apiFetch, getMe } from "@/lib/api-client";
 import { Chip, INPUT_CLASS } from "@/app/campaigns/_shared/ui";
@@ -24,6 +24,8 @@ const issues = {
   QUANTITY_MISMATCH: "Sai số lượng", NO_SHOW: "Không đến điểm giao",
   UNSAFE_HANDOFF: "Bàn giao không an toàn", CONFLICTING_EVIDENCE: "Bằng chứng mâu thuẫn",
 };
+const allocationLabel = (part: { householdName?: string }, index: number) =>
+  part.householdName ? `${index + 1}. ${part.householdName}` : `Phần ${index + 1}`;
 
 export default function OrderPage() {
   const { id } = useParams<{ id: string }>();
@@ -38,7 +40,7 @@ export default function OrderPage() {
   const [proofPending, setProofPending] = useState(false);
   const [proofFile, setProofFile] = useState<File>();
   const [fileRevision, setFileRevision] = useState(0);
-  const [proofInputVersion, setProofInputVersion] = useState(0);
+  const proofInput = useRef<HTMLInputElement>(null);
   const order = trade.data?.order;
   const unit = order?.unit || "đơn vị";
   useEffect(() => {
@@ -165,7 +167,7 @@ export default function OrderPage() {
                 method: "POST", body: {}, schema: contract, idempotencyKey: key,
               }));
             }}>Báo hàng sẵn sàng</Button>}
-          {seller && canHandoff && <form key={proofInputVersion} className="grid min-w-0 gap-2" onSubmit={event => {
+          {seller && canHandoff && <form className="grid min-w-0 gap-2" onSubmit={event => {
             event.preventDefault();
             if (!proofFile) return;
             setFormError("");
@@ -174,14 +176,21 @@ export default function OrderPage() {
             body.set("file", proofFile);
             void trade.run(`proof:${fileRevision}`, key => apiFetch(`${path}/evidence`, {
               method: "POST", body, schema: evidenceResult, idempotencyKey: key,
-            }), () => { setProofFile(undefined); setProofInputVersion(value => value + 1); });
+            }), () => {
+              setProofFile(undefined);
+              if (proofInput.current) proofInput.current.value = "";
+            });
           }}>
-            <label className="grid min-w-0 gap-2">Ảnh bàn giao (tối đa 5 MiB)
-              <input className="w-full min-w-0 max-w-full text-small" type="file" accept="image/jpeg,image/png,image/webp" required disabled={trade.busy} onChange={event => {
-                setProofFile(event.target.files?.[0]);
-                setFileRevision(value => value + 1);
-              }} />
-            </label>
+            <p className="text-small">Ảnh bàn giao (tối đa 5 MiB)</p>
+            <input ref={proofInput} hidden type="file" accept="image/jpeg,image/png,image/webp" disabled={trade.busy} onChange={event => {
+              setProofFile(event.currentTarget.files?.[0]);
+              setFileRevision(value => value + 1);
+            }} />
+            <Button type="button" variant="secondary" full={false} className="justify-self-start" disabled={trade.busy}
+              onClick={() => proofInput.current?.click()}>
+              <MaterialSymbol name="add_photo_alternate" size={18} /> {proofFile ? "Đổi ảnh" : "Chọn ảnh bằng chứng"}
+            </Button>
+            {proofFile && <p className="break-words text-small" role="status">Đã chọn {proofFile.name}</p>}
             <Button type="submit" variant="secondary" disabled={trade.busy || !proofFile}>Tải ảnh bằng chứng</Button>
           </form>}
           {evidenceIds.map((evidenceId, index) => <div key={evidenceId} className="grid gap-2">
@@ -197,7 +206,7 @@ export default function OrderPage() {
               {order.allocations.map((part, index) => {
                 const received = currentReceipt.lines.find(line => line.allocationId === part.allocationId)?.receivedQty ?? 0;
                 return <li key={part.allocationId} className="flex flex-wrap justify-between gap-2 rounded-input bg-sky-tint p-3 text-small">
-                  <strong>{party ? `Phần hộ ${index + 1}` : "Phần của bạn"}</strong>
+                  <strong>{party ? allocationLabel(part, index) : "Phần của bạn"}</strong>
                   <span>{currentReceipt.state === "APPROVED" ? "Đã nhận" : "Chờ duyệt"} {received}/{part.qty} {unit}</span>
                 </li>;
               })}
@@ -246,7 +255,7 @@ export default function OrderPage() {
               </label>
               {evidenceIds.length === 0 && <p className="text-small">Nếu có hàng thực nhận, cửa hàng cần tải ảnh bàn giao trước.</p>}
               {order.allocations.map((part, index) => <QuantityInput key={part.allocationId}
-                label={`Phần ${index + 1} · nhận tối đa ${part.qty} ${unit}`} name={part.allocationId} max={part.qty} showAll
+                label={`${allocationLabel(part, index)} · nhận tối đa ${part.qty} ${unit}`} name={part.allocationId} max={part.qty} showAll
                 disabled={trade.busy} defaultValue={currentReceipt?.lines.find(line => line.allocationId === part.allocationId)?.receivedQty ?? part.qty} />)}
               {evidenceIds.map((evidenceId, index) => <label key={evidenceId} className="flex gap-2"><input type="checkbox" name="proof" value={evidenceId} defaultChecked /> Ảnh {index + 1}</label>)}
               <div className="ui-sticky-actions"><Button type="submit" loading={trade.busy}>Gửi biên nhận</Button></div>

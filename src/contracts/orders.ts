@@ -56,7 +56,7 @@ export const contract = z.strictObject({
   depositDueAt: isoDateTime.optional(), paymentDueAt: isoDateTime.optional(), readyAt: isoDateTime.optional(),
   roundId: uuid.optional(), roundOpenBy: isoDateTime.optional(), confirmBy: isoDateTime.optional(),
   handoffStart: isoDateTime, handoffBy: isoDateTime, approvalDueAt: isoDateTime,
-  allocations: z.array(z.strictObject({ allocationId: uuid, qty: qty.min(1), goodsVnd: amount })),
+  allocations: z.array(z.strictObject({ allocationId: uuid, qty: qty.min(1), goodsVnd: amount, householdName: z.string().optional() })),
   myShare: z.strictObject({ qty: qty.min(1), goodsVnd: amount }).optional(),
   charges: z.array(charge), disbursements: z.array(disbursement),
   evidenceIds: z.array(uuid).optional(), receipt: receipt.optional(), termination: termination.optional(),

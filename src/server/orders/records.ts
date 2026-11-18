@@ -32,7 +32,7 @@ export type OrderRow = {
   version: number;
 };
 
-export type AllocationRow = { id: string; membership_id: string; qty: number; goods_vnd: string; user_id: string };
+export type AllocationRow = { id: string; membership_id: string; qty: number; goods_vnd: string; user_id: string; display_name: string };
 export type ReceiptRow = {
   id: string; contract_id: string; version: number; handed_at: Date; scheduled_handoff_by: Date;
   received_lines: Receipt["lines"]; evidence_ids: string[]; state: Receipt["state"];
@@ -76,9 +76,18 @@ export async function lockStock(db: PoolClient, demandItemId: string, membership
 }
 
 export async function orderAllocations(db: PoolClient, id: string) {
+  // The timestamp is optional during rollout and was never stored for older votes.
   const { rows } = await db.query<AllocationRow>(
-    `select a.id, a.membership_id, a.qty, a.goods_vnd, m.user_id from public.allocations a
-     join public.memberships m on m.id = a.membership_id where a.contract_id = $1 order by a.id`,
+    `select a.id, a.membership_id, a.qty, a.goods_vnd, m.user_id, p.display_name
+     from public.allocations a
+     join public.memberships m on m.id = a.membership_id
+     join public.profiles p on p.id = m.user_id
+     join public.contracts c on c.id = a.contract_id
+     join public.negotiation_versions v on v.id = c.source_version_id
+     left join public.offer_votes vote on vote.negotiation_id = v.negotiation_id and vote.round = v.version
+       and vote.membership_id = a.membership_id and vote.qty > 0
+     where a.contract_id = $1
+     order by (to_jsonb(vote)->>'accepted_at')::timestamptz nulls first, a.id`,
     [id],
   );
   return rows;
@@ -168,7 +177,10 @@ export async function orderDto(db: PoolClient, order: OrderRow, actorId: string)
     }),
     ...(round && { roundId: round.id, roundOpenBy: round.open_by.toISOString() }),
     ...(order.ready_at && { readyAt: order.ready_at.toISOString() }),
-    allocations: allocations.map(row => ({ allocationId: row.id, qty: row.qty, goodsVnd: Number(row.goods_vnd) })),
+    allocations: allocations.map(row => ({
+      allocationId: row.id, qty: row.qty, goodsVnd: Number(row.goods_vnd),
+      ...(actorId === order.rep_id && { householdName: row.display_name }),
+    })),
     ...(own.length > 0 && { myShare }),
     charges: charges.map(row => ({
       chargeId: row.id, kind: row.kind, state: row.state, amountVnd: Number(row.amount_vnd),

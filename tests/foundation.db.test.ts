@@ -484,10 +484,16 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(tracking?.terms.handoffPrivate).toBeUndefined();
     expect((await sent(rep)).data).toEqual({ items: [] });
     const vote = (actor: string, qty: number) => call(postVote, actor, { id: proposal.proposalId, method: "POST",
-      body: { round: 1, choice: "YES", qty, unitPriceVnd: price } });
+      body: qty === 0 ? { round: 1, choice: "NO" } : { round: 1, choice: "YES", qty, unitPriceVnd: price } });
     expect(offerVoting.parse((await call(getVote, rep, { id: proposal.proposalId })).data).availableQty).toBe(2);
     expect((await vote(rep, 1)).status).toBe(409);
-    for (const [buyer, qty] of [[rep, 2], [second, 2], [third, 3]] as const) {
+    await transaction(db => db.query(
+      `update public.profiles p set display_name = t.name
+       from unnest($1::uuid[], $2::text[]) as t(id, name) where t.id = p.id`,
+      [[rep, second, third], ["Hộ Mai", "Hộ Linh", "Hộ Nam"]],
+    ));
+    // A household that withdraws and votes Yes again joins behind households that are still in.
+    for (const [buyer, qty] of [[third, 3], [rep, 2], [third, 0], [third, 3], [rep, 2], [second, 2]] as const) {
       expect((await vote(buyer, qty)).status).toBe(200);
     }
     if (mode !== "paid") await transaction(async db => {
@@ -527,6 +533,10 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       .toMatchObject(pendingDemand);
     expect((await finalize(draftId, rep, "new-contract")).status).toBe(409);
     const sellerOrder = await orderFor(contractId, seller);
+    const repOrder = await orderFor(contractId, rep);
+    expect(repOrder.allocations.map(row => [row.householdName, row.qty])).toEqual([["Hộ Mai", 2], ["Hộ Nam", 3], ["Hộ Linh", 2]]);
+    expect(sellerOrder.allocations).toEqual(repOrder.allocations.map(({ householdName, ...row }) => row));
+    expect((await orderFor(contractId, third)).allocations).toEqual([sellerOrder.allocations[1]]);
     const deposit = sellerOrder.charges[0];
     expect(sellerOrder).toMatchObject({ state: "AWAIT_COMMITMENTS", qty: 7, roundId, roundOpenBy: expect.any(String) });
     expect(sellerOrder.depositDueAt).toBeUndefined();
@@ -1071,7 +1081,11 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
        from public.charges c join public.fund_events f on f.charge_id = c.id where c.id = $1`, [deposit.chargeId],
     ))).rows).toEqual([{ disposition: "APPLIED", started: true }]);
     expect((await orderFor(orderId, second)).charges).toEqual([]);
-    expect((await orderFor(orderId, rep)).state).toBe("AWAIT_HANDOFF");
+    const handoffOrder = await orderFor(orderId, rep);
+    expect(handoffOrder.state).toBe("AWAIT_HANDOFF");
+    const allocationIds = handoffOrder.allocations.map(row => row.allocationId);
+    expect(allocationIds).toEqual([...allocationIds].sort());
+    expect(handoffOrder.allocations.every(row => Boolean(row.householdName))).toBe(true);
     expect(await readStock()).toEqual({ pending: 0, reserved: 7, received: 0 });
     expect(contract.parse((await call(postReady, seller, { id: orderId, method: "POST", body: {} })).data).readyAt)
       .toEqual(expect.any(String));
