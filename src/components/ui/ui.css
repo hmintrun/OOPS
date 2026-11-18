@@ -612,8 +612,8 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
-  border-block-end: 1px solid var(--oops-sky-300);
-  background: linear-gradient(105deg, var(--oops-mint), var(--oops-sky-tint) 72%, var(--oops-sun-tint));
+  border-block-end: 1px solid var(--oops-line);
+  background: var(--oops-green-100);
 }
 .ui-widget-dialog__title { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .ui-widget-dialog__icon {
@@ -627,7 +627,7 @@
   color: var(--oops-surface);
 }
 .ui-widget-dialog__header h2 { font-size: var(--oops-title-card); font-weight: 800; overflow-wrap: anywhere; }
-.ui-widget-dialog__header button { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 50%; background: var(--oops-surface); }
+.ui-widget-dialog__header button { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 50%; border: 1px solid var(--oops-line); outline: none; background: var(--oops-surface); color: var(--oops-navy-900); }
 .ui-widget-dialog__body { min-width: 0; padding: 16px; overflow-wrap: anywhere; }
 .ui-widget-dialog__body :is(input, select, textarea) { min-inline-size: 0; max-inline-size: 100%; font-size: 1rem; }
 html:has(.ui-widget-dialog[open]) { overflow-y: hidden; }

@@ -21,6 +21,7 @@ import { communityFeedPage } from "./community-feed";
 import { HCM_PROVINCE_CODE, locationLabel } from "@/lib/locations";
 import { DemandCard, demandCategoryVisual } from "./DemandCard";
 import { FEED_PAGE_SIZE, FeedPagination } from "./FeedPagination";
+import { SosReliefSection } from "./SosReliefSection";
 import { WidgetDialog } from "@/components/ui/WidgetDialog";
 import dynamic from "next/dynamic";
 import "./feed.css";
@@ -71,6 +72,32 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
   // Modal Widget Chào hàng
   const [selectedItemForOffer, setSelectedItemForOffer] = useState<DemandItem | null>(null);
   const [giftOffer, setGiftOffer] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("offer") === "true") {
+        setSelectedItemForOffer({
+          demandItemId: "sample-rice-01",
+          skuId: "sample-sku-01",
+          name: "Gạo thơm ST25",
+          unit: "kg",
+          target: 10,
+          missing: 6,
+          pending: 0,
+          reserved: 4,
+          received: 0,
+          offerable: 6,
+          needBy: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+          supportRequested: true,
+          state: "OPEN",
+          campaignId: "sample-campaign",
+          districtCode: "760",
+          wardCode: "26734",
+        });
+      }
+    }
+  }, []);
 
   // Danh mục dùng để chọn visual thumbnail
   useEffect(() => {
@@ -183,6 +210,7 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
       bodyClassName="ui-stack"
       bare
     >
+      <SosReliefSection />
       <Card padding="tight" className="feed-filter-card">
         <CardTitle as="h2">Bộ lọc nhu cầu</CardTitle>
         <div className="feed-categories" role="group" aria-label="Danh mục">

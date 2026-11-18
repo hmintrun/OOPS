@@ -433,18 +433,19 @@ export function OopsDemo() {
 
   function handleOfferSuccess(data: OfferSubmitData) {
     const isWater = data.name.toLowerCase().includes("nước");
+    const isGift = data.unitPrice === 0;
     const newOrder: DemoOrderItem = {
       id: `ord-${Date.now()}`,
       orderNumber: `OOPS-${Math.floor(2700 + Math.random() * 300)}`,
-      supplier: "Cửa hàng của bạn (Chào hàng mới)",
+      supplier: isGift ? "Bạn (Ủng hộ cứu trợ 0đ)" : "Cửa hàng của bạn (Chào hàng mới)",
       item: data.name,
       unit: data.unit,
       quantity: data.quantity,
       unitPrice: data.unitPrice,
       totalVnd: data.quantity * data.unitPrice,
       stage: "negotiation",
-      statusText: "Vừa gửi chào hàng · Chờ nhóm thương lượng",
-      badgeClass: "bg-amber-100 text-amber-900 border-amber-300",
+      statusText: isGift ? "Vừa gửi tặng 0đ · Chờ nhóm biểu quyết" : "Vừa gửi chào hàng · Chờ nhóm thương lượng",
+      badgeClass: isGift ? "bg-emerald-100 text-emerald-900 border-emerald-300" : "bg-amber-100 text-amber-900 border-amber-300",
       image: isWater ? "/assets/water-bottles.jpg" : "/assets/groceries-box.webp",
       deliveryTime: data.deliveryTime,
       note: data.note,
