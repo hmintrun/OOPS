@@ -10,6 +10,7 @@ import {
   txExplorerUrl,
 } from "@/lib/fuji/browser";
 import { Button } from "@/components/ui";
+import { embeddedFujiConfigured, sendEmbeddedFujiCall, waitForEmbeddedFujiCall } from "@/lib/fuji/embedded";
 
 type RoundData = z.infer<typeof confirmationRound>;
 
@@ -24,6 +25,8 @@ export function FujiConfirmButton({
 }) {
   const [signing, setSigning] = useState(false);
   const [submittedTx, setSubmittedTx] = useState<string>("");
+  const [sponsoredId, setSponsoredId] = useState("");
+  const embeddedEnabled = embeddedFujiConfigured();
   const [error, setError] = useState<string>("");
 
   const walletAddress = round.myConfirmation?.walletAddress;
@@ -50,17 +53,28 @@ export function FujiConfirmButton({
 
   if (!stillPending || !walletAddress) return null;
 
-  async function handleConfirm() {
+  async function handleConfirm(method: "embedded" | "core") {
     if (!walletAddress) return;
     setError("");
     setSigning(true);
     try {
-      const { txHash } = await sendConfirmVersionTransaction({
+      const call = {
         contractAddress: round.contractAddress,
         roundKey: round.roundKey as Hex,
         versionHash: round.versionHash as Hex,
         expectedWalletAddress: walletAddress,
-      });
+      };
+      let txHash: Hex;
+      if (method === "embedded") {
+        const id = sponsoredId || (await sendEmbeddedFujiCall(call)).id;
+        setSponsoredId(id);
+        const confirmedTx = await waitForEmbeddedFujiCall(id);
+        setSponsoredId("");
+        if (!confirmedTx) throw new Error("Giao dịch thử không thành công. Vui lòng xác nhận lại.");
+        txHash = confirmedTx;
+      } else {
+        ({ txHash } = await sendConfirmVersionTransaction(call));
+      }
       setSubmittedTx(txHash);
       await onConfirmed();
     } catch (err) {
@@ -79,13 +93,24 @@ export function FujiConfirmButton({
         </span>
       </p>
       <div className="flex flex-wrap gap-2">
+        {embeddedEnabled && (
+          <Button
+            full={false}
+            loading={signing}
+            disabled={disabled || Boolean(submittedTx)}
+            onClick={() => void handleConfirm("embedded")}
+          >
+            {submittedTx ? "Đang ghi nhận xác nhận…" : sponsoredId ? "Kiểm tra giao dịch" : "Xác nhận mua trong OOPS"}
+          </Button>
+        )}
         <Button
           full={false}
-          loading={signing}
-          disabled={disabled || Boolean(submittedTx)}
-          onClick={() => void handleConfirm()}
+          variant={embeddedEnabled ? "secondary" : "primary"}
+          loading={!embeddedEnabled && signing}
+          disabled={disabled || Boolean(submittedTx) || Boolean(sponsoredId) || signing}
+          onClick={() => void handleConfirm("core")}
         >
-          {submittedTx ? "Đã ký trên Fuji — đang đồng bộ…" : "Ký xác nhận trên Core Wallet"}
+          {submittedTx && !embeddedEnabled ? "Đã ký trên Fuji — đang đồng bộ…" : "Ký xác nhận trên Core Wallet"}
         </Button>
       </div>
       {submittedTx && (

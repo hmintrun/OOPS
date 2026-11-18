@@ -2,6 +2,7 @@
 
 import { Card, CardTitle } from "@/components/ui";
 import { WalletLinkModal } from "@/components/wallet/WalletLinkModal";
+import { embeddedFujiConfigured } from "@/lib/fuji/embedded";
 import type { Me } from "@/contracts/foundation";
 import { CopyButton } from "./CopyButton";
 import { shortenMiddle } from "./me-api";
@@ -33,8 +34,10 @@ export function WalletSection({
       <div className="me-card-head me-wallet__heading">
         <img src="/assets/fuji-shield.jpg" alt="" className="me-wallet__shield" />
         <div>
-          <CardTitle>Ví Avalanche Fuji</CardTitle>
-          <p className="text-small text-navy-600">Xác thực on-chain (Chain ID: 43113)</p>
+          <CardTitle>{embeddedFujiConfigured() ? "Ví xác nhận mua chung" : "Ví Avalanche Fuji"}</CardTitle>
+          <p className="text-small text-navy-600">{embeddedFujiConfigured()
+            ? "Dùng để xác nhận phần mua của nhà mình."
+            : "Xác thực on-chain (Chain ID: 43113)"}</p>
         </div>
       </div>
 
@@ -42,7 +45,9 @@ export function WalletSection({
         {!wallet || !verification ? (
           <div>
             <p className="me-body-text">Chưa liên kết ví</p>
-            <p className="me-hint">Kết nối Core Wallet và ký thử thách trên Fuji để tham gia xác nhận hợp đồng.</p>
+            <p className="me-hint">{embeddedFujiConfigured()
+              ? "Thiết lập ví trong OOPS để tự xác nhận các phần mua của nhà mình."
+              : "Kết nối Core Wallet và ký thử thách trên Fuji để tham gia xác nhận hợp đồng."}</p>
           </div>
         ) : (
           <div className="me-item me-wallet__address">
