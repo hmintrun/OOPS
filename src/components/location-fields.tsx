@@ -4,12 +4,13 @@ import { useState } from "react";
 import { IconTile, Select } from "@/components/ui";
 import { HCM_PROVINCE_CODE, HCM_PROVINCE_NAME, hcmWards } from "@/lib/locations";
 
-export function LocationFields({ wardCode, onChange, disabled = false, variant = "form", searchable = true }: {
+export function LocationFields({ wardCode, onChange, disabled = false, variant = "form", searchable = true, required = false }: {
   wardCode: string;
   onChange: (wardCode: string) => void;
   disabled?: boolean;
   variant?: "form" | "filter";
   searchable?: boolean;
+  required?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const isFilter = variant === "filter";
@@ -36,7 +37,7 @@ export function LocationFields({ wardCode, onChange, disabled = false, variant =
           placeholder="Ví dụ: Bến Thành, Thủ Đức, Côn Đảo"
           className="h-control w-full min-w-0 rounded-input border border-line bg-surface px-3 text-body" />
       </label>}
-      <Select label="Phường/xã/đặc khu" showLabel={!isFilter} value={wardCode} onChange={onChange} disabled={disabled}
+      <Select label="Phường/xã/đặc khu" showLabel={!isFilter} value={wardCode} onChange={onChange} disabled={disabled} required={required}
         options={[
           { value: "", label: isFilter ? "Tất cả" : "Chọn nơi bạn đang ở" },
           ...matches.map(ward => ({ value: ward.code, label: ward.name })),

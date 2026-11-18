@@ -44,6 +44,8 @@ Cập nhật 17/11/2026: hồ sơ/nhóm hỗ trợ `location`, nhu cầu thêm `
 | demandItemId | UUID | Có | Dòng nhu cầu được đáp ứng. |
 | state | enum | Có | Xem bảng trạng thái trong [kiến trúc](architecture.md#trạng-thái-theo-dõi). |
 | qty | integer | Có | Số lượng cam kết trong đơn vị SKU. |
+| unit | string | Có khi đọc đơn | Đơn vị SKU theo danh mục, ví dụ `chai` hoặc `kg`. Phản hồi phát lại từ trước khi bổ sung trường này có thể thiếu `unit`. |
+| myShare | object | Khi người gọi có phần trong đơn | `qty` và `goodsVnd` của phần đã chốt cho tài khoản hiện tại. |
 | unitPriceVnd | integer | Có | Đơn giá, kể cả 0. |
 | goodsVnd | integer | Có | Tổng tiền hàng do backend tính. |
 | depositVnd | integer | Có | Cọc do người bán nộp. |
@@ -155,6 +157,7 @@ type ConfirmationRound = {
 | Endpoint và quyền | Dữ liệu vào | Phản hồi |
 | --- | --- | --- |
 | `GET /me` và `PATCH /me`<br>Đã đăng nhập | Cấp nhóm riêng nếu tài khoản chưa có nhóm. PATCH nhận ít nhất một trong `displayName` (1–80 ký tự sau khi bỏ khoảng trắng đầu/cuối), `contactPrivate`, `location` ({provinceCode, wardCode} thuộc danh mục TP.HCM). | 200 {userId, displayName, groupId, location?, wallet?: {address, verificationState}, confirmationEligible, confirmationEligibilityUnavailable?, contactPrivate?}. verificationState là PENDING, VERIFIED hoặc FAILED. Khi Fuji không phản hồi, hồ sơ vẫn tải được với `confirmationEligible: false` và `confirmationEligibilityUnavailable: true`. |
+| `POST /wallet/embedded-session`<br>Chủ phiên | Cấp phiên khôi phục ví Openfort dùng một lần cho mọi tài khoản OOPS đã đăng nhập. Chỉ bật trong cấu hình Fuji testnet. | 200 {userId, encryptionSession}, 404 nếu tính năng tắt hoặc khóa không phải test (`pk_test_`), 503 khi dịch vụ ví bận. Phản hồi không cache (`no-store`). |
 | `POST /wallet/link`<br>Chủ phiên | {address, proofTx, nonce}. GET /wallet/challenge cấp nonce một lần và expiresAt. Fuji ghi hash thử thách gắn với ví. | 202 {verificationState}. GET /me cho biết kết quả. 422 nếu bằng chứng sai. Khi lưu thay đổi ví, 409 `ACTIVE_COMMITMENT` nếu còn nghĩa vụ theo [G-09](OOPS-Spec.md#66-rời-nhóm-và-đổi-ví-g-09). |
 | `GET /groups/{id}`<br>Thành viên | id là groupId. | 200 {groupId, repId, members, campaigns: Campaign[]}. Ẩn điểm nhận cụ thể với hộ chưa chốt. |
 | `POST /groups/{id}/leave`<br>Thành viên tự rời | {}. Xem [G-09](OOPS-Spec.md#66-rời-nhóm-và-đổi-ví-g-09). | 200 {groupId, membershipId, leftAt}. 409 `REP_TRANSFER_REQUIRED`, `ACTIVE_COMMITMENT` hoặc `PUBLISHED_NEED_ACTIVE`. 404 nếu người gọi không còn là thành viên. |

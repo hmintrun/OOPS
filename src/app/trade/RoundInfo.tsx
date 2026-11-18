@@ -17,7 +17,7 @@ export function RoundInfo({ round, disabled, refresh }: {
     {round.state === "CLOSED" && <p>Vòng xác nhận đã đóng.</p>}
     {round.myConfirmation?.state === "CONFIRMED" && <p>Hộ bạn đã xác nhận.</p>}
     {round.state === "OPEN" && round.myConfirmation?.state === "PENDING" && (
-      <FujiConfirmButton round={round} disabled={disabled} onConfirmed={refresh} />
+      <FujiConfirmButton key={round.roundKey} round={round} disabled={disabled} onConfirmed={refresh} />
     )}
     <Button full={false} variant="secondary" disabled={disabled} onClick={refresh}>Cập nhật xác nhận</Button>
   </section>;

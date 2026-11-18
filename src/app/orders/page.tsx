@@ -29,45 +29,29 @@ function readOrders(role: string, cursor?: string) {
 
 export default function OrdersPage() {
   const [role, setRole] = useState("");
-  return <AppShell title="Đơn hàng" subtitle="Theo dõi đơn, bàn giao và thanh toán." illustration="parcel" bare>
+  return <AppShell title="Đơn hàng" subtitle="Theo dõi đơn, bàn giao và thanh toán." illustration="parcel" bare
+    pageActions={(
+      <nav aria-label="Tiện ích đơn hàng" className="orders-shortcuts">
+        <Link href="/notifications" aria-label="Thông báo" title="Thông báo" className="ui-btn ui-btn--ghost">
+          <MaterialSymbol name="notifications" size={20} />
+          <span className="hidden sm:inline">Thông báo</span>
+        </Link>
+        <Link href="/ops" aria-label="Đối soát SIM" title="Đối soát SIM" className="ui-btn ui-btn--ghost">
+          <MaterialSymbol name="account_balance_wallet" size={20} />
+          <span className="hidden sm:inline">Đối soát SIM</span>
+        </Link>
+      </nav>
+    )}
+  >
     <div className="ui-stack">
-      <Card className="overflow-hidden border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-sky-50 shadow-sm">
-        <div className="flex flex-col sm:flex-row items-center gap-4">
-          <img
-            src="/assets/delivery-van.webp"
-            alt="Xe giao hàng OOPS"
-            decoding="async"
-            fetchPriority="low"
-            className="h-20 w-auto object-contain drop-shadow-sm flex-none"
-          />
-          <div className="flex-1 text-center sm:text-left">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900 mb-1">
-              <span>🚚 Tập kết & Bàn giao tại Sảnh</span>
-            </div>
-            <h2 className="text-title font-extrabold text-navy-900 leading-tight">
-              Đơn hàng & Giao nhận khu phố
-            </h2>
-            <p className="text-small text-navy-600 mt-0.5">
-              Hợp đồng khóa cọc minh bạch. Hàng giao tới sảnh chung cư, đại diện và các hộ kiểm tra thực nhận rồi mới quyết toán.
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="ui-actions ui-toolbar" padding="flush">
-        <Link href="/notifications" className="ui-btn ui-btn--secondary">Thông báo</Link>
-        <Link href="/ops" className="ui-btn ui-btn--secondary">Đối soát SIM</Link>
-        <Link href="/feed" className="ui-btn ui-btn--secondary">Xem nhu cầu</Link>
-      </Card>
-      <Card className="ui-actions">
-        <label className="grid gap-1">Vai trò
-          <select className="rounded-input border border-line p-2" value={role} onChange={event => setRole(event.target.value)}>
-            <option value="">Tất cả vai trò</option>
-            <option value="buyer">Đơn mua</option>
-            <option value="seller">Đơn bán</option>
-          </select>
-        </label>
-      </Card>
+      <label className="orders-role-filter">
+        <span className="text-label">Vai trò</span>
+        <select value={role} onChange={event => setRole(event.target.value)}>
+          <option value="">Tất cả vai trò</option>
+          <option value="buyer">Đơn mua</option>
+          <option value="seller">Đơn bán</option>
+        </select>
+      </label>
       <OrderResults key={role} role={role} />
     </div>
   </AppShell>;
@@ -205,7 +189,7 @@ function OrderResults({ role }: { role: string }) {
               <CardTitle as="h2" className="ui-card__title--flush">Đơn {order.contractId.slice(0, 8).toUpperCase()}</CardTitle>
               <span className="order-card__status">{orderStates[order.state]}</span>
             </div>
-            <p className="font-bold tabular-nums">{order.qty} đơn vị · {vnd(order.goodsVnd)}</p>
+            <p className="font-bold tabular-nums">{order.qty} {order.unit || "đơn vị"} · {vnd(order.goodsVnd)}</p>
             {order.state === "AWAIT_COMMITMENTS" && order.confirmBy && (
               <p className="text-navy-600">Hạn xác nhận Fuji · {dateTime(order.confirmBy)}</p>
             )}

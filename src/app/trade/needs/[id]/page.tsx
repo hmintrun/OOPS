@@ -9,7 +9,7 @@ export default async function OffersPage({ params, searchParams }: {
   const { id } = await params;
   const { proposal, intent } = await searchParams;
   const proposalId = typeof proposal === "string" ? proposal : undefined;
-  return <AppShell title={proposalId ? "Đề nghị của bạn" : "Chào hàng"} illustration="basket" bare>
+  return <AppShell title={proposalId ? "Đề nghị của bạn" : "Chào hàng"} illustration="basket" backHref="/feed" bare>
     <OffersPanel id={id} standalone proposalId={proposalId} initialGift={intent === "gift"} leadHours={readOfferLeadHours()} />
   </AppShell>;
 }

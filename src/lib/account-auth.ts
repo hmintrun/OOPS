@@ -2,11 +2,15 @@ import { z } from "zod";
 import { displayNameInput } from "@/contracts/foundation";
 import { resolveLoginNext } from "./login-next";
 import { userLocation } from "./locations";
+import { phoneInput } from "./receiving-contact";
+
+export const MIN_SIGNUP_PASSWORD_LENGTH = 9;
 
 export const registrationInput = z.object({
   name: displayNameInput,
   email: z.string().trim().pipe(z.email("Email không hợp lệ.")),
-  password: z.string().min(6, "Mật khẩu cần ít nhất 6 ký tự."),
+  phone: phoneInput,
+  password: z.string().min(MIN_SIGNUP_PASSWORD_LENGTH, `Mật khẩu cần ít nhất ${MIN_SIGNUP_PASSWORD_LENGTH} ký tự.`),
   confirmPassword: z.string(),
   location: userLocation,
 }).refine(input => input.password === input.confirmPassword, {

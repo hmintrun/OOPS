@@ -1,3 +1,17 @@
+.orders-shortcuts { display: flex; gap: 8px; }
+.orders-shortcuts .ui-btn { min-inline-size: var(--oops-control-h); padding-inline: 12px; }
+.orders-role-filter { display: flex; align-items: center; gap: 12px; min-inline-size: 0; }
+.orders-role-filter select {
+  min-height: var(--oops-control-h);
+  min-inline-size: 0;
+  padding-inline: 12px;
+  border: 1px solid var(--oops-line);
+  border-radius: var(--oops-radius-input);
+  background: var(--oops-surface);
+  color: var(--oops-navy-900);
+  font-size: 1rem;
+}
+
 .orders-tabs {
   display: flex;
   flex-wrap: nowrap;
@@ -29,3 +43,27 @@
 .ui-app-page .ui-card .order-card__cta { width: 100%; max-inline-size: 100%; min-height: 48px; margin-block-start: auto; }
 .order-stage { scroll-margin-block-start: 80px; }
 .order-stage:focus-visible { outline: 2px solid var(--oops-green-700); outline-offset: 4px; }
+
+.order-summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding-block: 8px;
+  border-bottom: 1px solid var(--oops-line);
+}
+.order-summary dt { color: var(--oops-navy-600); }
+.order-summary dd { font-weight: 700; text-align: end; font-variant-numeric: tabular-nums; }
+
+.order-share {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--oops-radius-input);
+  background: var(--oops-green-100);
+  color: var(--oops-green-700);
+}
+.order-share > div { display: flex; flex-direction: column; justify-content: space-between; }
+.order-share > :last-child { text-align: end; }
+.order-share dt { font-size: .875rem; font-weight: 600; }
+.order-share dd { margin-block-start: 2px; font-weight: 800; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }

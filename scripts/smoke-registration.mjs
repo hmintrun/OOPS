@@ -44,8 +44,9 @@ async function smoke() {
     const location = { provinceCode: "79", wardCode: users.length ? "26740" : "26743" };
     const email = `oops-signup-${randomUUID()}@example.test`;
     const password = randomBytes(24).toString("base64url") + "aA1!";
+    const phone = "0901234567";
     const { data, error } = await admin.generateLink({
-      type: "signup", email, password, options: { data: { display_name: marker, location } },
+      type: "signup", email, password, options: { data: { display_name: marker, phone, location } },
     });
     assert(!error, `Không tạo được link test: ${error?.code ?? "unknown"}`);
     assert(data.user?.id);
@@ -59,7 +60,9 @@ async function smoke() {
     if (next === "/groups") {
       const home = await request(next, jar);
       assert.equal(home.status, 200);
-      assert.match(await home.text(), /Tham gia nhóm qua lời mời/);
+      const homePage = await home.text();
+      assert.match(homePage, /Tham gia nhóm qua lời mời/);
+      assert.doesNotMatch(homePage, /Đầu mối nhận hỗ trợ/);
     }
     const [me, concurrentMe] = await Promise.all([
       request("/api/v1/me", jar),
@@ -70,6 +73,7 @@ async function smoke() {
     const profileBody = await me.json();
     assert.equal(profileBody.userId, data.user.id);
     assert.deepEqual(profileBody.location, location);
+    assert(profileBody.contactPrivate?.includes(`SĐT: ${phone}`), "Số điện thoại đăng ký phải được lưu vào hồ sơ.");
     assert(profileBody.groupId, "Tài khoản phải có nhóm riêng mặc định.");
     assert.equal((await concurrentMe.json()).groupId, profileBody.groupId);
     const { rows: [profile] } = await db.query("select display_name from public.profiles where id = $1", [data.user.id]);

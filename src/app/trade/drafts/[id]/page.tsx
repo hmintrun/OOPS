@@ -6,6 +6,7 @@ import Link from "next/link";
 import { z } from "zod";
 import { AppShell } from "@/components/app-shell";
 import { Button, Card, CardTitle } from "@/components/ui";
+import { uuid } from "@/contracts/foundation";
 import { confirmationRound, draft, draftVersion, editDraftLineInput, offerVoting, sellerDraftView } from "@/contracts/negotiation";
 import { contract } from "@/contracts/orders";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -27,7 +28,8 @@ export default function DraftPage() {
   const router = useRouter();
   const query = useSearchParams();
   const requestedProposal = query.get("proposal");
-  const sourceNeed = query.get("need");
+  const sourceNeed = uuid.safeParse(query.get("need"));
+  const needHref = sourceNeed.success ? `/trade/needs/${sourceNeed.data}` : "/feed";
   const path = `/api/v1/drafts/${encodeURIComponent(id)}`;
   const load = useCallback(async () => {
     let view;
@@ -69,7 +71,7 @@ export default function DraftPage() {
   const closedOfferState = buyer && !buyer.draftOpen && !version ? "EXPIRED" : undefined;
   useRoundRefresh((version?.state === "AWAIT_CONFIRMATIONS" || Boolean(!view && voting?.open)) && !trade.loading && !trade.busy, trade.refresh);
   const versionPath = `${path}/versions/${version?.version}`;
-  return <AppShell title="Thương lượng" illustration="basket" bare>
+  return <AppShell title="Thương lượng" illustration="basket" backHref={needHref} bare>
     <div className="grid gap-4">
       <TradeStatus {...trade} retry={() => void trade.refresh()} />
       {trade.data && query.get("created") === "1" && <p role="status" className="rounded-input bg-green-100 p-3 font-semibold text-green-700">
@@ -79,7 +81,7 @@ export default function DraftPage() {
         <CardTitle as="h2">Theo dõi đề nghị</CardTitle>
         <VotePanel proposalId={requestedProposal!} refreshSignal={voting.round}
           onUpdated={() => void trade.refresh()} />
-        <Link className="ui-btn ui-btn--secondary" href={sourceNeed ? `/trade/needs/${encodeURIComponent(sourceNeed)}` : "/feed"}>
+        <Link className="ui-btn ui-btn--secondary" href={needHref}>
           Xem đề nghị và lịch giao
         </Link>
       </Card>}
@@ -88,7 +90,6 @@ export default function DraftPage() {
           <p className="text-small text-navy-600">
             Nếu bạn là cửa hàng chào giá, bản thương lượng chỉ hiển thị sau khi vòng bỏ phiếu kết thúc và có ít nhất 1 hộ chọn Có. Bạn có thể theo dõi hoặc đóng vòng quá hạn tại trang đề nghị của nhu cầu.
           </p>
-          <Link href="/feed" className="ui-btn ui-btn--secondary justify-self-start">Về nhu cầu</Link>
         </Card>
       )}
       {view && isVotingOffer && (

@@ -1,3 +1,11 @@
+import { z } from "zod";
+
+export const PHONE_MAX_LENGTH = 32;
+export const phoneInput = z.string().trim().min(1, "Vui lòng nhập số điện thoại.")
+  .max(PHONE_MAX_LENGTH, "Số điện thoại quá dài.")
+  .refine(value => /^\+?[0-9 ().-]+$/.test(value) && /^\d{7,15}$/.test(value.replace(/\D/g, "")),
+    "Số điện thoại không hợp lệ.");
+
 export type ReceivingContact = {
   name: string;
   phone: string;
@@ -10,6 +18,9 @@ const labels = { name: "Người nhận", phone: "SĐT", address: "Điểm nhậ
 /** Keep older free-text contacts editable without discarding their contents. */
 export function readReceivingContact(value = ""): ReceivingContact {
   const contact: ReceivingContact = { name: "", phone: "", address: "", notes: "" };
+  const phone = phoneInput.safeParse(value);
+  if (phone.success) return { ...contact, phone: phone.data };
+
   const notes: string[] = [];
   for (const line of value.split("\n")) {
     const entry = Object.entries(labels).find(([, label]) => line.startsWith(label + ": "));
