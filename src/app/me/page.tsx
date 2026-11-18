@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import type { Me } from "@/contracts/foundation";
+import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { PwaInstallCard } from "@/components/pwa";
 import { AccountSection } from "./AccountSection";
 import { SignOutSection } from "./SignOutSection";
@@ -19,14 +20,18 @@ type State =
 
 export default function MePage() {
   const router = useRouter();
-  const [state, setState] = useState<State>({ phase: "loading" });
+  const [state, setState] = useState<State>(() => {
+    const cached = readClientCache<Me>("me");
+    return cached ? { phase: "ready", data: cached.value } : { phase: "loading" };
+  });
 
   const goLogin = useCallback(() => {
     router.replace("/login");
   }, [router]);
 
-  const load = useCallback(async () => {
-    setState({ phase: "loading" });
+  const load = useCallback(async (options?: { background?: boolean }) => {
+    const background = options?.background ?? false;
+    if (!background) setState({ phase: "loading" });
     const result = await callMe("GET");
     if (result.ok) {
       setState({ phase: "ready", data: result.data });
@@ -36,17 +41,24 @@ export default function MePage() {
       goLogin();
       return;
     }
-    setState({ phase: "error", message: result.message });
+    if (!background) {
+      setState({ phase: "error", message: result.message });
+    }
   }, [goLogin]);
 
   function mergeData(fields: Partial<Me>) {
-    setState(current => current.phase === "ready"
-      ? { phase: "ready", data: { ...current.data, ...fields } }
-      : current);
+    setState(current => {
+      if (current.phase !== "ready") return current;
+      const next = { ...current.data, ...fields };
+      writeClientCache("me", next);
+      return { phase: "ready", data: next };
+    });
   }
 
   useEffect(() => {
-    void load();
+    const cached = readClientCache<Me>("me");
+    if (!cached) void load();
+    else if (!cached.isFresh) void load({ background: true });
   }, [load]);
 
   return (

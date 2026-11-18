@@ -17,6 +17,7 @@ import { AppShell } from "@/components/app-shell";
 import { LocationFields } from "@/components/location-fields";
 import type { CatalogItem, DemandItem } from "@/contracts/foundation";
 import { ApiError, getCatalog, getMe, getGroup } from "@/lib/api-client";
+import { CATALOG_FRESH_MS, readClientCache, writeClientCache } from "@/lib/client-cache";
 import { communityFeedPage } from "./community-feed";
 import { HCM_PROVINCE_CODE, locationLabel } from "@/lib/locations";
 import { DemandCard, demandCategoryVisual } from "./DemandCard";
@@ -33,6 +34,17 @@ const OffersPanel = dynamic(() => import("@/app/trade/needs/OffersPanel").then(m
 
 type Category = CatalogItem["category"];
 type LoadStatus = "loading" | "ready" | "empty" | "error";
+type FeedViewCache = { category: Category | ""; ward: string; appliedWard: string };
+type FeedDataCache = {
+  items: DemandItem[];
+  nextCursor?: string;
+  currentPage: number;
+  ownCampaignIds: string[];
+};
+
+const FEED_VIEW_KEY = "feed:view";
+const FEED_CATEGORIES_KEY = "feed:categories";
+const feedDataKey = (category: Category | "", appliedWard: string) => `feed:data:${category}:${appliedWard}`;
 
 const categoryOptions = [
   { value: "", label: "Tất cả", icon: "grid_view", tone: "all" },
@@ -51,28 +63,56 @@ function redirectExpiredSession(error: unknown): boolean {
   return true;
 }
 
+function isDemoSearch(): boolean {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
+}
+
 export default function FeedView({ offerLeadHours }: { offerLeadHours: number | null }) {
-  const [category, setCategory] = useState<Category | "">("");
-  const [ward, setWard] = useState("");
-  const [appliedWard, setAppliedWard] = useState("");
-  const [categories, setCategories] = useState<ReadonlyMap<string, Category>>(new Map());
-  const [items, setItems] = useState<DemandItem[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
-  const [status, setStatus] = useState<LoadStatus>("loading");
+  const [category, setCategory] = useState<Category | "">(
+    () => readClientCache<FeedViewCache>(FEED_VIEW_KEY)?.value.category ?? "",
+  );
+  const [ward, setWard] = useState(
+    () => readClientCache<FeedViewCache>(FEED_VIEW_KEY)?.value.ward ?? "",
+  );
+  const [appliedWard, setAppliedWard] = useState(
+    () => readClientCache<FeedViewCache>(FEED_VIEW_KEY)?.value.appliedWard ?? "",
+  );
+  const [categories, setCategories] = useState<ReadonlyMap<string, Category>>(
+    () => readClientCache<ReadonlyMap<string, Category>>(FEED_CATEGORIES_KEY, CATALOG_FRESH_MS)?.value ?? new Map(),
+  );
+  const [items, setItems] = useState<DemandItem[]>(
+    () => readClientCache<FeedDataCache>(feedDataKey(category, appliedWard))?.value.items ?? [],
+  );
+  const [nextCursor, setNextCursor] = useState<string | undefined>(
+    () => readClientCache<FeedDataCache>(feedDataKey(category, appliedWard))?.value.nextCursor,
+  );
+  const [status, setStatus] = useState<LoadStatus>(() => {
+    const cached = readClientCache<FeedDataCache>(feedDataKey(category, appliedWard))?.value;
+    if (!cached) return "loading";
+    return cached.items.length === 0 ? "empty" : "ready";
+  });
   const [errorMessage, setErrorMessage] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState("");
   const generation = useRef(0);
   const resultsHeading = useRef<HTMLHeadingElement>(null);
-  const ownCampaigns = useRef<ReadonlySet<string>>(new Set());
+  const ownCampaigns = useRef<ReadonlySet<string>>(
+    new Set(readClientCache<FeedDataCache>(feedDataKey(category, appliedWard))?.value.ownCampaignIds ?? []),
+  );
 
   // Phân trang 12 items (3x4)
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(
+    () => readClientCache<FeedDataCache>(feedDataKey(category, appliedWard))?.value.currentPage ?? 1,
+  );
   const previousPage = useRef(currentPage);
 
   // Modal Widget Chào hàng
   const [selectedItemForOffer, setSelectedItemForOffer] = useState<DemandItem | null>(null);
   const [giftOffer, setGiftOffer] = useState(false);
+
+  useEffect(() => {
+    writeClientCache<FeedViewCache>(FEED_VIEW_KEY, { category, ward, appliedWard });
+  }, [category, ward, appliedWard]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -102,10 +142,15 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
 
   // Danh mục dùng để chọn visual thumbnail
   useEffect(() => {
+    const cached = readClientCache<ReadonlyMap<string, Category>>(FEED_CATEGORIES_KEY, CATALOG_FRESH_MS);
+    if (cached?.isFresh) return;
     let active = true;
     void getCatalog()
       .then((data) => {
-        if (active) setCategories(new Map(data.items.map((item) => [item.skuId, item.category])));
+        if (!active) return;
+        const map = new Map(data.items.map((item) => [item.skuId, item.category]));
+        writeClientCache(FEED_CATEGORIES_KEY, map);
+        setCategories(map);
       })
       .catch(() => {
         // Fallback tự động trong DemandCard
@@ -124,13 +169,16 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
   }, ownCampaigns.current), [category, appliedWard]);
 
   const loadFirstPage = useCallback(
-    async () => {
+    async (options?: { background?: boolean }) => {
+      const background = options?.background ?? false;
       const run = ++generation.current;
-      setStatus("loading");
-      setLoadingMore(false);
-      setMoreError("");
-      setCurrentPage(1);
-      if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1") {
+      if (!background) {
+        setStatus("loading");
+        setLoadingMore(false);
+        setMoreError("");
+        setCurrentPage(1);
+      }
+      if (isDemoSearch()) {
         const filtered = category
           ? SAMPLE_DEMANDS.filter(entry => entry.category === category)
           : SAMPLE_DEMANDS;
@@ -144,33 +192,52 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
         const profile = await getMe();
         const group = profile.groupId ? await getGroup(profile.groupId) : undefined;
         if (run !== generation.current) return;
-        ownCampaigns.current = new Set(group?.campaigns.map(item => item.campaignId));
+        const ownCampaignIds = group?.campaigns.map(item => item.campaignId) ?? [];
+        ownCampaigns.current = new Set(ownCampaignIds);
         const data = await requestPage();
         if (run !== generation.current) return;
+        writeClientCache<FeedDataCache>(feedDataKey(category, appliedWard), {
+          items: data.items,
+          nextCursor: data.nextCursor,
+          currentPage: 1,
+          ownCampaignIds,
+        });
+        previousPage.current = 1;
+        setCurrentPage(1);
         setItems(data.items);
         setNextCursor(data.nextCursor);
         setStatus(data.items.length === 0 ? "empty" : "ready");
       } catch (error) {
         if (run !== generation.current) return;
         if (redirectExpiredSession(error)) return;
-        setErrorMessage(messageOf(error));
-        setStatus("error");
+        if (!background) {
+          setErrorMessage(messageOf(error));
+          setStatus("error");
+        }
       }
     },
-    [requestPage, category],
+    [requestPage, category, appliedWard],
   );
 
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return;
-    const run = generation.current;
+    const run = ++generation.current;
     setLoadingMore(true);
     setMoreError("");
     try {
       const data = await requestPage(nextCursor);
       if (run !== generation.current) return;
-      setItems((current) => [...current, ...data.items]);
+      const nextItems = [...items, ...data.items];
+      const nextPage = data.items.length ? currentPage + 1 : currentPage;
+      writeClientCache<FeedDataCache>(feedDataKey(category, appliedWard), {
+        items: nextItems,
+        nextCursor: data.nextCursor,
+        currentPage: nextPage,
+        ownCampaignIds: Array.from(ownCampaigns.current),
+      });
+      setItems(nextItems);
       setNextCursor(data.nextCursor);
-      if (data.items.length) setCurrentPage(page => page + 1);
+      if (data.items.length) setCurrentPage(nextPage);
     } catch (error) {
       if (run !== generation.current) return;
       if (redirectExpiredSession(error)) return;
@@ -178,11 +245,35 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
     } finally {
       if (run === generation.current) setLoadingMore(false);
     }
-  }, [requestPage, loadingMore, nextCursor]);
+  }, [requestPage, loadingMore, nextCursor, items, currentPage, category, appliedWard]);
 
   useEffect(() => {
-    void loadFirstPage();
-  }, [loadFirstPage]);
+    generation.current += 1;
+    if (isDemoSearch()) {
+      void loadFirstPage();
+      return () => {
+        generation.current += 1;
+      };
+    }
+    const cached = readClientCache<FeedDataCache>(feedDataKey(category, appliedWard));
+    if (cached) {
+      ownCampaigns.current = new Set(cached.value.ownCampaignIds);
+      previousPage.current = cached.value.currentPage;
+      setItems(cached.value.items);
+      setNextCursor(cached.value.nextCursor);
+      setCurrentPage(cached.value.currentPage);
+      setStatus(cached.value.items.length === 0 ? "empty" : "ready");
+      setLoadingMore(false);
+      setMoreError("");
+      setErrorMessage("");
+      if (!cached.isFresh) void loadFirstPage({ background: true });
+    } else {
+      void loadFirstPage();
+    }
+    return () => {
+      generation.current += 1;
+    };
+  }, [category, appliedWard, loadFirstPage]);
 
   useEffect(() => {
     if (previousPage.current === currentPage) return;
@@ -212,6 +303,22 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
   const totalPages = Math.max(1, Math.ceil(items.length / FEED_PAGE_SIZE));
   const startIndex = (currentPage - 1) * FEED_PAGE_SIZE;
   const displayedItems = items.slice(startIndex, startIndex + FEED_PAGE_SIZE);
+
+  function selectPage(page: number) {
+    if (page <= totalPages) {
+      setCurrentPage(page);
+      if (!isDemoSearch()) {
+        writeClientCache<FeedDataCache>(feedDataKey(category, appliedWard), {
+          items,
+          nextCursor,
+          currentPage: page,
+          ownCampaignIds: Array.from(ownCampaigns.current),
+        });
+      }
+    } else {
+      void loadMore();
+    }
+  }
 
   return (
     <AppShell
@@ -316,7 +423,7 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
             loadedPages={totalPages}
             hasNextPage={Boolean(nextCursor)}
             loading={loadingMore}
-            onPageChange={page => page <= totalPages ? setCurrentPage(page) : void loadMore()}
+            onPageChange={selectPage}
           />
 
           {moreError && (

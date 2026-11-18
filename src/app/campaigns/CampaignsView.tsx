@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button, Card, CardTitle } from "@/components/ui";
 import type { Campaign, Group } from "@/contracts/foundation";
 import { ApiError, createCampaign, getGroup, getMe } from "@/lib/api-client";
+import { invalidateClientCache, readClientCache, writeClientCache } from "@/lib/client-cache";
 import {
   campaignDisplayState,
   defaultCollectUntil,
@@ -30,6 +31,9 @@ type LoadState =
   | { phase: "noGroup" }
   | { phase: "ready"; group: Group }
   | { phase: "error"; message: string };
+
+type CampaignsCache = { group: Group; isRep: boolean } | { noGroup: true };
+const CAMPAIGNS_CACHE_KEY = "campaigns:view";
 
 function CampaignCard({ campaign }: { campaign: Campaign }) {
   const displayState = campaignDisplayState(campaign);
@@ -162,23 +166,40 @@ function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated
 
 export function CampaignsView() {
   const router = useRouter();
-  const [state, setState] = useState<LoadState>({ phase: "loading" });
+  const [state, setState] = useState<LoadState>(() => {
+    const cached = readClientCache<CampaignsCache>(CAMPAIGNS_CACHE_KEY)?.value;
+    if (!cached) return { phase: "loading" };
+    return "noGroup" in cached ? { phase: "noGroup" } : { phase: "ready", group: cached.group };
+  });
   const [reloadKey, setReloadKey] = useState(0);
-  const [isRep, setIsRep] = useState(false);
+  const [isRep, setIsRep] = useState(() => {
+    const cached = readClientCache<CampaignsCache>(CAMPAIGNS_CACHE_KEY)?.value;
+    return cached && !("noGroup" in cached) ? cached.isRep : false;
+  });
 
   useEffect(() => {
+    const cached = reloadKey === 0 ? readClientCache<CampaignsCache>(CAMPAIGNS_CACHE_KEY) : undefined;
+    if (cached?.isFresh) return;
+
     let cancelled = false;
+    const background = Boolean(cached);
+
     async function load() {
-      setState({ phase: "loading" });
+      if (!background) setState({ phase: "loading" });
       try {
         const me = await getMe();
+        if (cancelled) return;
         if (!me.groupId) {
-          if (!cancelled) setState({ phase: "noGroup" });
+          writeClientCache<CampaignsCache>(CAMPAIGNS_CACHE_KEY, { noGroup: true });
+          setIsRep(false);
+          setState({ phase: "noGroup" });
           return;
         }
         const group = await getGroup(me.groupId);
         if (cancelled) return;
-        setIsRep(group.repId === me.userId);
+        const rep = group.repId === me.userId;
+        writeClientCache<CampaignsCache>(CAMPAIGNS_CACHE_KEY, { group, isRep: rep });
+        setIsRep(rep);
         setState({ phase: "ready", group });
       } catch (error) {
         if (cancelled) return;
@@ -188,7 +209,9 @@ export function CampaignsView() {
           router.replace("/login");
           return;
         }
-        setState({ phase: "error", message: error instanceof ApiError ? error.message : "Không tải được đợt gom. Vui lòng thử lại." });
+        if (!background) {
+          setState({ phase: "error", message: error instanceof ApiError ? error.message : "Không tải được đợt gom. Vui lòng thử lại." });
+        }
       }
     }
     void load();
@@ -198,6 +221,11 @@ export function CampaignsView() {
   }, [router, reloadKey]);
 
   const refresh = useCallback(() => setReloadKey((key) => key + 1), []);
+  const handleCreated = useCallback(() => {
+    invalidateClientCache();
+    router.refresh();
+    refresh();
+  }, [router, refresh]);
 
   return (
     <div className="grid gap-4">
@@ -231,7 +259,7 @@ export function CampaignsView() {
               ))}
             </ul>
           )}
-          {isRep && <CreateCampaignForm groupId={state.group.groupId} onCreated={refresh} />}
+          {isRep && <CreateCampaignForm groupId={state.group.groupId} onCreated={handleCreated} />}
         </>
       )}
     </div>

@@ -60,7 +60,7 @@ export default function DraftPage() {
     ]);
     return { view, round, voting, voteForbidden };
   }, [path, requestedProposal, id]);
-  const trade = useTrade(load);
+  const trade = useTrade(load, `draft:${id}:${requestedProposal ?? ""}`);
   const view = trade.data?.view;
   const version = view?.latestVersion;
   const buyer = view && "draftOpen" in view ? view : undefined;

@@ -25,6 +25,13 @@ import {
   walletLinkInput,
   walletLinkResult,
 } from "@/contracts/foundation";
+import {
+  CATALOG_FRESH_MS,
+  clearClientCache,
+  invalidateClientCache,
+  readClientCache,
+  writeClientCache,
+} from "./client-cache";
 
 export type Category = z.infer<typeof category>;
 export type Me = z.infer<typeof me>;
@@ -143,6 +150,7 @@ export async function apiFetch<S extends z.ZodType>(
   const payload: unknown = await response.json().catch(() => null);
 
   if (!response.ok) {
+    if (response.status === 401) clearClientCache();
     const parsed = apiError.safeParse(payload);
     if (parsed.success) {
       throw new ApiError({
@@ -162,18 +170,19 @@ export async function apiFetch<S extends z.ZodType>(
 
   const result = schema.safeParse(payload);
   if (!result.success) throw invalidResponse();
+  if (isWrite) invalidateClientCache();
   return result.data;
 }
 
 /** `GET /api/v1/me` — hồ sơ người dùng đang đăng nhập. Ném ApiError 401 khi chưa đăng nhập. */
 export function getMe(): Promise<Me> {
-  return apiFetch("/api/v1/me", { schema: me });
+  return apiFetch("/api/v1/me", { schema: me }).then(data => writeClientCache("me", data));
 }
 
 /** `PATCH /api/v1/me` — cập nhật liên hệ riêng. */
 export function updateMe(contactPrivate: string): Promise<Me> {
   const body = patchMeInput.parse({ contactPrivate });
-  return apiFetch("/api/v1/me", { method: "PATCH", body, schema: me });
+  return apiFetch("/api/v1/me", { method: "PATCH", body, schema: me }).then(data => writeClientCache("me", data));
 }
 
 /** `GET /api/v1/wallet/challenge` — nhận thử thách một lần để ký proveWallet trên Fuji. */
@@ -232,8 +241,11 @@ export function createCampaign(groupId: string, input: CreateCampaignBody): Prom
 
 /** `GET /api/v1/catalog?category=` — danh mục hàng hoá. */
 export function getCatalog(categoryFilter?: Category): Promise<Catalog> {
+  const key = `catalog:${categoryFilter ?? ""}`;
+  const cached = readClientCache<Catalog>(key, CATALOG_FRESH_MS);
+  if (cached?.isFresh) return Promise.resolve(cached.value);
   const query = categoryFilter ? `?category=${encodeURIComponent(categoryFilter)}` : "";
-  return apiFetch(`/api/v1/catalog${query}`, { schema: catalog });
+  return apiFetch(`/api/v1/catalog${query}`, { schema: catalog }).then(data => writeClientCache(key, data));
 }
 
 /** `GET /api/v1/campaigns/{id}/cart` */
