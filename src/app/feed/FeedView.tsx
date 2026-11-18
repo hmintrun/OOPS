@@ -22,6 +22,7 @@ import { HCM_PROVINCE_CODE, locationLabel } from "@/lib/locations";
 import { DemandCard, demandCategoryVisual } from "./DemandCard";
 import { FEED_PAGE_SIZE, FeedPagination } from "./FeedPagination";
 import { SosReliefSection } from "./SosReliefSection";
+import { SAMPLE_DEMANDS } from "@/app/ui-preview/demo/sampleDemands";
 import { WidgetDialog } from "@/components/ui/WidgetDialog";
 import dynamic from "next/dynamic";
 import "./feed.css";
@@ -129,6 +130,16 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
       setLoadingMore(false);
       setMoreError("");
       setCurrentPage(1);
+      if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1") {
+        const filtered = category
+          ? SAMPLE_DEMANDS.filter(entry => entry.category === category)
+          : SAMPLE_DEMANDS;
+        setCategories(new Map(SAMPLE_DEMANDS.map(entry => [entry.item.skuId, entry.category])));
+        setItems(filtered.map(entry => entry.item));
+        setNextCursor(undefined);
+        setStatus(filtered.length === 0 ? "empty" : "ready");
+        return;
+      }
       try {
         const profile = await getMe();
         const group = profile.groupId ? await getGroup(profile.groupId) : undefined;
@@ -146,7 +157,7 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
         setStatus("error");
       }
     },
-    [requestPage],
+    [requestPage, category],
   );
 
   const loadMore = useCallback(async () => {

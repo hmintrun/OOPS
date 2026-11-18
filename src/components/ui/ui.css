@@ -100,6 +100,11 @@
   background: color-mix(in srgb, var(--oops-green-100) 80%, var(--oops-green-600) 20%);
   color: var(--oops-green-800);
 }
+.bg-rose-tint .ui-btn--secondary {
+  background: var(--oops-surface);
+  color: var(--oops-danger);
+  border-color: color-mix(in srgb, var(--oops-danger), var(--oops-surface) 70%);
+}
 
 .ui-btn--ghost {
   background: var(--oops-surface);

@@ -293,8 +293,8 @@ export function VotePanel({
     if (!loadError) return null;
     return (
       <section className="grid gap-2 rounded-input bg-rose-tint p-3">
-        <p role="alert" className="text-small text-danger">{loadError}</p>
-        <Button full={false} variant="secondary" onClick={() => void fetchVoting()}>Tải lại bỏ phiếu</Button>
+        <p role="alert" className="text-small font-semibold text-danger">{loadError}</p>
+        <Button full={false} variant="ghost" onClick={() => void fetchVoting()}>Tải lại bỏ phiếu</Button>
       </section>
     );
   }
