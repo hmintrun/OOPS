@@ -154,12 +154,25 @@
 
 .ui-card {
   min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow-x: clip;
   background: var(--oops-surface);
   border: 1px solid var(--oops-line);
   border-radius: var(--oops-radius-card);
   box-shadow: var(--oops-shadow-card);
   padding: var(--oops-space-card);
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+.ui-card :is(form, .grid, label, fieldset, section) {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+.ui-card input[type="file"] {
+  width: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ui-card--tight { padding: 16px; }
 .ui-card--flush { padding: 0; }
@@ -592,17 +605,20 @@
   position: fixed;
   inset: 0;
   margin: auto;
-  width: min(calc(100% - 24px), 56rem);
+  width: min(calc(100vw - 24px), 56rem);
+  max-width: calc(100vw - 24px);
   max-height: min(90dvh, 52rem);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
+  touch-action: pan-y;
   border-radius: var(--oops-radius-card);
   background: var(--oops-surface);
   color: var(--oops-navy-900);
   box-shadow: var(--oops-shadow-card);
 }
 .ui-widget-dialog::backdrop { background: rgb(14 39 68 / .6); }
-.ui-widget-dialog__panel { min-width: 0; }
+.ui-widget-dialog__panel { min-width: 0; max-width: 100%; overflow-x: hidden; }
 .ui-widget-dialog__header {
   position: sticky;
   top: 0;
@@ -628,6 +644,7 @@
 }
 .ui-widget-dialog__header h2 { font-size: var(--oops-title-card); font-weight: 800; overflow-wrap: anywhere; }
 .ui-widget-dialog__header button { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 50%; border: 1px solid var(--oops-line); outline: none; background: var(--oops-surface); color: var(--oops-navy-900); }
-.ui-widget-dialog__body { min-width: 0; padding: 16px; overflow-wrap: anywhere; }
-.ui-widget-dialog__body :is(input, select, textarea) { min-inline-size: 0; max-inline-size: 100%; font-size: 1rem; }
+.ui-widget-dialog__body { min-width: 0; max-width: 100%; padding: 16px; overflow-wrap: anywhere; overflow-x: hidden; }
+.ui-widget-dialog__body :is(form, div, section, dl, fieldset, label) { min-inline-size: 0; max-inline-size: 100%; }
+.ui-widget-dialog__body :is(input, select, textarea) { min-inline-size: 0; max-inline-size: 100%; width: 100%; font-size: 1rem; }
 html:has(.ui-widget-dialog[open]) { overflow-y: hidden; }

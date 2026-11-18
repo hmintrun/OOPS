@@ -155,7 +155,7 @@ export default function OrderPage() {
             {payment.postedAt ? ` · ${dateTime(payment.postedAt)}` : ""}
           </p>)}
         </Card>
-        {(canHandoff || evidenceIds.length > 0 || Boolean(currentReceipt)) && <Card id="handoff" tabIndex={-1} className="order-stage grid gap-3">
+        {(canHandoff || evidenceIds.length > 0 || Boolean(currentReceipt)) && <Card id="handoff" tabIndex={-1} className="order-stage grid min-w-0 gap-3">
           <CardTitle as="h2">Bàn giao và biên nhận</CardTitle>
           {seller && order.state === "AWAIT_HANDOFF" && !order.readyAt && <Button disabled={trade.busy || trade.loading}
             onClick={() => {
@@ -164,7 +164,7 @@ export default function OrderPage() {
                 method: "POST", body: {}, schema: contract, idempotencyKey: key,
               }));
             }}>Báo hàng sẵn sàng</Button>}
-          {seller && canHandoff && <form key={proofInputVersion} className="grid gap-2" onSubmit={event => {
+          {seller && canHandoff && <form key={proofInputVersion} className="grid min-w-0 gap-2" onSubmit={event => {
             event.preventDefault();
             if (!proofFile) return;
             setFormError("");
@@ -175,8 +175,8 @@ export default function OrderPage() {
               method: "POST", body, schema: evidenceResult, idempotencyKey: key,
             }), () => { setProofFile(undefined); setProofInputVersion(value => value + 1); });
           }}>
-            <label className="grid gap-2">Ảnh bàn giao (tối đa 5 MiB)
-              <input type="file" accept="image/jpeg,image/png,image/webp" required disabled={trade.busy} onChange={event => {
+            <label className="grid min-w-0 gap-2">Ảnh bàn giao (tối đa 5 MiB)
+              <input className="w-full min-w-0 max-w-full text-small" type="file" accept="image/jpeg,image/png,image/webp" required disabled={trade.busy} onChange={event => {
                 setProofFile(event.target.files?.[0]);
                 setFileRevision(value => value + 1);
               }} />
