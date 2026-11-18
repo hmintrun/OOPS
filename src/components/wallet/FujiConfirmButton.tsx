@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { Hex } from "viem";
 import type { confirmationRound } from "@/contracts/negotiation";
 import type { z } from "zod";
+import { ApiError } from "@/lib/api-client";
 import {
   formatFujiWalletError,
   sendConfirmVersionTransaction,
@@ -13,6 +14,38 @@ import { Button } from "@/components/ui";
 import { embeddedFujiConfigured, sendEmbeddedFujiCall, waitForEmbeddedFujiCall } from "@/lib/fuji/embedded";
 
 type RoundData = z.infer<typeof confirmationRound>;
+export type WalletConfirmMethod = "embedded" | "core";
+
+export function confirmButtonStates(input: {
+  disabled: boolean;
+  signingMethod: WalletConfirmMethod | null;
+  submittedTx: string;
+  submittedMethod: WalletConfirmMethod | null;
+  sponsoredId: string;
+}) {
+  const { disabled, signingMethod, submittedTx, submittedMethod, sponsoredId } = input;
+  const hasSubmitted = Boolean(submittedTx);
+  return {
+    embedded: {
+      loading: signingMethod === "embedded",
+      disabled: disabled || hasSubmitted || signingMethod === "core",
+      label:
+        hasSubmitted && submittedMethod === "embedded"
+          ? "Đang ghi nhận xác nhận…"
+          : sponsoredId
+            ? "Kiểm tra giao dịch"
+            : "Xác nhận mua trong OOPS",
+    },
+    core: {
+      loading: signingMethod === "core",
+      disabled: disabled || hasSubmitted || Boolean(sponsoredId) || signingMethod === "embedded",
+      label:
+        hasSubmitted && submittedMethod === "core"
+          ? "Đã ký trên Fuji — đang đồng bộ…"
+          : "Ký xác nhận trên Core Wallet",
+    },
+  };
+}
 
 export function FujiConfirmButton({
   round,
@@ -23,8 +56,9 @@ export function FujiConfirmButton({
   disabled: boolean;
   onConfirmed: () => Promise<void> | void;
 }) {
-  const [signing, setSigning] = useState(false);
+  const [signingMethod, setSigningMethod] = useState<WalletConfirmMethod | null>(null);
   const [submittedTx, setSubmittedTx] = useState<string>("");
+  const [submittedMethod, setSubmittedMethod] = useState<WalletConfirmMethod | null>(null);
   const [sponsoredId, setSponsoredId] = useState("");
   const embeddedEnabled = embeddedFujiConfigured();
   const [error, setError] = useState<string>("");
@@ -53,10 +87,18 @@ export function FujiConfirmButton({
 
   if (!stillPending || !walletAddress) return null;
 
-  async function handleConfirm(method: "embedded" | "core") {
+  const buttons = confirmButtonStates({
+    disabled,
+    signingMethod,
+    submittedTx,
+    submittedMethod,
+    sponsoredId,
+  });
+
+  async function handleConfirm(method: WalletConfirmMethod) {
     if (!walletAddress) return;
     setError("");
-    setSigning(true);
+    setSigningMethod(method);
     try {
       const call = {
         contractAddress: round.contractAddress,
@@ -75,12 +117,17 @@ export function FujiConfirmButton({
       } else {
         ({ txHash } = await sendConfirmVersionTransaction(call));
       }
+      setSubmittedMethod(method);
       setSubmittedTx(txHash);
       await onConfirmed();
     } catch (err) {
-      setError(formatFujiWalletError(err));
+      if (err instanceof ApiError && err.status === 401) {
+        window.location.assign("/login");
+        return;
+      }
+      setError(err instanceof ApiError ? err.message : formatFujiWalletError(err));
     } finally {
-      setSigning(false);
+      setSigningMethod(null);
     }
   }
 
@@ -96,21 +143,21 @@ export function FujiConfirmButton({
         {embeddedEnabled && (
           <Button
             full={false}
-            loading={signing}
-            disabled={disabled || Boolean(submittedTx)}
+            loading={buttons.embedded.loading}
+            disabled={buttons.embedded.disabled}
             onClick={() => void handleConfirm("embedded")}
           >
-            {submittedTx ? "Đang ghi nhận xác nhận…" : sponsoredId ? "Kiểm tra giao dịch" : "Xác nhận mua trong OOPS"}
+            {buttons.embedded.label}
           </Button>
         )}
         <Button
           full={false}
           variant={embeddedEnabled ? "secondary" : "primary"}
-          loading={!embeddedEnabled && signing}
-          disabled={disabled || Boolean(submittedTx) || Boolean(sponsoredId) || signing}
+          loading={buttons.core.loading}
+          disabled={buttons.core.disabled}
           onClick={() => void handleConfirm("core")}
         >
-          {submittedTx && !embeddedEnabled ? "Đã ký trên Fuji — đang đồng bộ…" : "Ký xác nhận trên Core Wallet"}
+          {buttons.core.label}
         </Button>
       </div>
       {submittedTx && (

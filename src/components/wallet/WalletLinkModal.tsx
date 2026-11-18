@@ -32,10 +32,42 @@ type PendingProof = {
   expiresAt: string;
 };
 
-type WalletMethod = "core" | "embedded";
+export type WalletMethod = "core" | "embedded";
 type SponsoredProof = SponsoredFujiCall & { nonce: string; expiresAt: string };
 
 type StepPhase = "idle" | "challenge" | "signing" | "verifying" | "done";
+
+export function resolveWalletMethodOnOpen(
+  currentMethod: WalletMethod,
+  nextMethod: WalletMethod,
+  hasProof: boolean,
+): WalletMethod {
+  return hasProof ? currentMethod : nextMethod;
+}
+
+export function resolveWalletLinkAction(input: {
+  proof: { expiresAt: string } | null;
+  sponsored: { expiresAt: string } | null;
+  embedded: boolean;
+  now?: number;
+}): "submit_proof" | "verify_sponsored" | "fresh_challenge" {
+  const now = input.now ?? Date.now();
+  if (input.proof && Date.parse(input.proof.expiresAt) > now) return "submit_proof";
+  if (input.embedded && input.sponsored && Date.parse(input.sponsored.expiresAt) > now) return "verify_sponsored";
+  return "fresh_challenge";
+}
+
+export function walletLinkPrimaryLabel(input: {
+  hasProof: boolean;
+  embedded: boolean;
+  hasSponsored: boolean;
+  hasCurrentAddress: boolean;
+}): string {
+  if (input.hasProof) return "Gửi lại xác minh";
+  if (input.embedded && input.hasSponsored) return "Kiểm tra giao dịch";
+  if (input.embedded) return "Xác minh ví OOPS";
+  return input.hasCurrentAddress ? "Ký đổi ví trên Core Wallet" : "Kết nối & Ký trên Core Wallet";
+}
 
 export function WalletLinkModal({
   currentAddress,
@@ -62,7 +94,7 @@ export function WalletLinkModal({
   }, [open]);
 
   function openModal(nextMethod: WalletMethod) {
-    if (!proof && !sponsored) setMethod(nextMethod);
+    setMethod(current => resolveWalletMethodOnOpen(current, nextMethod, Boolean(proof)));
     setError("");
     setNotice("");
     setHasProvider(getInjectedWalletProvider() !== null);
@@ -106,17 +138,18 @@ export function WalletLinkModal({
     setError("");
     setNotice("");
     try {
-      if (proof && Date.parse(proof.expiresAt) > Date.now()) {
+      const action = resolveWalletLinkAction({ proof, sponsored, embedded });
+      if (action === "submit_proof" && proof) {
         await submitProofToServer(proof);
         return;
       }
-      if (sponsored && Date.parse(sponsored.expiresAt) > Date.now()) {
+      if (action === "verify_sponsored" && sponsored) {
         setPhase("signing");
         await verifySponsoredProof(sponsored);
         return;
       }
       setProof(null);
-      setSponsored(null);
+      if (embedded) setSponsored(null);
 
       setPhase("challenge");
       const challenge = await getWalletChallenge();
@@ -284,10 +317,12 @@ export function WalletLinkModal({
                 Huỷ
               </Button>
               <Button loading={busy} onClick={() => void runLinkFlow()}>
-                {proof ? "Gửi lại xác minh"
-                  : sponsored ? "Kiểm tra giao dịch"
-                    : embedded ? "Xác minh ví OOPS"
-                      : currentAddress ? "Ký đổi ví trên Core Wallet" : "Kết nối & Ký trên Core Wallet"}
+                {walletLinkPrimaryLabel({
+                  hasProof: Boolean(proof),
+                  embedded,
+                  hasSponsored: Boolean(sponsored),
+                  hasCurrentAddress: Boolean(currentAddress),
+                })}
               </Button>
             </div>
           </div>

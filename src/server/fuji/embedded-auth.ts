@@ -9,10 +9,9 @@ export async function createEmbeddedWalletSession(userId: string) {
   if (process.env.NEXT_PUBLIC_OOPS_FUJI_EMBEDDED !== "true" ||
       !process.env.NEXT_PUBLIC_OOPS_OPENFORT_PUBLISHABLE_KEY?.startsWith("pk_test_")) throw notFound();
 
-  const pilotUsers = (process.env.OOPS_FUJI_EMBEDDED_PILOT_USER_IDS ?? "")
-    .split(",").map(id => id.trim().toLowerCase());
-  if (!pilotUsers.includes(userId.toLowerCase())) {
-    throw new ApiFailure(403, "FORBIDDEN", "Tài khoản chưa được mời thử ví OOPS.");
+  const parsedUserId = z.uuid().safeParse(userId);
+  if (!parsedUserId.success) {
+    throw new ApiFailure(401, "UNAUTHORIZED", "Phiên đăng nhập không hợp lệ.");
   }
 
   const headers = {
@@ -34,5 +33,5 @@ export async function createEmbeddedWalletSession(userId: string) {
   if (!response.ok) throw unavailable();
   const parsed = shieldSession.safeParse(await response.json().catch(() => null));
   if (!parsed.success) throw unavailable();
-  return { userId, encryptionSession: parsed.data.session_id };
+  return { userId: parsedUserId.data, encryptionSession: parsed.data.session_id };
 }

@@ -26,6 +26,7 @@ export function WalletSection({
   onUnauthorized?: () => void;
 }) {
   const wallet = data.wallet;
+  const embeddedEnabled = embeddedFujiConfigured();
   // verificationState ngoài ba giá trị đã biết (API đổi enum) → coi như chưa xác minh.
   const verification = wallet ? VERIFICATION[wallet.verificationState] : undefined;
 
@@ -34,9 +35,9 @@ export function WalletSection({
       <div className="me-card-head me-wallet__heading">
         <img src="/assets/fuji-shield.jpg" alt="" className="me-wallet__shield" />
         <div>
-          <CardTitle>{embeddedFujiConfigured() ? "Ví xác nhận mua chung" : "Ví Avalanche Fuji"}</CardTitle>
-          <p className="text-small text-navy-600">{embeddedFujiConfigured()
-            ? "Dùng để xác nhận phần mua của nhà mình."
+          <CardTitle>{embeddedEnabled ? "Ví xác nhận mua chung" : "Ví Avalanche Fuji"}</CardTitle>
+          <p className="text-small text-navy-600">{embeddedEnabled
+            ? "Dùng ví OOPS hoặc Core Wallet trên Fuji (Chain ID: 43113)."
             : "Xác thực on-chain (Chain ID: 43113)"}</p>
         </div>
       </div>
@@ -45,8 +46,8 @@ export function WalletSection({
         {!wallet || !verification ? (
           <div>
             <p className="me-body-text">Chưa liên kết ví</p>
-            <p className="me-hint">{embeddedFujiConfigured()
-              ? "Thiết lập ví trong OOPS để tự xác nhận các phần mua của nhà mình."
+            <p className="me-hint">{embeddedEnabled
+              ? "Thiết lập ví trong OOPS hoặc liên kết Core Wallet để xác nhận các phần mua của nhà mình."
               : "Kết nối Core Wallet và ký thử thách trên Fuji để tham gia xác nhận hợp đồng."}</p>
           </div>
         ) : (
