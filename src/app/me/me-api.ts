@@ -60,6 +60,7 @@ export async function callMe(
     if (method === "PATCH") {
       invalidateClientCache("campaigns:");
       invalidateClientCache("campaign-detail:");
+      invalidateClientCache("orders:");
     }
     return { ok: true, data };
   }

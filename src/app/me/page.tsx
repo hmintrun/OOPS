@@ -8,7 +8,6 @@ import type { Me } from "@/contracts/foundation";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { PwaInstallCard } from "@/components/pwa";
 import { AccountSection } from "./AccountSection";
-import { ContactSection } from "./ContactSection";
 import { SignOutSection } from "./SignOutSection";
 import { WalletSection } from "./WalletSection";
 import { callMe } from "./me-api";
@@ -100,12 +99,7 @@ export default function MePage() {
           <>
             <AccountSection
               data={state.data}
-              onData={({ displayName, location }) => mergeData({ displayName, location })}
-              onUnauthorized={goLogin}
-            />
-            <ContactSection
-              data={state.data}
-              onData={({ contactPrivate }) => mergeData({ contactPrivate })}
+              onData={({ displayName, location, contactPrivate }) => mergeData({ displayName, location, contactPrivate })}
               onUnauthorized={goLogin}
             />
             <WalletSection

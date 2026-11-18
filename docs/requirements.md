@@ -9,7 +9,7 @@ Tài liệu đặc tả các luồng trong [kế hoạch MVP](OOPS-MVP-Plan.md).
 | Yêu cầu MVP | Phạm vi sau demo |
 | --- | --- |
 | FR01  Một tài khoản mua và bán, tối đa một nhóm hoạt động. Đại diện phải đồng ý nhận vai trò. | Mở rộng vai trò phân xử và quy trình giải quyết tranh chấp. |
-| FR02  Hộ lập giỏ tay hoặc từ Gemini, sửa rồi xác nhận trước hạn gom. Đại diện xem trước tổng giỏ đã xác nhận và có thể đăng sớm để đóng gom. Bài đăng theo khu vực có hạn cần hàng riêng. | Mở rộng bộ quy tắc gợi ý sau khi xác minh nguồn và đơn vị. |
+| FR02  Hộ lập giỏ tay hoặc từ Gemini, sửa rồi lưu trước hạn gom. Giỏ đủ điều kiện ví được cộng vào nhu cầu ngay khi lưu. Đại diện xem tổng và có thể đăng sớm để đóng gom. Bài đăng theo khu vực có hạn cần hàng riêng. | Mở rộng bộ quy tắc gợi ý sau khi xác minh nguồn và đơn vị. |
 | FR03  Người bán chào tối đa một lượng hàng theo giá thường, giá hỗ trợ hoặc 0đ. Các hộ gửi bản chung có phần từng hộ. Seller chấp thuận, từ chối hoặc yêu cầu sửa. Sau chấp thuận, mọi hộ có phần hàng xác nhận đúng phiên bản trên Fuji rồi đại diện duyệt. | Đổi giá/lượng và đổi lịch sau khi chốt. Thu VND thật sau khi chốt quy trình giữ, chi và hoàn. |
 | FR04  Cọc riêng với tiền hàng. Hai bên duyệt cùng biên nhận để ghi nhận lượng thực nhận và mở lại phần giao thiếu. Hộ theo dõi đơn, số lượng, tiền và thông báo. | Tự động chi và hoàn khi có phương án thanh toán được duyệt. |
 

@@ -26,7 +26,7 @@ export default function NotificationsPage() {
   }), [cursor]);
   const trade = useTrade(load, `notifications:${cursor ?? ""}`);
   const next = trade.data?.nextCursor;
-  return <AppShell title="Thông báo" illustration="home" bare>
+  return <AppShell title="Thông báo" illustration="home" backHref="/orders" bare>
     <div className="grid gap-4">
       <TradeStatus {...trade} retry={() => void trade.refresh()} />
       {trade.data?.items.length === 0 && <Card><p>Chưa có thông báo ở trang này.</p></Card>}

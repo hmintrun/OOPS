@@ -11,6 +11,7 @@ type SelectProps = {
   value: string;
   options: SelectOption[];
   disabled?: boolean;
+  required?: boolean;
   onChange: (value: string) => void;
   className?: string;
   /** Hiện khi chưa chọn gì, màu navy-600. */
@@ -29,6 +30,7 @@ export function Select({
   value,
   options,
   disabled = false,
+  required = false,
   onChange,
   className = "",
   placeholder,
@@ -57,6 +59,7 @@ export function Select({
           className="ui-select__native"
           value={value}
           disabled={disabled}
+          required={required}
           onChange={(e) => onChange(e.target.value)}
           aria-label={label}
         >

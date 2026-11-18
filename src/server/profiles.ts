@@ -6,6 +6,7 @@ import { transaction } from "./db";
 import { ApiFailure } from "./errors";
 import { checkFujiEligibility } from "./fuji/eligibility";
 import { userLocation } from "@/lib/locations";
+import { writeReceivingContact } from "@/lib/receiving-contact";
 
 type Wallet = NonNullable<Me["wallet"]>;
 type WalletEligibility = { address: string; eligible: boolean | null };
@@ -14,9 +15,12 @@ type EligibilityOptions = { allowUnavailable?: boolean };
 export async function ensureProfile(client: PoolClient, actor: Actor) {
   const parsed = userLocation.safeParse(actor.location);
   const location = parsed.success ? parsed.data : undefined;
+  const contact = actor.phone
+    ? writeReceivingContact({ name: actor.displayName, phone: actor.phone, address: "", notes: "" })
+    : null;
   await client.query(
-    "insert into public.profiles (id, display_name, province_code, ward_code) values ($1, $2, $3, $4) on conflict (id) do nothing",
-    [actor.userId, actor.displayName, location?.provinceCode ?? null, location?.wardCode ?? null],
+    "insert into public.profiles (id, display_name, province_code, ward_code, contact_private) values ($1, $2, $3, $4, $5) on conflict (id) do nothing",
+    [actor.userId, actor.displayName, location?.provinceCode ?? null, location?.wardCode ?? null, contact],
   );
 }
 

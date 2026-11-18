@@ -52,11 +52,12 @@ const disbursement = z.strictObject({
 export const contract = z.strictObject({
   contractId: uuid, demandItemId: uuid, sourceVersionId: uuid, sellerId: uuid, repId: uuid, version: revision,
   state: contractState, reviewScope: z.enum(["HANDOFF", "DEPOSIT"]).optional(),
-  qty: qty.min(1), unitPriceVnd: amount, goodsVnd: amount, depositVnd: amount,
+  qty: qty.min(1), unit: z.string().optional(), unitPriceVnd: amount, goodsVnd: amount, depositVnd: amount,
   depositDueAt: isoDateTime.optional(), paymentDueAt: isoDateTime.optional(), readyAt: isoDateTime.optional(),
   roundId: uuid.optional(), roundOpenBy: isoDateTime.optional(), confirmBy: isoDateTime.optional(),
   handoffStart: isoDateTime, handoffBy: isoDateTime, approvalDueAt: isoDateTime,
   allocations: z.array(z.strictObject({ allocationId: uuid, qty: qty.min(1), goodsVnd: amount })),
+  myShare: z.strictObject({ qty: qty.min(1), goodsVnd: amount }).optional(),
   charges: z.array(charge), disbursements: z.array(disbursement),
   evidenceIds: z.array(uuid).optional(), receipt: receipt.optional(), termination: termination.optional(),
   handoffPrivate: z.string().optional(), repContact: z.string().optional(),

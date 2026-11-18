@@ -1,9 +1,11 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { BottomNav, Card, type NavItem } from "@/components/ui";
 import { ScreenHeader } from "@/components/ui";
 import type { PageScene } from "@/components/ui/PageArtwork";
+import { PageBack } from "./page-back";
 
 /** Các mục BottomNav theo design/STYLE.md mục 6. */
 export const SHELL_NAV_ITEMS: NavItem[] = [
@@ -27,6 +29,8 @@ type AppShellProps = {
   familyBackground?: boolean;
   illustration?: PageScene;
   bodyClassName?: string;
+  backHref?: string;
+  pageActions?: ReactNode;
 };
 
 /**
@@ -34,13 +38,23 @@ type AppShellProps = {
  * trên nền trời, nội dung trong thẻ trắng nổi, đáy chừa chỗ cho BottomNav qua
  * class `.ui-screen-body` có sẵn trong src/components/ui/ui.css.
  */
-export function AppShell({ title, subtitle, icon, aside, children, bare = false, familyBackground = false, bodyClassName, illustration }: AppShellProps) {
+export function AppShell({ title, subtitle, icon, aside, children, bare = false, familyBackground = false, bodyClassName, illustration, backHref = "/groups", pageActions }: AppShellProps) {
+  const pathname = usePathname();
+
   return (
     <main className={familyBackground ? "ui-app-page ui-family-page" : "ui-app-page"}>
       <BottomNav items={SHELL_NAV_ITEMS} />
       {title && <ScreenHeader title={title} subtitle={subtitle} icon={icon} aside={aside} familyBackground={familyBackground} illustration={illustration} />}
-      <div className={bodyClassName ? `ui-screen-body ${bodyClassName}` : "ui-screen-body"}>
-        {bare ? children : <Card>{children}</Card>}
+      <div className="ui-screen-body">
+        {pathname !== "/" && pathname !== "/groups" && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <PageBack href={backHref} />
+            {pageActions}
+          </div>
+        )}
+        <div className={bodyClassName}>
+          {bare ? children : <Card>{children}</Card>}
+        </div>
       </div>
     </main>
   );

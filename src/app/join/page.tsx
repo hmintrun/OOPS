@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageBack } from "@/components/page-back";
 import { ScreenHeader } from "@/components/ui";
 import { JoinForm } from "./join-form";
 
@@ -15,6 +16,7 @@ export default function JoinPage() {
         icon={{ icon: "mark_email_read", tone: "sky" }}
       />
       <div className="grid gap-4 px-[var(--oops-space-screen)] pb-[calc(24px+env(safe-area-inset-bottom))]">
+        <PageBack href="/groups" />
         <Suspense fallback={null}>
           <JoinForm />
         </Suspense>

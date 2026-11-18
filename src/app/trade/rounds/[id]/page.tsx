@@ -15,7 +15,7 @@ export default function RoundPage() {
   const trade = useTrade(load, `round:${id}`);
   const state = trade.data?.state;
   useRoundRefresh((state === "OPENING" || state === "OPEN") && !trade.loading, trade.refresh);
-  return <AppShell title="Xác nhận giao dịch" icon={{ icon: "verified", tone: "green" }} bare>
+  return <AppShell title="Xác nhận giao dịch" icon={{ icon: "verified", tone: "green" }} backHref="/orders" bare>
     <div className="grid gap-4">
       <TradeStatus {...trade} retry={() => void trade.refresh()} />
       {trade.data && <RoundInfo round={trade.data} disabled={trade.loading} refresh={() => void trade.refresh()} />}
