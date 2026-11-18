@@ -6,7 +6,15 @@ import { createInvite, newIdempotencyKey, type CreateInviteBody } from "@/lib/ap
 import { Button, Card, CardTitle } from "@/components/ui";
 import { formatDateTime } from "../helpers";
 
-export function InviteForm({ groupId, members }: { groupId: string; members: Member[] }) {
+export function InviteForm({
+  groupId,
+  members,
+  embedded = false,
+}: {
+  groupId: string;
+  members: Member[];
+  embedded?: boolean;
+}) {
   const [target, setTarget] = useState("");
   const [invite, setInvite] = useState<Invite>();
   const [pending, setPending] = useState(false);
@@ -27,12 +35,12 @@ export function InviteForm({ groupId, members }: { groupId: string; members: Mem
       setPending(false);
     }
   }
-  return (
-    <Card>
-      <CardTitle>Tạo lời mời</CardTitle>
+  const content = (
+    <>
+      <CardTitle as="h3" className="mb-3">Tạo lời mời</CardTitle>
       <form className="grid gap-3" onSubmit={event => { event.preventDefault(); void submit(); }}>
         <label className="grid gap-1">
-          Loại lời mời
+          <span className="text-small font-semibold text-navy-600">Loại lời mời</span>
           <select value={target} disabled={pending} onChange={event => { retry.current = undefined; setTarget(event.target.value); setInvite(undefined); }}
             className="h-control rounded-input border border-line bg-surface px-3">
             <option value="">Mời hộ vào nhóm</option>
@@ -58,6 +66,8 @@ export function InviteForm({ groupId, members }: { groupId: string; members: Mem
           </>
         )}
       </form>
-    </Card>
+    </>
   );
+
+  return embedded ? <div>{content}</div> : <Card>{content}</Card>;
 }

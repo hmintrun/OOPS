@@ -346,17 +346,17 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
 
           {/* Tóm tắt giá trị chữ to dễ đọc */}
           <dl className="grid gap-2 rounded-input bg-amber-tint p-4 text-body sm:col-span-2" aria-live="polite">
-            <div className="flex justify-between gap-3">
-              <dt className="font-semibold">Đơn giá mỗi {demand?.unit ?? "đơn vị"}</dt>
-              <dd className="font-extrabold">{isGift ? vnd(0) : price ? vnd(Number(price)) : "Chưa nhập"}</dd>
+            <div className="flex items-baseline justify-between gap-3">
+              <dt className="min-w-0 font-semibold">Đơn giá mỗi {demand?.unit ?? "đơn vị"}</dt>
+              <dd className="shrink-0 whitespace-nowrap text-right font-extrabold tabular-nums">{isGift ? vnd(0) : price ? vnd(Number(price)) : "Chưa nhập"}</dd>
             </div>
-            <div className="flex justify-between gap-3">
-              <dt className="font-semibold">Tổng tiền hàng tạm tính</dt>
-              <dd className="font-extrabold text-title">{amounts ? vnd(amounts.goodsVnd) : "—"}</dd>
+            <div className="flex items-baseline justify-between gap-3">
+              <dt className="min-w-0 font-semibold">Tổng tiền hàng tạm tính</dt>
+              <dd className="shrink-0 whitespace-nowrap text-right font-extrabold text-title tabular-nums">{amounts ? vnd(amounts.goodsVnd) : "—"}</dd>
             </div>
-            <div className="flex justify-between gap-3">
-              <dt className="font-semibold">Tiền cọc cam kết giao hàng</dt>
-              <dd className="font-extrabold text-green-700">{amounts ? vnd(amounts.depositVnd) : "—"}</dd>
+            <div className="flex items-baseline justify-between gap-3">
+              <dt className="min-w-0 font-semibold">Tiền cọc cam kết giao hàng</dt>
+              <dd className="shrink-0 whitespace-nowrap text-right font-extrabold text-green-700 tabular-nums">{amounts ? vnd(amounts.depositVnd) : "—"}</dd>
             </div>
             <div>
               <dt className="sr-only">Cách tính cọc</dt>
