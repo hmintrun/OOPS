@@ -3,10 +3,10 @@ import type { PoolClient } from "pg";
 import type { Me, PatchMeInput } from "@/contracts/foundation";
 import type { Actor } from "./auth";
 import { transaction } from "./db";
-import { ApiFailure } from "./errors";
+import { ApiFailure, invalid } from "./errors";
 import { checkFujiEligibility } from "./fuji/eligibility";
 import { userLocation } from "@/lib/locations";
-import { writeReceivingContact } from "@/lib/receiving-contact";
+import { PHONE_FORMAT_MESSAGE, phoneInput, receivingContactPhone, writeReceivingContact } from "@/lib/receiving-contact";
 
 type Wallet = NonNullable<Me["wallet"]>;
 type WalletEligibility = { address: string; eligible: boolean | null };
@@ -82,6 +82,15 @@ export async function readMe(client: PoolClient, actor: Actor, eligibility?: Wal
 }
 
 export async function updateProfile(client: PoolClient, actor: Actor, body: PatchMeInput, eligibility?: WalletEligibility): Promise<Me> {
+  if (body.contactPrivate !== undefined) {
+    const phone = receivingContactPhone(body.contactPrivate);
+    if (phone && !phoneInput.safeParse(phone).success) {
+      const { rows: [current] } = await client.query<{ contact_private: string | null }>(
+        "select contact_private from public.profiles where id = $1 for update", [actor.userId],
+      );
+      if (phone !== receivingContactPhone(current?.contact_private ?? "")) throw invalid(PHONE_FORMAT_MESSAGE);
+    }
+  }
   await client.query(
     `update public.profiles
        set display_name = coalesce($2, display_name),

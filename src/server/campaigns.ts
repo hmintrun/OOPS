@@ -206,8 +206,8 @@ const demandFrom = `from public.demand_items d
   join public.catalog_items s on s.id = d.sku_id`;
 
 export async function readBuyerDemand(client: PoolClient, userId: string, demandItemId: string) {
-  const { rows: [row] } = await client.query<{ name: string; unit: string; missing: number; needBy: Date }>(
-    `select s.name, s.unit, d.target - d.reserved - d.received as missing, c.need_by as "needBy"
+  const { rows: [row] } = await client.query<Pick<DemandRow, "name" | "unit" | "target" | "pending" | "reserved" | "received" | "needBy">>(
+    `select s.name, s.unit, d.target, d.pending, d.reserved, d.received, c.need_by as "needBy"
      ${demandFrom}
      where d.id = $1 and c.status = 'PUBLISHED' and exists (
        select 1 from public.memberships m where m.group_id = c.group_id and m.user_id = $2 and m.left_at is null
@@ -215,7 +215,8 @@ export async function readBuyerDemand(client: PoolClient, userId: string, demand
     [demandItemId, userId],
   );
   if (!row) throw notFound();
-  return { ...row, needBy: row.needBy.toISOString() };
+  const { missing, offerable } = quantities(row.target, row.pending, row.reserved, row.received);
+  return { name: row.name, unit: row.unit, needBy: row.needBy.toISOString(), missing, offerable };
 }
 
 export async function readNeeds(client: PoolClient, userId: string, campaignId: string): Promise<Needs> {

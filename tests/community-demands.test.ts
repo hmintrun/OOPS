@@ -46,6 +46,14 @@ it("distinguishes published needs with no offers from active negotiations", asyn
   expect(await readGroupDemandOrders()).toMatchObject([{ state: "negotiating" }]);
 });
 
+it("shows availability after subtracting an accepted order still awaiting commitments", async () => {
+  api.getNeeds.mockResolvedValue({
+    campaignState: "PUBLISHED", items: [{ ...demoDemand, pending: 7, offerable: 5 }], activeRounds: [],
+  });
+  api.apiFetch.mockResolvedValue({ items: [] });
+  expect(await readGroupDemandOrders()).toMatchObject([{ detail: expect.stringContaining("Có thể chốt thêm 5 chai") }]);
+});
+
 it("does not present an unreadable proposal list as an empty waiting order", async () => {
   api.getNeeds.mockResolvedValue({ campaignState: "PUBLISHED", items: [demoDemand], activeRounds: [] });
   api.apiFetch.mockRejectedValue(new Error("Permission denied"));

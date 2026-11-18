@@ -328,9 +328,9 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                 Xem đơn <MaterialSymbol name="chevron_right" size={18} />
               </Link>
               <dl className="campaign-demand-stats">
-                <div><dt>Số lượng đặt</dt><dd>{item.target} {item.unit}</dd></div>
+                <div><dt>Nhu cầu ban đầu</dt><dd>{item.target} {item.unit}</dd></div>
                 <div><dt>Đã nhận</dt><dd>{item.received} {item.unit}</dd></div>
-                <div><dt>Còn thiếu</dt><dd>{item.missing} {item.unit}</dd></div>
+                <div><dt>Có thể chốt thêm</dt><dd>{item.offerable} {item.unit}</dd></div>
               </dl>
             </li> : <li key={item.skuId}>{item.name}: {item.target} {item.unit}</li>
           ))}

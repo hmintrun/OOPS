@@ -140,7 +140,7 @@ export function OfferModalWidget({
               </span>
               <h4 className="text-title font-extrabold text-navy-900 truncate mt-0.5">{item.name}</h4>
               <p className="text-body text-navy-600">
-                Còn thiếu: <strong className="text-green-700">{item.missing} {item.unit}</strong> · Hạn cần: <strong className="text-navy-900">{formatDateTime(item.needBy)}</strong>
+                Có thể chốt thêm <strong className="text-green-700">{maxQty} {item.unit}</strong> · Hạn cần: <strong className="text-navy-900">{formatDateTime(item.needBy)}</strong>
               </p>
             </div>
           </div>

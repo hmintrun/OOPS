@@ -37,6 +37,8 @@ export const offer = z.strictObject({
   canOpenDraft: z.boolean().optional(),
 });
 export const offers = z.strictObject({ items: z.array(offer) });
+const sentOffer = offer.extend({ itemName: z.string(), unit: z.string() });
+export const sentOfferList = z.strictObject({ items: z.array(sentOffer), nextCursor: uuid.optional() });
 export const openDraftInput = z.strictObject({});
 export const editDraftLineInput = z.strictObject({
   qty: quantity,
@@ -103,6 +105,7 @@ export const confirmationRound = z.strictObject({
 });
 
 export type Offer = z.infer<typeof offer>;
+export type SentOffer = z.infer<typeof sentOffer>;
 export type OfferVoting = z.infer<typeof offerVoting>;
 export type Draft = z.infer<typeof draft>;
 export type DraftVersion = z.infer<typeof draftVersion>;

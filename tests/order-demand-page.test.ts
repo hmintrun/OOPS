@@ -2,8 +2,11 @@ import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import OrdersForDemandPage from "@/app/orders/by-demand/[id]/page";
+import OrdersPage from "@/app/orders/page";
+import { DemandCard } from "@/app/feed/DemandCard";
 import { OffersPanel } from "@/app/trade/needs/OffersPanel";
 import { notFound, unauthenticated } from "@/server/errors";
+import { demoDemand } from "./fixtures/foundation";
 
 const { authenticate, listOrders, readBuyerDemand, offerResult, db } = vi.hoisted(() => ({
   authenticate: vi.fn(), listOrders: vi.fn(), readBuyerDemand: vi.fn(), offerResult: vi.fn(), db: {},
@@ -31,7 +34,7 @@ const order = {
   qty: 5, unit: "kg", handoffStart: new Date("2026-11-19T09:00:00+07:00"),
 };
 const buyerDemand = {
-  name: "Pin AA", unit: "viên", missing: 15, needBy: new Date(Date.now() + 48 * 3_600_000).toISOString(),
+  name: "Pin AA", unit: "viên", missing: 15, offerable: 10, needBy: new Date(Date.now() + 48 * 3_600_000).toISOString(),
 };
 const request = () => OrdersForDemandPage({ params: Promise.resolve({ id: demandItemId }) });
 
@@ -81,6 +84,8 @@ describe("orders linked to a published demand", () => {
     const markup = renderToStaticMarkup(createElement(OffersPanel, { id: demandItemId, demand: buyerDemand }));
     expect(markup).toContain("Tặng miễn phí 0đ");
     expect(markup).toContain("Xác nhận gửi đề nghị bán");
+    expect(markup).toContain("Có thể chốt thêm 10 viên");
+    expect(markup).toContain("Có thể chào dự phòng đến 15 viên");
   });
 
   it("does not show buyer progress to an actor outside the demand group", async () => {
@@ -94,4 +99,23 @@ describe("orders linked to a published demand", () => {
     await expect(request()).rejects.toMatchObject({ digest: expect.stringContaining("/login?next=") });
     expect(listOrders).not.toHaveBeenCalled();
   });
+});
+
+it("links a seller's sent offer from the order list before a contract exists", () => {
+  const proposalId = "55555555-5555-4555-8555-555555555555";
+  const draftId = "66666666-6666-4666-8666-666666666666";
+  offerResult.mockReturnValue({ items: [], sentOffers: [{
+    proposalId, demandItemId, draftId, state: "SUBMITTED", itemName: "Pin AA", unit: "viên",
+    terms: { qty: 5, unitPriceVnd: 2_000, handoffBy: "2026-11-19T10:00:00+07:00" },
+  }] });
+  const markup = renderToStaticMarkup(createElement(OrdersPage));
+  expect(markup).toContain("Đã gửi đề nghị");
+  expect(markup).toContain(`href="/trade/drafts/${draftId}?proposal=${proposalId}&amp;need=${demandItemId}"`);
+});
+
+it("shows only the remaining offerable units as the main feed quantity", () => {
+  const item = { ...demoDemand, pending: 7, offerable: 5 };
+  const markup = renderToStaticMarkup(createElement(DemandCard, { item }));
+  expect(markup).toContain("<strong>Có thể chốt thêm 5 chai</strong>");
+  expect(markup).toContain("Đang giữ tạm 7 chai");
 });
