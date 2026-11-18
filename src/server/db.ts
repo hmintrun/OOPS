@@ -5,20 +5,26 @@ import { requiredEnv } from "./config";
 
 let pool: Pool | undefined;
 
+/** Chuẩn hóa chứng chỉ PEM dán qua biến môi trường một dòng (literal `\n`). */
+export function normalizeCaPem(raw: string): string {
+  const trimmed = raw.trim();
+  return trimmed.includes("\\n") ? trimmed.replace(/\\n/g, "\n") : trimmed;
+}
+
 function databasePool() {
   if (pool) return pool;
   const connectionString = requiredEnv("DATABASE_URL");
   const url = new URL(connectionString);
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-  const caFile = process.env.DATABASE_CA_FILE;
-  const caPem = process.env.DATABASE_CA_PEM;
+  const caFile = process.env.DATABASE_CA_FILE?.trim();
+  const caPem = process.env.DATABASE_CA_PEM?.trim();
   // pg's connection-string SSL parameters take precedence over the ssl object.
   for (const option of ["ssl", "sslmode", "sslcert", "sslkey", "sslrootcert"]) url.searchParams.delete(option);
   pool = new Pool({
     connectionString: url.toString(),
     ssl: local ? false : {
       rejectUnauthorized: true,
-      ...(caPem ? { ca: caPem } : caFile ? { ca: readFileSync(caFile, "utf8") } : {}),
+      ...(caPem ? { ca: normalizeCaPem(caPem) } : caFile ? { ca: readFileSync(caFile, "utf8") } : {}),
     },
     max: 5,
     connectionTimeoutMillis: 5_000,

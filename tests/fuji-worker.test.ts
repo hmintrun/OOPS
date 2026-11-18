@@ -273,6 +273,58 @@ describe("Wallet challenge & proof verification", () => {
     expect(mocks.queries.some(q => q.sql.includes("values ($1, $2, $3, 'USED', $4)"))).toBe(true);
   });
 
+  it.each([
+    { name: "đúng ví và thử thách", enabled: true, wallet: WALLET_A, emitter: CONTRACT, ok: true },
+    { name: "sai địa chỉ ví", enabled: true, wallet: WALLET_B, emitter: CONTRACT, ok: false },
+    { name: "event phát từ contract khác", enabled: true, wallet: WALLET_A, emitter: WALLET_B, ok: false },
+    { name: "đã tắt tính năng tài trợ", enabled: false, wallet: WALLET_A, emitter: CONTRACT, ok: false },
+  ])("kiểm tra bằng chứng qua ERC-4337: $name", async ({ enabled, wallet, emitter, ok }) => {
+    const expiresAt = "2026-11-15T00:15:00.000Z";
+    const challengeHash = walletChallengeHash({
+      chainId: FUJI_CHAIN_ID, contractAddress: CONTRACT, userId: USER_A, nonce: NONCE_1, expiresAt,
+    });
+    const result = await prepareWalletProofVerification(
+      USER_A,
+      { address: WALLET_A, proofTx: TX_HASH_1, nonce: NONCE_1 },
+      {
+        confirmationContract: CONTRACT,
+        acceptSponsoredProofs: enabled,
+        loadChallenge: async () => ({ expiresAt, challengeHash, used: false, dbNowMs: Date.parse(expiresAt) - 60_000 }),
+        reader: makeProofReader({
+          getBlock: async () => ({ timestamp: BigInt(Date.parse(expiresAt) / 1000 - 30) }),
+          getTransactionReceipt: async () => ({
+            status: "success",
+            from: WALLET_B, // Bundler, không phải ví ký của hộ.
+            to: "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+            blockNumber: 199n,
+            logs: [{ ...buildWalletProvedLog(wallet, challengeHash, 1_800_000_000n), address: emitter }],
+          }),
+        }),
+      },
+    );
+    expect(result.ok).toBe(ok);
+    if (!result.ok) {
+      expect(result.failure.status).toBe(422);
+      return;
+    }
+    expect(result).toMatchObject({ normalizedAddress: WALLET_A, sponsored: true });
+
+    mocks.setQueryHandler(sql => {
+      if (sql.includes("action = 'ISSUED'")) {
+        return { rows: [{ id: "ae-sponsored", reason: `${expiresAt}|${challengeHash}`, expired: false }] };
+      }
+      if (sql.includes("action = 'USED'")) return { rows: [{ exists: false }] };
+      // Another household has already verified a different log from this bundle.
+      if (sql.includes("where lower(proof_tx)")) return { rows: [{ user_id: USER_B }] };
+      return { rows: [], rowCount: 1 };
+    });
+    const linked = await mocks.transaction(db => linkVerifiedWallet(
+      db as never, { userId: USER_A, displayName: "Hộ A" },
+      { address: WALLET_A, proofTx: TX_HASH_1, nonce: NONCE_1 }, result,
+    ));
+    expect(linked).toEqual({ verificationState: "VERIFIED" });
+  });
+
   it("từ chối bằng chứng sai (ví gửi khác, hết hạn, challenge sai, nonce đã dùng) với 422", async () => {
     const expiresAt = "2026-11-15T00:15:00.000Z";
     const challengeHash = walletChallengeHash({

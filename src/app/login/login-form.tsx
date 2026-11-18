@@ -67,8 +67,11 @@ export function LoginForm() {
   const [resendSeconds, setResendSeconds] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const [pending, setPending] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
   const inFlight = useRef(false);
   const [state, setState] = useState<FormState>({ kind: "idle" });
+
+  useEffect(() => { setHydrated(true); }, []);
 
   useEffect(() => {
     if (resendSeconds <= 0) return;
@@ -217,6 +220,7 @@ export function LoginForm() {
       </div>
 
       <form
+        method="post"
         className="grid gap-3"
         onSubmit={event => {
           event.preventDefault();
@@ -310,7 +314,7 @@ export function LoginForm() {
         )}
 
         <div className="mt-1">
-          <Button type="submit" loading={pending}>
+          <Button type="submit" loading={pending} disabled={!hydrated}>
             <MaterialSymbol name="login" className="ui-btn__icon" />
             {register ? "Đăng ký" : "Đăng nhập"}
           </Button>

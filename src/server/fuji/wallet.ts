@@ -11,6 +11,7 @@ import {
   type Address,
   type Hex,
 } from "viem";
+import { entryPoint07Address, entryPoint08Address } from "viem/account-abstraction";
 import type { WalletChallenge, WalletLinkInput, WalletLinkResult } from "@/contracts/foundation";
 import { FUJI_CHAIN_ID, OOPS_FUJI_ABI } from "@/lib/fuji/abi";
 import type { Actor } from "@/server/auth";
@@ -61,6 +62,7 @@ export type WalletProofPrepared =
       nonce: string;
       challengeHash: Hex;
       expiresAt: string;
+      sponsored?: true;
     }
   | {
       ok: false;
@@ -69,6 +71,7 @@ export type WalletProofPrepared =
 
 export type WalletProofDeps = {
   confirmationContract?: Address;
+  acceptSponsoredProofs?: boolean;
   minConfirmations?: number;
   reader?: FujiProofReader;
   loadChallenge?: (userId: string, nonce: string) => Promise<WalletChallengeRecord | null>;
@@ -268,15 +271,23 @@ export async function prepareWalletProofVerification(
         return { ok: false, failure: invalid("Giao dịch xác minh trên Fuji chưa đủ số block xác nhận.") };
       }
     }
-    if (receipt.from.toLowerCase() !== normalizedAddress) {
-      return { ok: false, failure: invalid("Ví gửi giao dịch trên Fuji không khớp địa chỉ ví đăng ký.") };
-    }
-    if (!receipt.to || receipt.to.toLowerCase() !== confirmationContract.toLowerCase()) {
+    const destination = receipt.to?.toLowerCase();
+    const direct = destination === confirmationContract.toLowerCase();
+    const acceptSponsoredProofs = deps.acceptSponsoredProofs ?? process.env.NEXT_PUBLIC_OOPS_FUJI_EMBEDDED === "true";
+    const sponsored = acceptSponsoredProofs && [entryPoint07Address, entryPoint08Address].some(
+      address => address.toLowerCase() === destination,
+    );
+    if (!direct && !sponsored) {
       return { ok: false, failure: invalid("Giao dịch không gọi đúng hợp đồng xác minh OOPS trên Fuji.") };
     }
+    if (direct && receipt.from.toLowerCase() !== normalizedAddress) {
+      return { ok: false, failure: invalid("Ví gửi giao dịch trên Fuji không khớp địa chỉ ví đăng ký.") };
+    }
 
+    // WalletProved records the caller of OopsFuji. For ERC-4337, the caller is
+    // the household's smart account and the outer transaction sender is the bundler.
     const contractLogs = receipt.logs.filter(
-      log => log.address.toLowerCase() === confirmationContract.toLowerCase(),
+      log => !log.removed && log.address.toLowerCase() === confirmationContract.toLowerCase(),
     );
     const events = parseEventLogs({
       abi: OOPS_FUJI_ABI,
@@ -307,6 +318,7 @@ export async function prepareWalletProofVerification(
       nonce,
       challengeHash: expectedHash,
       expiresAt: challenge.expiresAt,
+      ...(sponsored && { sponsored: true as const }),
     };
   } catch (err) {
     if (err instanceof ApiFailure) return { ok: false, failure: err };
@@ -380,14 +392,16 @@ export async function linkVerifiedWallet(
     return conflict("Địa chỉ ví này đã được liên kết với một tài khoản khác.");
   }
 
-  const { rows: usedTx } = await db.query<{ user_id: string }>(
-    `select user_id from public.wallets
-     where lower(proof_tx) = $1
-     for update`,
-    [prepared.proofTx],
-  );
-  if (usedTx[0]) {
-    return conflict("Giao dịch bằng chứng ví này đã được sử dụng.");
+  // A bundle can contain distinct WalletProved logs for several accounts.
+  // The locked, user-bound nonce prevents reuse of any one proof.
+  if (!prepared.sponsored) {
+    const { rows: usedTx } = await db.query<{ user_id: string }>(
+      `select user_id from public.wallets
+       where lower(proof_tx) = $1
+       for update`,
+      [prepared.proofTx],
+    );
+    if (usedTx[0]) return conflict("Giao dịch bằng chứng ví này đã được sử dụng.");
   }
 
   await db.query(
