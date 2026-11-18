@@ -1,0 +1,195 @@
+.campaign-cart-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-block-end: 12px;
+}
+
+.ui-btn.campaign-cart-ai {
+  min-height: 44px;
+  padding-inline: 12px;
+  font-size: .875rem;
+}
+
+.campaign-cart-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.campaign-cart-table th,
+.campaign-cart-table td {
+  padding-block: 8px;
+  border-block-end: 1px solid var(--oops-line);
+  vertical-align: middle;
+}
+
+.campaign-cart-table th { text-align: start; overflow-wrap: anywhere; }
+.campaign-cart-table th:first-child { padding-inline-end: 12px; }
+.campaign-cart-table :is(th, td):last-child { width: 6rem; text-align: end; }
+.campaign-cart-table thead th,
+.campaign-cart-table tbody span { color: var(--oops-navy-600); font-size: .875rem; }
+.campaign-cart-table tbody th { font-weight: 700; }
+.campaign-cart-table tbody span { font-weight: 400; }
+
+.campaign-cart-table input,
+.cart-chat__composer :is(input, textarea) {
+  min-inline-size: 0;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--oops-line);
+  border-radius: var(--oops-radius-input);
+  background: var(--oops-surface);
+  color: var(--oops-navy-900);
+  font-size: 1rem;
+}
+
+.campaign-cart-table input { text-align: end; font-variant-numeric: tabular-nums; }
+.campaign-cart-table input:disabled { background: var(--oops-haze); color: var(--oops-navy-600); }
+
+.campaign-demand-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name action" "stats stats";
+  align-items: center;
+  gap: 8px 12px;
+  padding: 12px;
+  border: 1px solid var(--oops-line);
+  border-radius: var(--oops-radius-input);
+  background: var(--oops-haze);
+}
+
+.campaign-demand-row h3 { grid-area: name; font-weight: 800; overflow-wrap: anywhere; }
+
+.ui-btn.campaign-demand-link {
+  grid-area: action;
+  justify-self: end;
+  min-height: 44px;
+  padding-inline: 12px;
+  gap: 4px;
+  font-size: .875rem;
+}
+
+.campaign-demand-stats {
+  grid-area: stats;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.campaign-demand-stats > div { display: flex; flex-direction: column; justify-content: space-between; }
+.campaign-demand-stats dt { color: var(--oops-navy-600); font-size: .75rem; }
+.campaign-demand-stats dd { margin-block-start: 2px; font-size: .875rem; font-weight: 700; }
+
+@media (width >= 40rem) {
+  .campaign-demand-row { grid-template-areas: "name action" "stats action"; }
+  .campaign-demand-stats { max-width: 28rem; }
+}
+
+.ui-widget-dialog.cart-chat-dialog {
+  width: min(calc(100% - 24px), 32rem);
+  height: min(36rem, calc(100dvh - 24px));
+  max-width: none;
+  max-height: none;
+  overflow: hidden;
+}
+
+.cart-chat-dialog .ui-widget-dialog__panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+}
+
+.cart-chat-dialog .ui-widget-dialog__body { display: flex; min-height: 0; padding: 0; }
+.cart-chat { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+
+.cart-chat__messages {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  background: var(--oops-haze);
+}
+
+.cart-chat__bubble {
+  align-self: flex-start;
+  max-inline-size: 90%;
+  padding: 10px 14px;
+  border-radius: var(--oops-radius-input) var(--oops-radius-input) var(--oops-radius-input) 4px;
+  background: var(--oops-sky-tint);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cart-chat__bubble--user {
+  align-self: flex-end;
+  border-radius: var(--oops-radius-input) var(--oops-radius-input) 4px var(--oops-radius-input);
+  background: var(--oops-mint);
+  color: var(--oops-green-800);
+}
+
+.cart-chat__reply, .cart-chat__reply ul { display: grid; gap: 8px; }
+.cart-chat__reply ul { padding-block: 4px; }
+.cart-chat__reply li { display: flex; justify-content: space-between; gap: 12px; }
+.cart-chat__reply strong { text-align: end; font-variant-numeric: tabular-nums; }
+.cart-chat__error { background: var(--oops-rose-tint); color: var(--oops-rose-ink); }
+
+.cart-chat__typing { display: flex; gap: 4px; align-items: center; min-height: 38px; }
+.cart-chat__typing > [aria-hidden] {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--oops-navy-600);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cart-chat__typing > [aria-hidden] { animation: cart-chat-dot 1.2s ease-in-out infinite; }
+  .cart-chat__typing > [aria-hidden]:nth-last-child(2) { animation-delay: 120ms; }
+  .cart-chat__typing > [aria-hidden]:last-child { animation-delay: 240ms; }
+
+  @keyframes cart-chat-dot {
+    0%, 60%, 100% { transform: translateY(0); opacity: .55; }
+    30% { transform: translateY(-3px); opacity: 1; }
+  }
+}
+
+.cart-chat__footer {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+  border-block-start: 1px solid var(--oops-line);
+  background: var(--oops-surface);
+}
+
+.cart-chat__footer:empty { display: none; }
+.cart-chat__choices, .cart-chat__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cart-chat__actions { justify-content: flex-end; }
+.cart-chat__footer .ui-btn { min-height: 44px; padding-inline: 12px; font-size: .875rem; }
+.cart-chat__composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.cart-chat__composer .ui-btn { min-inline-size: 44px; }
+.cart-chat__composer textarea { max-height: 7rem; resize: vertical; }
+.cart-chat__composer :is(input, textarea):focus-visible { outline: 2px solid var(--oops-green-700); outline-offset: 1px; }
+
+@media (width < 40rem) {
+  .ui-widget-dialog.cart-chat-dialog {
+    inset: auto 0 0;
+    margin: 0;
+    width: 100%;
+    height: min(36rem, 88dvh);
+    border-radius: var(--oops-radius-card) var(--oops-radius-card) 0 0;
+  }
+}
+
+@media (width < 40rem) and (prefers-reduced-motion: no-preference) {
+  .cart-chat-dialog[open] { animation: cart-chat-open 180ms ease-out; }
+  @keyframes cart-chat-open { from { transform: translateY(24px); opacity: 0; } }
+}

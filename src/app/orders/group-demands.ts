@@ -36,7 +36,7 @@ async function campaignDemands(campaign: Campaign): Promise<GroupDemandOrder[]> 
         ? `${active.length} đề nghị đang thương lượng · Còn thiếu ${item.missing} ${item.unit}`
         : `Chưa có đề nghị đang mở · Còn thiếu ${item.missing} ${item.unit}`,
       needBy: item.needBy,
-      href: `/trade/needs/${item.demandItemId}`,
+      href: `/orders/by-demand/${item.demandItemId}`,
     };
   }));
   return entries.filter((entry): entry is NonNullable<typeof entry> => entry !== undefined);

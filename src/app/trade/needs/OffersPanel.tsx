@@ -35,9 +35,10 @@ function OfferModeArtwork({ gift }: { gift: boolean }) {
   );
 }
 
-export function OffersPanel({ id, standalone = false, demand, proposalId, onCreated, initialGift = false, leadHours = null }: {
+export function OffersPanel({ id, standalone = false, buyerOnly = false, demand, proposalId, onCreated, initialGift = false, leadHours = null }: {
   id: string;
   standalone?: boolean;
+  buyerOnly?: boolean;
   demand?: Pick<DemandItem, "missing" | "needBy" | "unit">;
   proposalId?: string;
   onCreated?: () => void;
@@ -91,10 +92,10 @@ export function OffersPanel({ id, standalone = false, demand, proposalId, onCrea
     }
     try { return await apiFetch(path, { schema: offers }); }
     catch (error) {
-      if (id.startsWith("sample-") || (error instanceof ApiError && error.status === 404)) return { items: [] };
+      if (!buyerOnly && (id.startsWith("sample-") || (error instanceof ApiError && error.status === 404))) return { items: [] };
       throw error;
     }
-  }, [path, id, demand?.missing]);
+  }, [path, id, buyerOnly, demand?.missing]);
   const trade = useTrade(load);
   const [formError, setFormError] = useState("");
   const [isGift, setIsGift] = useState(initialGift);
@@ -106,7 +107,8 @@ export function OffersPanel({ id, standalone = false, demand, proposalId, onCrea
   const [price, setPrice] = useState("20000");
   const [now, setNow] = useState(() => Date.now());
   const effectiveLeadHours = leadHours && leadHours > 0 ? leadHours : 20;
-  const schedule = offerDeliveryWindow(effectiveLeadHours, demand?.needBy, now);
+  const showOfferForm = !buyerOnly && !proposalId;
+  const schedule = showOfferForm ? offerDeliveryWindow(effectiveLeadHours, demand?.needBy, now) : undefined;
   const earliestStart = schedule?.min;
   const latestDelivery = schedule?.max;
   const defaultStart = schedule?.defaultStart;
@@ -114,9 +116,10 @@ export function OffersPanel({ id, standalone = false, demand, proposalId, onCrea
   const amounts = offerAmounts(Number(quantity), isGift ? 0 : price.trim() ? Number(price) : NaN);
 
   useEffect(() => {
+    if (!showOfferForm) return;
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [showOfferForm]);
 
   useEffect(() => {
     if (!earliestStart || !defaultStart || !defaultEnd || !schedule?.available) return;
@@ -128,6 +131,7 @@ export function OffersPanel({ id, standalone = false, demand, proposalId, onCrea
 
   const displayedOffers = proposalId ? trade.data?.items.filter(item => item.proposalId === proposalId) ?? [] : trade.data?.items ?? [];
   const canOffer = Boolean(demand && demand.missing > 0 && Date.parse(demand.needBy) > Date.now());
+  const unit = demand?.unit || "đơn vị";
 
   const handleQuickTime = (mode: "earliest" | "midpoint" | "latest") => {
     if (!earliestStart || !latestDelivery) return;
@@ -149,10 +153,10 @@ export function OffersPanel({ id, standalone = false, demand, proposalId, onCrea
   };
 
   return <div className="grid min-w-0 gap-4">
-    {standalone && <Link href="/feed" className="ui-btn ui-btn--secondary justify-self-start">Về nhu cầu</Link>}
+    {standalone && !buyerOnly && <Link href="/feed" className="ui-btn ui-btn--secondary justify-self-start">Về nhu cầu</Link>}
     <TradeStatus {...trade} retry={() => void trade.refresh()} />
-    {trade.data && <div className={standalone && !proposalId ? "ui-card-grid" : "grid min-w-0 gap-4"}>
-      {!proposalId && (canOffer ? <Card>
+    {trade.data && <div className={standalone && showOfferForm ? "ui-card-grid" : "grid min-w-0 gap-4"}>
+      {showOfferForm && (canOffer ? <Card>
         {/* Chọn chế độ hỗ trợ: Chữ to, có minh họa SVG trực quan */}
         <div className="mb-4">
           <p className="text-label font-extrabold text-navy-900 mb-2">
@@ -530,7 +534,7 @@ export function OffersPanel({ id, standalone = false, demand, proposalId, onCrea
         {!demand && <Link href="/feed" className="ui-btn ui-btn--secondary">Chọn nhu cầu để chào hàng</Link>}
       </Card>)}
 
-      {(standalone || proposalId || trade.data.items.length > 0) && <Card className="grid gap-3">
+      {(buyerOnly || standalone || proposalId || trade.data.items.length > 0) && <Card className="grid gap-3">
         <CardTitle as="h2">{proposalId ? "Theo dõi đề nghị" : "Đề nghị hiện có"}</CardTitle>
         {proposalId && displayedOffers.length === 0 && <p>Không tìm thấy đề nghị này trong tài khoản của bạn.</p>}
         {!proposalId && trade.data.items.length === 0 && <p>Chưa có đề nghị để xem.</p>}
@@ -555,6 +559,11 @@ export function OffersPanel({ id, standalone = false, demand, proposalId, onCrea
                 <span className="text-body font-extrabold text-green-700">
                   {isFreeGift ? "· Miễn phí 0đ" : `· ${vnd(item.terms.unitPriceVnd)} / ${unitLabel}`}
                 </span>
+                {item.terms.supportOffer && (
+                  <span className="rounded-pill bg-sky-tint px-2 py-0.5 text-small font-semibold text-navy-600">
+                    Giá hỗ trợ
+                  </span>
+                )}
               </div>
               <span
                 className="inline-flex items-center gap-1 rounded-pill px-3 py-1 text-small font-extrabold"
@@ -627,7 +636,14 @@ export function OffersPanel({ id, standalone = false, demand, proposalId, onCrea
             )}
 
             {item.draftId ? (
-              <Link className="ui-btn ui-btn--secondary" href={`/trade/drafts/${item.draftId}`}>Xem thương lượng</Link>
+              <div className="grid gap-2">
+                {item.state !== "SUBMITTED" && (
+                  <p className="text-small text-navy-600">
+                    {item.state === "SELECTED" ? "Đề nghị đã chốt đơn." : item.state === "REJECTED" ? "Đề nghị đã từ chối." : "Đề nghị đã hết hạn."}
+                  </p>
+                )}
+                <Link className="ui-btn ui-btn--secondary" href={`/trade/drafts/${item.draftId}`}>Xem thương lượng</Link>
+              </div>
             ) : item.canOpenDraft ? (
               <Button variant="secondary" disabled={trade.busy} onClick={() => void trade.run(
                 `draft:${item.proposalId}`, key => apiFetch(`/api/v1/offers/${item.proposalId}/draft`, {

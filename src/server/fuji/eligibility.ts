@@ -21,19 +21,21 @@ export async function checkFujiEligibility(wallets: readonly string[]) {
         credential.inputs.length !== 1 || credential.inputs[0].type !== "address" ||
         credential.outputs.length !== 1 || !["bool", "uint256"].includes(credential.outputs[0].type)) throw unavailable();
     const client = createPublicClient({ chain: avalancheFuji, transport: http(url.toString(), { timeout: 5_000, retryCount: 0 }) });
-    if (await client.getChainId() !== avalancheFuji.id) throw unavailable();
-    const blockNumber = await client.getBlockNumber();
-    const code = await client.getCode({ address: contractAddress, blockNumber });
+    const [chainId, blockNumber] = await Promise.all([client.getChainId(), client.getBlockNumber()]);
+    if (chainId !== avalancheFuji.id) throw unavailable();
+    const [code, eligible] = await Promise.all([
+      client.getCode({ address: contractAddress, blockNumber }),
+      Promise.all(wallets.map(async wallet => {
+        if (!isAddress(wallet)) throw unavailable();
+        const value = await client.readContract({
+          address: credentialAddress, abi: [credential], functionName: credential.name, args: [wallet], blockNumber,
+        });
+        if (typeof value === "boolean") return value;
+        if (typeof value === "bigint") return value > 0n;
+        throw unavailable();
+      })),
+    ]);
     if (!code || code === "0x") throw unavailable();
-    const eligible = await Promise.all(wallets.map(async wallet => {
-      if (!isAddress(wallet)) throw unavailable();
-      const value = await client.readContract({
-        address: credentialAddress, abi: [credential], functionName: credential.name, args: [wallet], blockNumber,
-      });
-      if (typeof value === "boolean") return value;
-      if (typeof value === "bigint") return value > 0n;
-      throw unavailable();
-    }));
     return { chainId: avalancheFuji.id, contractAddress, eligible };
   } catch {
     throw unavailable();
