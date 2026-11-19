@@ -11,14 +11,14 @@ export function parallelTiming() {
     if (!Number.isInteger(value) || value <= 0 || value > 8760) throw unavailable();
     return Math.min(value, max);
   };
-  const vote = hours("OOPS_VOTE_HOURS", 2);
-  const sellerResponse = hours("OOPS_SELLER_RESPONSE_HOURS", 2);
+  const vote = hours("OOPS_VOTE_HOURS", 3);
+  const sellerResponse = hours("OOPS_SELLER_RESPONSE_HOURS", 3);
   const confirm = hours("OOPS_FUJI_SIGN_HOURS", 6);
   const deposit = hours("OOPS_DEPOSIT_HOURS");
   if (deposit > confirm) throw unavailable();
-  return { vote, sellerResponse, confirm, deposit, preparation: 2, receipt: 24 };
+  return { vote, sellerResponse, confirm, deposit, receipt: 24 };
 }
 
 export function parallelLeadHours(timing = parallelTiming()) {
-  return timing.sellerResponse + timing.preparation + timing.confirm;
+  return timing.sellerResponse + timing.confirm;
 }

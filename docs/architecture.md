@@ -53,7 +53,7 @@ flowchart LR
 
 ### Trạng thái thương lượng và thời hạn
 
-Backend lưu hạn phản hồi bằng thời điểm đóng phiếu cộng 2 giờ theo cấu hình MVP. Khi worker đóng vòng trễ, mốc tính vẫn là hạn phiếu đã lưu. Hạn ký và thu cuối cùng cách giờ bắt đầu giao ít nhất 2 giờ. Hạn duyệt biên nhận là `handoffBy + 24 giờ`. [Quy tắc thời hạn](OOPS-Spec.md#8-thời-hạn) · [Chuẩn băm phiên bản](OOPS-Spec.md#chuẩn-băm-phiên-bản)
+Backend lưu hạn phản hồi bằng thời điểm đóng phiếu cộng 3 giờ theo cấu hình MVP. Khi worker đóng vòng trễ, mốc tính vẫn là hạn phiếu đã lưu. Hạn ký và thu cuối cùng có thể sát giờ bắt đầu giao. Hạn duyệt biên nhận là `handoffBy + 24 giờ`. [Quy tắc thời hạn](OOPS-Spec.md#8-thời-hạn) · [Chuẩn băm phiên bản](OOPS-Spec.md#chuẩn-băm-phiên-bản)
 
 | Trạng thái bản | Hành động hoặc mốc | Kết quả và thông báo |
 | --- | --- | --- |
@@ -62,12 +62,12 @@ Backend lưu hạn phản hồi bằng thời điểm đóng phiếu cộng 2 gi
 | `SUBMITTED` | Hết hạn người bán phản hồi | `EXPIRED` với lý do `SELLER_TIMEOUT`. Đề nghị cũng hết hạn. |
 | `SUBMITTED` | Lượng không đủ khi người bán chốt | `STOCK_CONFLICT`. Ghi trạng thái và sự kiện rồi trả `409`. |
 
-Thiết lập bốn biến sau trên server trước khi tạo đề nghị mới. Mỗi biến nhận số giờ nguyên từ 1 đến 8760. Server giới hạn vòng phiếu và phản hồi ở 2 giờ mỗi bước, hạn ký và thu ở 6 giờ. Hạn cọc không vượt quá hạn chung.
+Thiết lập bốn biến sau trên server trước khi tạo đề nghị mới. Mỗi biến nhận số giờ nguyên từ 1 đến 8760. Server giới hạn vòng phiếu và phản hồi ở 3 giờ mỗi bước, hạn ký và thu ở 6 giờ. Hạn cọc không vượt quá hạn chung.
 
 | Biến | Mốc tính |
 | --- | --- |
-| `OOPS_VOTE_HOURS=2` | Từ lúc mở vòng phiếu. |
-| `OOPS_SELLER_RESPONSE_HOURS=2` | Từ lúc đóng vòng phiếu. |
+| `OOPS_VOTE_HOURS=3` | Từ lúc mở vòng phiếu. |
+| `OOPS_SELLER_RESPONSE_HOURS=3` | Từ lúc đóng vòng phiếu. |
 | `OOPS_FUJI_SIGN_HOURS=6` | Từ timestamp block mở vòng đến hạn chung `confirmBy` và `paymentDueAt` của đơn có giá. |
 | `OOPS_DEPOSIT_HOURS=6` | Từ timestamp block mở vòng đến hạn cọc của người bán. |
 

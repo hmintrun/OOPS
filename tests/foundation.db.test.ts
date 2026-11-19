@@ -272,7 +272,7 @@ async function databaseTime() {
 
 describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", () => {
   const previousPaymentMode = process.env.OOPS_PAYMENT_MODE;
-  // Older deployments can still have longer values configured.
+  // Older deployments can still have twelve hours configured for signing.
   const timing = {
     OOPS_VOTE_HOURS: "3", OOPS_SELLER_RESPONSE_HOURS: "3",
     OOPS_FUJI_SIGN_HOURS: "12", OOPS_DEPOSIT_HOURS: "6",
@@ -525,7 +525,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       `select (extract(epoch from seller_response_due_at - submitted_at) / 3600)::int as hours
        from public.negotiation_versions where id = $1`, [version.versionId],
     ));
-    expect(responseWindow.hours).toBe(2);
+    expect(responseWindow.hours).toBe(3);
     const { approved, participants } = await transaction(async db => {
       const { rows: participants } = await db.query<{ membership_id: string; user_id: string }>(
         `select l.membership_id, m.user_id from public.negotiation_version_lines l
@@ -553,7 +553,10 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(sellerOrder.allocations).toEqual(repOrder.allocations.map(({ householdName, ...row }) => row));
     expect((await orderFor(contractId, third)).allocations).toEqual([sellerOrder.allocations[1]]);
     const deposit = sellerOrder.charges[0];
-    expect(sellerOrder).toMatchObject({ state: "AWAIT_COMMITMENTS", qty: 7, roundId, roundOpenBy: expect.any(String) });
+    expect(sellerOrder).toMatchObject({
+      state: "AWAIT_COMMITMENTS", qty: 7, roundId,
+      roundOpenBy: new Date(Date.parse(version.handoffStart) - 6 * 3_600_000).toISOString(),
+    });
     expect(sellerOrder.depositDueAt).toBeUndefined();
     expect(sellerOrder.confirmBy).toBeUndefined();
     expect(deposit.canPay).toBe(false);

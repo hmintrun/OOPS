@@ -123,12 +123,12 @@ export async function approveWithFujiEligibility(
   const { rows: [approved] } = await db.query<VersionRow>(
     `with ts as materialized (select clock_timestamp() as at)
      update public.negotiation_versions v set state = $5, seller_approved_at = ts.at,
-       seller_note = $2, confirm_by = case when $4::int is null then handoff_start - make_interval(hours => $6)
+       seller_note = $2, confirm_by = case when $4::int is null then handoff_start
          else ts.at + make_interval(hours => $3) end,
        rep_approve_by = case when $4::int is not null then ts.at + make_interval(hours => $4) end
      from ts where v.id = $1 and ts.at < v.seller_response_due_at returning v.*`,
     [versionId, note ?? null, demoTiming.confirm, timing ? null : demoTiming.confirm + demoTiming.representative,
-      timing ? "FINALIZED" : "AWAIT_CONFIRMATIONS", timing?.preparation ?? demoTiming.preparation],
+      timing ? "FINALIZED" : "AWAIT_CONFIRMATIONS"],
   );
   if (!approved) throw conflict("Đã hết hạn người bán phản hồi.");
   const { rows: [created] } = await db.query<{ id: string; open_by: Date | null }>(
