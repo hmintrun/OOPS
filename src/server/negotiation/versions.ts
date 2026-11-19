@@ -1,9 +1,10 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
+import type { SellerResponse } from "@/contracts/negotiation";
 import { conflict, invalid, notFound } from "../errors";
 import { assertOfferOpen, draftDto, lockDraft, requireInitiator, type Proposal } from "./drafts";
-import { goodsAmount } from "./offers";
+import { goodsAmount, offerBuyerRecipients } from "./offers";
 import { hashNegotiationVersion } from "./version-hash";
 import { latestVersion, versionDto, type VersionRow } from "./version-records";
 import { parallelLeadHours, parallelTiming, requiredLeadHours, sellerResponseHours } from "./timing";
@@ -12,6 +13,7 @@ export async function recordVersionState(
   client: PoolClient, proposal: Proposal, version: VersionRow, actorId: string | null,
 ) {
   let recipientUserIds = [proposal.seller_id];
+  const voteReopened = version.state === "CHANGES_REQUESTED" && proposal.vote_due_at !== null;
   if (version.state === "AWAIT_CONFIRMATIONS") {
     recipientUserIds = []; // Notify participants after the indexer has observed the round open.
   } else if (version.state === "AWAIT_REP_APPROVAL") {
@@ -19,6 +21,8 @@ export async function recordVersionState(
       "select user_id from public.memberships where group_id = $1 and role = 'REP' and left_at is null", [proposal.group_id],
     );
     recipientUserIds = rows.map(row => row.user_id);
+  } else if (voteReopened) {
+    recipientUserIds = await offerBuyerRecipients(client, proposal.demand_item_id, proposal.seller_id);
   } else if (version.state !== "SUBMITTED") {
     const { rows } = await client.query<{ user_id: string }>(
       `select m.user_id from public.negotiation_version_lines l
@@ -40,6 +44,7 @@ export async function recordVersionState(
     versionId: version.id,
     version: version.version,
     state: version.state,
+    ...(voteReopened && { voteReopened }),
     ...(version.reason_code && { reasonCode: version.reason_code }),
     recipientUserIds: [...new Set(recipientUserIds)].sort(),
   };
@@ -182,8 +187,20 @@ export async function reviseDraft(client: PoolClient, userId: string, draftId: s
 }
 
 export async function respondToVersion(
-  client: PoolClient, sellerId: string, draftId: string, expectedVersion: number, action: "REJECT" | "REQUEST_CHANGES", note?: string,
+  client: PoolClient, sellerId: string, draftId: string, expectedVersion: number, body: Exclude<SellerResponse, { action: "APPROVE" }>,
 ) {
+  if (body.action === "REVISE_OFFER") {
+    // Match voting and approval by locking demand before the proposal and version.
+    const { rows: [demand] } = await client.query<{ missing: number }>(
+      `select d.target - d.reserved - d.received as missing from public.negotiations n
+       join public.proposals p on p.id = n.proposal_id
+       join public.demand_items d on d.id = p.demand_item_id
+       where n.id = $1 and p.seller_id = $2 for update of d`, [draftId, sellerId],
+    );
+    if (!demand) throw notFound();
+    if (body.qty > demand.missing) throw conflict("Lượng chào vượt lượng nhu cầu còn thiếu.");
+    goodsAmount(body.qty, BigInt(body.unitPriceVnd));
+  }
   const { proposal } = await lockDraft(client, draftId);
   if (proposal.seller_id !== sellerId) throw notFound();
   await assertOfferOpen(client, proposal);
@@ -191,23 +208,32 @@ export async function respondToVersion(
   if (current?.version !== expectedVersion || current.state !== "SUBMITTED") {
     throw conflict("Phiên bản đã thay đổi hoặc không còn chờ phản hồi.");
   }
-  const state = action === "REJECT" ? "REJECTED" : "CHANGES_REQUESTED";
+  if (body.action === "REQUEST_CHANGES" && proposal.vote_due_at) {
+    throw conflict("Hãy gửi giá và số lượng để mở vòng bỏ phiếu mới.");
+  }
+  if (body.action === "REVISE_OFFER" && !proposal.vote_due_at) {
+    throw conflict("Đề nghị này dùng bản nháp của nhóm.");
+  }
+  const state = body.action === "REJECT" ? "REJECTED" : "CHANGES_REQUESTED";
   const { rows: [updated] } = await client.query<VersionRow>(
     `update public.negotiation_versions set state = $2, seller_note = $3
      where id = $1 and seller_response_due_at > clock_timestamp() returning *`,
-    [current.id, state, note ?? null],
+    [current.id, state, body.note ?? null],
   );
   if (!updated) throw conflict("Đã hết hạn người bán phản hồi.");
   if (state === "REJECTED") {
     await client.query("update public.proposals set state = 'REJECTED' where id = $1", [proposal.id]);
   }
-  if (state === "CHANGES_REQUESTED" && proposal.vote_due_at) {
+  if (body.action === "REVISE_OFFER") {
     const timing = parallelTiming();
     const lead = parallelLeadHours(timing);
     const opened = await client.query(
-      `update public.proposals set vote_due_at = clock_timestamp() + make_interval(hours => $2)
-       where id = $1 and handoff_start >= clock_timestamp() + make_interval(hours => $3)`,
-      [proposal.id, timing.vote, timing.vote + lead],
+      `with ts as materialized (select clock_timestamp() as at)
+       update public.proposals set qty = $2, unit_price_vnd = $3,
+         support_offer = case when unit_price_vnd = 0 or $3::bigint = 0 then $3::bigint = 0 else support_offer end,
+         vote_due_at = ts.at + make_interval(hours => $4)
+       from ts where id = $1 and handoff_start >= ts.at + make_interval(hours => $5)`,
+      [proposal.id, body.qty, body.unitPriceVnd, timing.vote, timing.vote + lead],
     );
     if (!opened.rowCount) throw conflict("Lịch giao không còn đủ thời gian để mở vòng phiếu mới.");
     await client.query("update public.negotiations set draft_open = true, edit_revision = edit_revision + 1 where id = $1", [draftId]);

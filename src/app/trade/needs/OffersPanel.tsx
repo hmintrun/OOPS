@@ -15,7 +15,7 @@ import { TradeStatus } from "../TradeStatus";
 import { VotePanel } from "../VotePanel";
 import { QuantityInput } from "@/components/ui/QuantityInput";
 import { offerAmounts } from "@/lib/offer-preview";
-import { offerDeliveryWindow } from "@/lib/offer-schedule";
+import { DEFAULT_OFFER_LEAD_HOURS, offerDeliveryWindow } from "@/lib/offer-schedule";
 import { offerProgressHref } from "../offer-links";
 
 function OfferModeArtwork({ gift }: { gift: boolean }) {
@@ -110,7 +110,8 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, activeO
   const [quantity, setQuantity] = useState(String(Math.max(1, demand?.offerable ?? 1)));
   const [price, setPrice] = useState("20000");
   const [now, setNow] = useState(() => Date.now());
-  const effectiveLeadHours = leadHours && leadHours > 0 ? leadHours : 20;
+  const [voteRevision, setVoteRevision] = useState(0);
+  const effectiveLeadHours = leadHours && leadHours > 0 ? leadHours : DEFAULT_OFFER_LEAD_HOURS;
   const showOfferForm = !buyerOnly && !proposalId;
   const schedule = showOfferForm ? offerDeliveryWindow(effectiveLeadHours, demand?.needBy, now) : undefined;
   const earliestStart = schedule?.min;
@@ -364,7 +365,9 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, activeO
             <div>
               <dt className="sr-only">Cách tính cọc</dt>
               <dd className="text-small text-navy-600">
-                Cọc 10% tiền hàng (tối thiểu 50.000đ) để giữ cam kết giao hàng, hoàn lại 100% sau khi bàn giao xong.
+                {isGift
+                  ? "Đơn tặng 0đ vẫn cần cọc cam kết 50.000đ để tránh hứa ảo trong đợt cứu trợ — hoàn lại 100% ngay sau khi đại diện xác nhận nhận hàng."
+                  : "Cọc 10% tiền hàng (tối thiểu 50.000đ) để giữ cam kết giao hàng, hoàn lại 100% sau khi bàn giao xong."}
               </dd>
             </div>
           </dl>
@@ -550,9 +553,9 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, activeO
             {/* Header gọn: Số lượng + Đơn giá bên trái, 1 badge trạng thái bên phải */}
             <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-line">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <strong className="text-title font-extrabold text-navy-900 tabular-nums">
+                {item.draftId ? <Link href={offerProgressHref(item)} className="text-title font-extrabold text-navy-900 tabular-nums underline underline-offset-4">
                   {item.terms.qty} {unitLabel}
-                </strong>
+                </Link> : <strong className="text-title font-extrabold text-navy-900 tabular-nums">{item.terms.qty} {unitLabel}</strong>}
                 <span className="text-body font-extrabold text-green-700">
                   {isFreeGift ? "· Miễn phí 0đ" : `· ${vnd(item.terms.unitPriceVnd)} / ${unitLabel}`}
                 </span>
@@ -627,20 +630,16 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, activeO
                 proposalId={item.proposalId}
                 context={{ offer: item, unit: demand?.unit }}
                 offerState={item.state}
-                refreshSignal={`${item.state}:${item.voteDueAt}`}
+                refreshSignal={`${item.state}:${item.voteDueAt}:${voteRevision}`}
                 onUpdated={() => void trade.refresh()}
+                onVoteSaved={() => setVoteRevision(revision => revision + 1)}
               />
             )}
 
             {item.draftId ? (
-              <div className="grid gap-2">
-                {item.state !== "SUBMITTED" && (
-                  <p className="text-small text-navy-600">
-                    {item.state === "SELECTED" ? "Đề nghị đã chốt đơn." : item.state === "REJECTED" ? "Đề nghị đã từ chối." : "Đề nghị đã hết hạn."}
-                  </p>
-                )}
-                <Link className="ui-btn ui-btn--secondary" href={offerProgressHref(item)}>Xem thương lượng</Link>
-              </div>
+              item.state !== "SUBMITTED" && <p className="text-small text-navy-600">
+                {item.state === "SELECTED" ? "Đề nghị đã chốt đơn." : item.state === "REJECTED" ? "Đề nghị đã từ chối." : "Đề nghị đã hết hạn."}
+              </p>
             ) : item.canOpenDraft ? (
               <Button variant="secondary" disabled={trade.busy} onClick={() => void trade.run(
                 `draft:${item.proposalId}`, key => apiFetch(`/api/v1/offers/${item.proposalId}/draft`, {

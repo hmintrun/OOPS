@@ -19,9 +19,10 @@ const timeoutMessages = {
   FINALIZE_TIMEOUT: "Đại diện chưa chốt đơn trước hạn.",
 } satisfies Record<NonNullable<DraftVersion["reasonCode"]>, string>;
 
-export function VersionSummary({ version, seller }: { version: DraftVersion; seller: boolean }) {
+export function VersionSummary({ version, seller, votingOffer }: { version: DraftVersion; seller: boolean; votingOffer: boolean }) {
   const status = statuses[version.state];
   const pendingResponse = version.state === "SUBMITTED";
+  const statusLabel = votingOffer && version.state === "CHANGES_REQUESTED" ? "Đã mở vòng bỏ phiếu mới" : status.label;
   const deadline = pendingResponse ? version.sellerResponseDueAt
     : version.state === "AWAIT_REP_APPROVAL" ? version.repApproveBy : undefined;
   const households = version.lines ?? [];
@@ -31,7 +32,7 @@ export function VersionSummary({ version, seller }: { version: DraftVersion; sel
       <CardTitle as="h2" className="mb-0!">Phiên bản {version.version}</CardTitle>
       <span className={`inline-flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${status.tone}`}>
         <MaterialSymbol name={status.icon} size={16} className="shrink-0" />
-        {seller && pendingResponse ? "Chờ bạn phản hồi" : status.label}
+        {seller && pendingResponse ? "Chờ bạn phản hồi" : statusLabel}
       </span>
     </header>
 

@@ -29,7 +29,7 @@
   --oops-sun: #ffcf55;
   --oops-sun-tint: #fff2cc;
   --oops-lagoon: #32bfdb;
-  --oops-haze: #f4fbf8;
+  --oops-haze: #f6fbf8;
 
   /* Tile pastel */
   --oops-amber-tint: #fff6e0;
@@ -40,10 +40,10 @@
   --oops-violet-tint: #eeeaff;
   --oops-violet-ink: #514292;
 
-  /* Bề mặt */
+  /* Bề mặt (nền mist-mint dịu mắt hơn để thẻ trắng nổi nhẹ như mây) */
   --oops-surface: #ffffff;
-  --oops-line: #e2eaf2;
-  --oops-page-green: #cfe8d4;
+  --oops-line: #e5eef3;
+  --oops-page-green: #eef6f0;
 
   /* Ngữ nghĩa */
   --oops-danger: #b72d39;
@@ -56,8 +56,8 @@
   --oops-radius-pill: 999px;
 
   /* Shadow */
-  --oops-shadow-card: 0 4px 20px -2px rgba(14, 39, 68, 0.07), 0 2px 6px -1px rgba(14, 39, 68, 0.04);
-  --oops-shadow-nav: 0 -4px 16px rgba(20, 56, 95, 0.06);
+  --oops-shadow-card: 0 6px 24px -4px rgba(14, 39, 68, 0.055), 0 2px 6px -1px rgba(14, 39, 68, 0.03);
+  --oops-shadow-nav: 0 -4px 18px rgba(14, 39, 68, 0.055);
 
   /* Font */
   --oops-font-sans: "Nunito", system-ui, -apple-system, sans-serif;

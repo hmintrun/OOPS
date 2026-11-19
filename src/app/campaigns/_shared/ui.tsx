@@ -36,7 +36,7 @@ const CHIP_CLASS: Record<ChipTone, string> = {
   green: "bg-green-100 text-green-700",
   amber: "bg-amber-tint text-navy-900",
   rose: "bg-rose-tint text-danger",
-  neutral: "bg-slate-200 text-slate-700",
+  neutral: "bg-sky-tint text-navy-600",
 };
 
 export function Chip({
@@ -134,9 +134,9 @@ export function LoadingState({ label = "Đang tải…" }: { label?: string }) {
     <div
       role="status"
       aria-live="polite"
-      className="flex items-center justify-center gap-[10px] py-[24px] text-body text-navy-700"
+      className="flex items-center justify-center gap-[10px] py-[24px] text-body text-navy-600"
     >
-      <MaterialSymbol name="progress_activity" size={22} className="ui-spin text-emerald-700 animate-spin" />
+      <MaterialSymbol name="progress_activity" size={22} className="ui-spin text-green-700 animate-spin" />
       <span className="font-medium">{label}</span>
     </div>
   );

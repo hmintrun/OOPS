@@ -80,6 +80,7 @@ function InviteEntryForm() {
           id="invite-link"
           className="h-control w-full rounded-input border border-line bg-surface px-4 text-body text-navy-900"
           type="text"
+          placeholder="VD: J9NNPZF8 hoặc dán liên kết mời"
           autoComplete="off"
           autoCapitalize="none"
           spellCheck={false}
@@ -91,7 +92,6 @@ function InviteEntryForm() {
         />
         {error && <p id="invite-link-error" role="alert" className="text-small text-danger">{error}</p>}
         <Button type="submit">Tham gia nhóm</Button>
-        <Link href="/groups" className="ui-btn ui-btn--ghost ui-btn--full">Về nhóm của tôi</Link>
       </form>
     </Card>
   );

@@ -44,7 +44,7 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
       <Link href={`/campaigns/${campaign.campaignId}`} prefetch={false} className="block">
         <Card
           className={`ui-campaign-status flex items-center gap-[12px] ${
-            isPublished ? "bg-slate-100 border border-slate-200 text-slate-700" : ""
+            isPublished ? "border border-line text-navy-600" : ""
           }`}
           data-campaign-status={displayState}
         >
@@ -52,14 +52,14 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
             <div className="flex flex-wrap items-center gap-[8px]">
               <CampaignStateChip state={displayState} />
             </div>
-            <p className={`mt-[6px] text-body ${isPublished ? "text-slate-800" : ""}`}>
+            <p className={`mt-[6px] text-body ${isPublished ? "text-navy-900" : ""}`}>
               Gom đến <strong>{formatDateTime(campaign.collectUntil)}</strong>
             </p>
-            <p className={`text-body ${isPublished ? "text-slate-500" : ""}`}>
+            <p className={`text-body ${isPublished ? "text-navy-600" : ""}`}>
               Cần hàng trước {formatDateTime(campaign.needBy)}
             </p>
           </div>
-          <span className={`material-symbols-rounded flex-none text-[24px] ${isPublished ? "text-slate-400" : ""}`}>
+          <span className={`material-symbols-rounded flex-none text-[24px] ${isPublished ? "text-navy-600" : ""}`}>
             chevron_right
           </span>
         </Card>
@@ -112,7 +112,7 @@ function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated
   return (
     <Card>
       <CardTitle>Tạo đợt gom mới</CardTitle>
-      <form className="grid gap-[12px]" onSubmit={event => { event.preventDefault(); void submit(); }}>
+      <form noValidate className="grid gap-[12px]" onSubmit={event => { event.preventDefault(); void submit(); }}>
         <Field
           label="Gom nhu cầu đến"
           error={fieldErrors.collectUntil}

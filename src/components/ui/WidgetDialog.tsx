@@ -21,7 +21,16 @@ export function WidgetDialog({ title, icon, onClose, children, className }: {
   return (
     <dialog ref={ref} className={className ? `ui-widget-dialog ${className}` : "ui-widget-dialog"} aria-labelledby={titleId}
       onCancel={event => { event.preventDefault(); onClose(); }}
-      onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
+      onClick={event => {
+        if (event.target !== event.currentTarget) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const clickedBackdrop =
+          event.clientX < rect.left ||
+          event.clientX > rect.right ||
+          event.clientY < rect.top ||
+          event.clientY > rect.bottom;
+        if (clickedBackdrop) onClose();
+      }}>
       <div className="ui-widget-dialog__panel">
         <header className="ui-widget-dialog__header">
           <div className="ui-widget-dialog__title">

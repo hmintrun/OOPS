@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
-import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
+import { Button, Card, CardTitle, EmptyState, MaterialSymbol } from "@/components/ui";
 import { sentOfferList, type SentOffer } from "@/contracts/negotiation";
 import { contractList, type Contract } from "@/contracts/orders";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -106,27 +106,15 @@ export default function OrdersPage() {
     )}
   >
     <div className="ui-stack">
-      <label className="orders-role-filter">
-        <span className="text-label">Vai trò</span>
-        <select
-          value={role}
-          onChange={event => {
-            const nextRole = event.target.value;
-            writeClientCache("orders:role", nextRole);
-            setRole(nextRole);
-          }}
-        >
-          <option value="">Tất cả vai trò</option>
-          <option value="buyer">Đơn mua</option>
-          <option value="seller">Đơn bán</option>
-        </select>
-      </label>
-      <OrderResults key={role} role={role} />
+      <OrderResults key={role} role={role} onRoleChange={nextRole => {
+        writeClientCache("orders:role", nextRole);
+        setRole(nextRole);
+      }} />
     </div>
   </AppShell>;
 }
 
-function OrderResults({ role }: { role: string }) {
+function OrderResults({ role, onRoleChange }: { role: string; onRoleChange: (nextRole: string) => void }) {
   const router = useRouter();
   const isDemo = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
   const load = useCallback(async (): Promise<FirstOrderPageData> => {
@@ -237,7 +225,19 @@ function OrderResults({ role }: { role: string }) {
           receivingName: "Cô Mai (Đại diện tầng 5)",
         },
       ];
-      return { items: sampleContracts, groupDemands: sampleGroupDemands, demandError: "", sentOffers: [], offerError: "" };
+      const filteredDemoContracts = role === "seller"
+        ? sampleContracts.slice(0, 2)
+        : role === "buyer"
+          ? sampleContracts.slice(2)
+          : sampleContracts;
+      const filteredDemoDemands = role === "seller" ? [] : sampleGroupDemands;
+      return {
+        items: filteredDemoContracts,
+        groupDemands: filteredDemoDemands,
+        demandError: "",
+        sentOffers: [],
+        offerError: "",
+      };
     }
     const [contracts, groupDemands, sentOffers] = await Promise.all([
       readOrders(role),
@@ -409,13 +409,37 @@ function OrderResults({ role }: { role: string }) {
   }
 
   return <>
-      <TradeStatus {...trade} retry={() => void trade.refresh()} />
+      <TradeStatus {...trade} loading={trade.loading && !first} retry={() => void trade.refresh()} />
       {first && <>
         {first.demandError && <p role="alert" className="rounded-input bg-amber-tint p-3 text-small">{first.demandError}</p>}
         {first.offerError && <p role="alert" className="rounded-input bg-amber-tint p-3 text-small">{first.offerError}</p>}
-        <Button variant="secondary" full={false} disabled={trade.loading || trade.busy} onClick={() => void trade.refresh()}>
-          Cập nhật đơn hàng
-        </Button>
+        <div className="orders-toolbar">
+          <div role="group" aria-label="Vai trò đơn hàng" className="orders-role-Segmented">
+            {[
+              { value: "", label: "Tất cả", icon: "apps" },
+              { value: "buyer", label: "Đơn mua", icon: "shopping_bag" },
+              { value: "seller", label: "Đơn bán", icon: "storefront" },
+            ].map(option => {
+              const active = role === option.value;
+              return (
+                <button
+                  key={option.value || "all"}
+                  type="button"
+                  aria-pressed={active}
+                  className={`orders-role-pill ${active ? "orders-role-pill--active" : ""}`}
+                  onClick={() => onRoleChange(option.value)}
+                >
+                  <MaterialSymbol name={option.icon} size={17} />
+                  <span>{option.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <Button variant="secondary" full={false} className="orders-refresh-btn" disabled={trade.loading || trade.busy} onClick={() => void trade.refresh()}>
+            <MaterialSymbol name="refresh" size={18} className={trade.loading ? "ui-spin" : ""} />
+            Cập nhật
+          </Button>
+        </div>
         <div role="group" aria-label="Lọc theo tiến độ" className="orders-tabs">
           {tabs.map(tab => (
             <Button key={tab.key} full={false} variant={tab.key === activeTab ? "primary" : "secondary"}
@@ -428,8 +452,15 @@ function OrderResults({ role }: { role: string }) {
             </Button>
           ))}
         </div>
-        {displayedOrders.length === 0 && (!results?.nextCursor || activeTab === "negotiating") && !first.demandError && !first.offerError &&
-          <Card className="ui-status-card"><p>Chưa có đơn hàng ở mục này.</p></Card>}
+        {displayedOrders.length === 0 && (!results?.nextCursor || activeTab === "negotiating") && !first.demandError && !first.offerError && (
+          <EmptyState
+            icon="inventory_2"
+            tone="amber"
+            title="Chưa có đơn hàng ở mục này"
+            description="Ghé Nhu cầu cộng đồng để chào hàng hoặc tạo đợt gom mới cùng nhóm của bạn."
+            action={<Link href="/feed" className="ui-btn ui-btn--secondary">Xem nhu cầu khu phố</Link>}
+          />
+        )}
         {displayedOrders.length > 0 && <div className="ui-card-grid">
           {displayedOrders.map(entry => {
             if (entry.kind === "offer") return <SentOfferCard key={entry.offer.proposalId} offer={entry.offer} />;
@@ -445,31 +476,38 @@ function OrderResults({ role }: { role: string }) {
                 {["Thương lượng", "Ký & Cọc", "Bàn giao", "Hoàn tất"].map((label, idx) => (
                   <div key={label} className="order-card__step" data-done={idx === 0} data-active={idx === 0}>
                     <span className="order-card__step-bar" />
-                    <span>{label}</span>
+                    <span>{idx + 1}. {label}</span>
                   </div>
                 ))}
               </div>
-              <div className="order-card__meta-list">
-                <p className="order-card__meta">
+              <div className="order-card__details-grid">
+                <div className="order-card__detail-cell">
                   <span className="order-card__meta-icon order-card__meta-icon--time">
                     <MaterialSymbol name="schedule" size={16} />
                   </span>
-                  <span>Cần trước <strong>{dateTime(entry.demand.needBy)}</strong></span>
-                </p>
-              </div>
-              <div className="order-card__receiving">
-                <p className="order-card__meta">
-                  <span className="order-card__meta-icon order-card__meta-icon--place">
-                    <MaterialSymbol name="location_on" size={16} />
-                  </span>
-                  <span>Điểm nhận · <strong>{entry.demand.receivingPlace}</strong></span>
-                </p>
-                <p className="order-card__meta">
+                  <div className="order-card__detail-text">
+                    <span className="order-card__detail-label">Cần trước</span>
+                    <strong className="order-card__detail-value">{dateTime(entry.demand.needBy)}</strong>
+                  </div>
+                </div>
+                <div className="order-card__detail-cell">
                   <span className="order-card__meta-icon order-card__meta-icon--person">
                     <MaterialSymbol name="person" size={16} />
                   </span>
-                  <span>Người nhận · <strong>{entry.demand.receivingName}</strong></span>
-                </p>
+                  <div className="order-card__detail-text">
+                    <span className="order-card__detail-label">Người nhận</span>
+                    <strong className="order-card__detail-value">{entry.demand.receivingName}</strong>
+                  </div>
+                </div>
+                <div className="order-card__detail-cell order-card__detail-cell--wide">
+                  <span className="order-card__meta-icon order-card__meta-icon--place">
+                    <MaterialSymbol name="location_on" size={16} />
+                  </span>
+                  <div className="order-card__detail-text">
+                    <span className="order-card__detail-label">Điểm nhận</span>
+                    <strong className="order-card__detail-value">{entry.demand.receivingPlace}</strong>
+                  </div>
+                </div>
               </div>
               <Link prefetch={false} href={entry.demand.href} className="ui-btn ui-btn--primary order-card__cta">
                 Xem chi tiết tiến độ
@@ -489,54 +527,80 @@ function OrderResults({ role }: { role: string }) {
             </div>
             <p className="font-bold tabular-nums text-navy-900">{order.qty} {order.unit || "đơn vị"} · {vnd(order.goodsVnd)}</p>
             <div className="order-card__stepper" aria-label="Tiến độ 4 bước">
-              {["Thương lượng", "Ký & Cọc", "Bàn giao", "Hoàn tất"].map((label, idx) => (
-                <div key={label} className="order-card__step" data-done={idx + 1 <= detail.step} data-active={idx + 1 === detail.step}>
-                  <span className="order-card__step-bar" />
-                  <span>{label}</span>
-                </div>
-              ))}
+              {["Thương lượng", "Ký & Cọc", "Bàn giao", "Hoàn tất"].map((label, idx) => {
+                const done = idx + 1 <= detail.step;
+                const active = idx + 1 === detail.step;
+                return (
+                  <div key={label} className="order-card__step" data-done={done} data-active={active}>
+                    <span className="order-card__step-bar" />
+                    <span>{done && !active ? `✓ ${label}` : `${idx + 1}. ${label}`}</span>
+                  </div>
+                );
+              })}
             </div>
             <div className="order-card__hint">
               <MaterialSymbol name={detail.icon} size={18} />
               <span>{detail.hint}</span>
             </div>
-            <div className="order-card__meta-list">
-              {order.state === "AWAIT_COMMITMENTS" && order.confirmBy && (
-                <p className="order-card__meta">
-                  <span className="order-card__meta-icon order-card__meta-icon--fuji">
-                    <MaterialSymbol name="verified_user" size={16} />
-                  </span>
-                  <span>Hạn xác nhận Fuji · <strong>{dateTime(order.confirmBy)}</strong></span>
-                </p>
-              )}
-              <p className="order-card__meta">
+            <div className="order-card__details-grid">
+              <div className="order-card__detail-cell">
                 <span className="order-card__meta-icon order-card__meta-icon--time">
                   <MaterialSymbol name="schedule" size={16} />
                 </span>
-                <span>Hạn bàn giao · <strong>{dateTime(order.handoffBy)}</strong></span>
-              </p>
-            </div>
-            <div className="order-card__receiving">
-              <p className="order-card__meta">
+                <div className="order-card__detail-text">
+                  <span className="order-card__detail-label">Hạn bàn giao</span>
+                  <strong className="order-card__detail-value">{dateTime(order.handoffBy)}</strong>
+                </div>
+              </div>
+              {order.state === "AWAIT_COMMITMENTS" && order.confirmBy ? (
+                <div className="order-card__detail-cell">
+                  <span className="order-card__meta-icon order-card__meta-icon--fuji">
+                    <MaterialSymbol name="verified_user" size={16} />
+                  </span>
+                  <div className="order-card__detail-text">
+                    <span className="order-card__detail-label">Hạn xác nhận</span>
+                    <strong className="order-card__detail-value">{dateTime(order.confirmBy)}</strong>
+                  </div>
+                </div>
+              ) : (
+                <div className="order-card__detail-cell">
+                  <span className="order-card__meta-icon order-card__meta-icon--person">
+                    <MaterialSymbol name="person" size={16} />
+                  </span>
+                  <div className="order-card__detail-text">
+                    <span className="order-card__detail-label">Người nhận</span>
+                    <strong className="order-card__detail-value">{contact.name || "Đại diện nhóm"}</strong>
+                  </div>
+                </div>
+              )}
+              <div className="order-card__detail-cell order-card__detail-cell--wide">
                 <span className="order-card__meta-icon order-card__meta-icon--place">
                   <MaterialSymbol name="location_on" size={16} />
                 </span>
-                <span>Điểm nhận · <strong>{order.handoffPrivate || contact.address || "Xác nhận với đại diện"}</strong></span>
-              </p>
-              <p className="order-card__meta">
-                <span className="order-card__meta-icon order-card__meta-icon--person">
-                  <MaterialSymbol name="person" size={16} />
-                </span>
-                <span>Người nhận · <strong>{contact.name || "Đại diện nhóm"}</strong></span>
-              </p>
+                <div className="order-card__detail-text">
+                  <span className="order-card__detail-label">Điểm nhận</span>
+                  <strong className="order-card__detail-value">{order.handoffPrivate || contact.address || "Xác nhận với đại diện"}</strong>
+                </div>
+              </div>
+              {order.state === "AWAIT_COMMITMENTS" && order.confirmBy && (
+                <div className="order-card__detail-cell order-card__detail-cell--wide">
+                  <span className="order-card__meta-icon order-card__meta-icon--person">
+                    <MaterialSymbol name="person" size={16} />
+                  </span>
+                  <div className="order-card__detail-text">
+                    <span className="order-card__detail-label">Người nhận</span>
+                    <strong className="order-card__detail-value">{contact.name || "Đại diện nhóm"}</strong>
+                  </div>
+                </div>
+              )}
             </div>
             <Link prefetch={false} className="ui-btn ui-btn--primary order-card__cta" href={`/orders/${order.contractId}#${stage.anchor}`}>Xem chi tiết tiến độ</Link>
           </Card>;
           })}
         </div>}
         {loadingMore && (
-          <div className="flex items-center justify-center gap-2 py-3 text-body text-navy-700">
-            <MaterialSymbol name="progress_activity" size={18} className="ui-spin text-emerald-700" />
+          <div className="flex items-center justify-center gap-2 py-3 text-body text-navy-600">
+            <MaterialSymbol name="progress_activity" size={18} className="ui-spin text-green-700" />
             <span role="status" className="font-medium">Đang tải thêm đơn hàng…</span>
           </div>
         )}

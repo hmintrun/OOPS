@@ -5,6 +5,7 @@
 @import "../components/ui/ui.css";
 @import "../components/ui/hero.css";
 @import "../components/ui/illustrations.css";
+@import "../../design/motion.css";
 
 .pwa-connection {
   position: fixed;

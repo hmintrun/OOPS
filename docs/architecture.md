@@ -43,9 +43,9 @@ flowchart LR
 
 ## Vòng đời hợp đồng
 
-1. Hộ lưu giỏ trong đợt nháp. Backend kiểm phiên bản, ví đã xác minh và quyền Fuji khi lưu giỏ để cộng vào nhu cầu. Đại diện đăng nhu cầu để chụp lượng theo hộ và món từ các giỏ `CONFIRMED`. Feed hiển thị lượng còn thiếu và lượng còn có thể chốt.
-2. Người bán chào một món với lượng tối đa đến `missing`. Backend mở vòng phiếu ngay khi tạo đề nghị. Hộ có phần chọn Có hoặc Không theo lượng khả dụng hiển thị từ phần đã chụp, giới hạn bởi lượng còn trống của đề nghị. Phiếu chiếm chỗ trong đề nghị. Lượng khả dụng chung chỉ giảm khi chốt đơn.
-3. Vòng đóng khi đủ lượng chào hoặc tới hạn. Backend chụp lượng của các hộ tham gia thành phiên bản bất biến, tính tiền theo đơn giá đề nghị và ghi mã băm. Nếu không còn hộ chọn Có khi đóng, đề nghị chuyển `EXPIRED`.
+1. Hộ lưu giỏ trong đợt nháp. Backend kiểm phiên bản, ví đã xác minh và quyền Fuji khi lưu giỏ để cộng vào nhu cầu. Đại diện đăng nhu cầu để chụp lượng theo hộ và món từ các giỏ `CONFIRMED`, đồng thời gửi thông báo trong app cho các thành viên đang hoạt động. Feed hiển thị những món còn lượng có thể chốt.
+2. Người bán chào một món với lượng tối đa đến `missing`. Backend mở vòng phiếu ngay khi tạo đề nghị. Hộ chọn Có để nhận lượng đang hiển thị, hoặc chọn Không. Backend tính lại lượng dưới khóa nhu cầu, trừ các phiếu Có đang giữ chỗ của cùng hộ ở đề nghị khác cho món đó, rồi giới hạn theo lượng còn trống của đề nghị hiện tại.
+3. Vòng đóng khi đủ lượng chào, mọi hộ đủ điều kiện đã chọn hoặc tới hạn. Backend chụp lượng của các hộ tham gia thành phiên bản bất biến, tính tiền theo đơn giá đề nghị và ghi mã băm. Nếu không còn hộ chọn Có khi đóng, đề nghị chuyển `EXPIRED`. Phiếu Có giữ lượng khi chờ đóng vòng và khi bản gửi còn hạn chờ cửa hàng. Đổi sang Không, yêu cầu bỏ phiếu lại, từ chối hoặc hết hạn phản hồi sẽ nhả phần giữ. Khi cửa hàng chốt, lượng chuyển sang `pending` của đơn.
 4. Người bán chấp thuận, từ chối hoặc yêu cầu mở vòng phiếu mới. Khi chấp thuận, backend kiểm lượng theo món và từng hộ dưới khóa, xác minh lại ví hợp lệ và duy nhất của mọi hộ có phần, rồi tạo vòng Fuji, một hợp đồng `AWAIT_COMMITMENTS`, lượng `pending`, khoản cọc và các khoản tiền hàng trong cùng giao dịch. Thiếu lượng ghi `STOCK_CONFLICT` và trả `409`. Thiếu ví giữ bản `SUBMITTED`.
 5. Người bán nộp cọc sau khi vòng Fuji mở hợp lệ. Mỗi hộ có thể nộp tiền hàng sau khi xác nhận của chính hộ đã được lưu. Đơn 0đ chỉ tạo khoản cọc và vẫn cần đủ chữ ký. Khi đủ chữ ký, cọc và tiền hàng nếu có, backend chuyển `pending` sang `reserved` và tự mở bàn giao trong cùng giao dịch. Quá hạn còn thiếu điều kiện thì hủy, giải phóng lượng và lập hoàn các khoản đã thu.
 6. Ở `AWAIT_HANDOFF`, người bán báo sẵn sàng và gửi bằng chứng. Đại diện lập biên nhận theo lượng thực nhận từng hộ. Lập biên nhận hiện hành đúng hạn chuyển đơn sang `AWAIT_APPROVAL` trong cùng giao dịch. Nếu đã ở `NEEDS_REVIEW` với phạm vi `HANDOFF`, biên nhận mới vẫn cần đủ hai lượt duyệt để xử lý. Chi tiết về phiên bản và hạn duyệt nằm trong [API thanh toán và bàn giao](API%20doc.md#thanh-toán-và-bàn-giao).
@@ -53,22 +53,22 @@ flowchart LR
 
 ### Trạng thái thương lượng và thời hạn
 
-Backend lưu hạn phản hồi bằng thời điểm đóng phiếu cộng 3 giờ theo cấu hình MVP. Khi worker đóng vòng trễ, mốc tính vẫn là hạn phiếu đã lưu. Hạn ký và thu cuối cùng cách giờ bắt đầu giao ít nhất 2 giờ. Hạn duyệt biên nhận là `handoffBy + 24 giờ`. [Quy tắc thời hạn](OOPS-Spec.md#8-thời-hạn) · [Chuẩn băm phiên bản](OOPS-Spec.md#chuẩn-băm-phiên-bản)
+Backend lưu hạn phản hồi bằng thời điểm đóng phiếu cộng 3 giờ theo cấu hình MVP. Khi worker đóng vòng trễ, mốc tính vẫn là hạn phiếu đã lưu. Hạn ký và thu cuối cùng có thể sát giờ bắt đầu giao. Hạn duyệt biên nhận là `handoffBy + 24 giờ`. [Quy tắc thời hạn](OOPS-Spec.md#8-thời-hạn) · [Chuẩn băm phiên bản](OOPS-Spec.md#chuẩn-băm-phiên-bản)
 
 | Trạng thái bản | Hành động hoặc mốc | Kết quả và thông báo |
 | --- | --- | --- |
 | `SUBMITTED` | Người bán chấp thuận, đủ lượng và ví hợp lệ | `FINALIZED`, hợp đồng ở `AWAIT_COMMITMENTS`, vòng ở `OPENING`. Ghi yêu cầu mở vòng vào outbox. |
-| `SUBMITTED` | Người bán yêu cầu sửa hoặc từ chối | `CHANGES_REQUESTED` và mở vòng phiếu mới nếu lịch còn đủ thời gian, hoặc `REJECTED` và kết thúc đề nghị. Phiếu gắn với từng vòng. |
+| `SUBMITTED` | Người bán sửa giá và lượng chào hoặc từ chối | `CHANGES_REQUESTED` và mở vòng phiếu mới nếu lịch còn đủ thời gian, hoặc `REJECTED` và kết thúc đề nghị. Phiếu gắn với từng vòng và phiên bản cũ giữ nguyên giá, lượng đã chụp. |
 | `SUBMITTED` | Hết hạn người bán phản hồi | `EXPIRED` với lý do `SELLER_TIMEOUT`. Đề nghị cũng hết hạn. |
 | `SUBMITTED` | Lượng không đủ khi người bán chốt | `STOCK_CONFLICT`. Ghi trạng thái và sự kiện rồi trả `409`. |
 
-Thiết lập bốn biến sau trên server trước khi tạo đề nghị mới. Mỗi biến nhận số giờ nguyên từ 1 đến 8760. Hạn cọc không vượt quá hạn chung.
+Thiết lập bốn biến sau trên server trước khi tạo đề nghị mới. Mỗi biến nhận số giờ nguyên từ 1 đến 8760. Server giới hạn vòng phiếu và phản hồi ở 3 giờ mỗi bước, hạn ký và thu ở 6 giờ. Hạn cọc không vượt quá hạn chung.
 
 | Biến | Mốc tính |
 | --- | --- |
 | `OOPS_VOTE_HOURS=3` | Từ lúc mở vòng phiếu. |
 | `OOPS_SELLER_RESPONSE_HOURS=3` | Từ lúc đóng vòng phiếu. |
-| `OOPS_FUJI_SIGN_HOURS=12` | Từ timestamp block mở vòng đến hạn chung `confirmBy` và `paymentDueAt` của đơn có giá. |
+| `OOPS_FUJI_SIGN_HOURS=6` | Từ timestamp block mở vòng đến hạn chung `confirmBy` và `paymentDueAt` của đơn có giá. |
 | `OOPS_DEPOSIT_HOURS=6` | Từ timestamp block mở vòng đến hạn cọc của người bán. |
 
 Đề nghị và hợp đồng tạo theo luồng cũ tiếp tục dùng các bước `AWAIT_CONFIRMATIONS → AWAIT_REP_APPROVAL → FINALIZED` và `AWAIT_DEPOSIT → AWAIT_PAYMENT` tương ứng. Các job hạn đại diện và route finalize vẫn phục vụ dữ liệu đó.

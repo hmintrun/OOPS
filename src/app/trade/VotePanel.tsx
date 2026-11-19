@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { z } from "zod";
-import { Button } from "@/components/ui";
+import { Button, MaterialSymbol } from "@/components/ui";
 import { useErrorToast } from "@/components/ui/error-toast";
 import { type Offer, type OfferVoting, offerVoting, sellerDraftView, voteInput } from "@/contracts/negotiation";
 import { ApiError, apiFetch, newIdempotencyKey } from "@/lib/api-client";
@@ -18,6 +18,7 @@ const voteCloseResult = z.strictObject({ closed: z.boolean() });
 type VotePanelProps = {
   proposalId: string;
   onUpdated?: () => void;
+  onVoteSaved?: () => void;
   offerState?: Offer["state"];
   latestVersionNumber?: number;
   refreshSignal?: string | number;
@@ -32,6 +33,7 @@ type FetchResult = {
 export function VotePanel({
   proposalId,
   onUpdated,
+  onVoteSaved,
   offerState,
   latestVersionNumber,
   refreshSignal,
@@ -112,7 +114,7 @@ export function VotePanel({
   }, [proposalId]);
 
   useEffect(() => {
-    void fetchVoting();
+    if (!submitting.current) void fetchVoting();
     return () => {
       generation.current++;
     };
@@ -142,10 +144,15 @@ export function VotePanel({
 
   useEffect(() => {
     if (!voting?.open) return;
-    const timer = window.setInterval(() => {
+    const refreshWhenVisible = () => {
       if (!document.hidden && !submitting.current) void fetchVoting();
-    }, 15_000);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setInterval(refreshWhenVisible, 15_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [voting?.open, fetchVoting]);
 
   useEffect(() => {
@@ -215,6 +222,7 @@ export function VotePanel({
       setVoting(next);
       setEditingVote(undefined);
       setNow(Date.now());
+      onVoteSaved?.();
       if (!next.open) {
         onUpdatedRef.current?.();
       }
@@ -337,6 +345,7 @@ export function VotePanel({
   const voterStatus = new Map(voting.voters?.map(voter => [voter.membershipId, voter.hasVoted]));
   const eligibleMembers = details?.members?.filter(member => voterStatus.has(member.membershipId)) ?? [];
   const unit = details?.unit ?? "đơn vị";
+  const offerQty = voting.offerQty ?? details?.offer.terms.qty;
   const personalQty = voting.open && voting.eligible === false
     ? undefined
     : showVoteChoices ? voting.availableQty : voting.myQty ?? voting.availableQty;
@@ -387,7 +396,8 @@ export function VotePanel({
               loading={pendingAction === "YES"}
               onClick={() => void castVote("YES")}
             >
-              ✓ Đồng ý nhận phần này
+              <MaterialSymbol name="check" size={20} className="ui-btn__icon" />
+              Đồng ý nhận phần này
             </Button>
             <Button
               className="min-h-14"
@@ -396,7 +406,8 @@ export function VotePanel({
               loading={pendingAction === "NO"}
               onClick={() => void castVote("NO")}
             >
-              ✕ Không tham gia đợt này
+              <MaterialSymbol name="close" size={20} className="ui-btn__icon" />
+              Không tham gia đợt này
             </Button>
             {hasVoted && (
               <Button full={false} variant="ghost" disabled={busy}
@@ -411,9 +422,9 @@ export function VotePanel({
         <strong>Vòng bỏ phiếu {voting.round} · {statusLabel}</strong>
         <span className="text-small text-navy-600">Hạn {dateTime(voting.dueAt)}</span>
       </div>
-      {details ? <>
-        <ProgressCapsule value={voting.totalQty} total={details.offer.terms.qty} label={`Đã đăng ký nhận (${unit})`} />
-        <p className="text-small text-navy-600">Còn {Math.max(0, details.offer.terms.qty - voting.totalQty)} {unit} trong đề nghị.</p>
+      {offerQty !== undefined ? <>
+        <ProgressCapsule value={voting.totalQty} total={offerQty} label={`Đã đăng ký nhận (${unit})`} />
+        <p className="text-small text-navy-600">Còn {Math.max(0, offerQty - voting.totalQty)} {unit} trong đề nghị · {vnd(voting.unitPriceVnd)} / {unit}</p>
       </> : <p className="text-small">Tổng đã chọn Có · <strong>{voting.totalQty} {unit}</strong> · Đơn giá {vnd(voting.unitPriceVnd)} / {unit}</p>}
       {voting.open && eligibleMembers.length > 0 && <section className="grid gap-2" aria-label="Các hộ có phần">
         <h3 className="font-bold">Các hộ có phần</h3>

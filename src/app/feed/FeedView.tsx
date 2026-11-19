@@ -9,8 +9,9 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import {
   Button,
   Card,
+  CardSkeleton,
   CardTitle,
-  IconTile,
+  EmptyState,
   MaterialSymbol,
 } from "@/components/ui";
 import { AppShell } from "@/components/app-shell";
@@ -355,32 +356,32 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
       </Card>
 
       {status === "loading" && (
-        <Card className="ui-status-card text-center py-10">
-          <div className="flex flex-col items-center gap-3">
-            <div className="h-10 w-10 animate-spin rounded-full border-4 border-emerald-200 border-t-emerald-600" />
-            <p role="status" className="text-body font-semibold text-navy-700">
-              Đang tải danh sách nhu cầu…
-            </p>
+        <div role="status" aria-live="polite" className="grid gap-3">
+          <span className="sr-only">Đang tải danh sách nhu cầu…</span>
+          <div className="feed-grid-3">
+            <CardSkeleton lines={3} />
+            <CardSkeleton lines={3} />
+            <CardSkeleton lines={3} />
           </div>
-        </Card>
+        </div>
       )}
 
       {status === "empty" && (
-        <Card className="ui-status-card">
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <IconTile icon="inbox" tone="sky" />
-            <div style={{ minWidth: 0 }}>
-              <CardTitle>Chưa có nhu cầu nào phù hợp</CardTitle>
-              {category || appliedWard ? (
-                <Button variant="secondary" full={false} onClick={clearFilters}>Xóa bộ lọc</Button>
-              ) : <p className="text-body text-navy-600">Khi có nhóm đăng nhu cầu, bạn sẽ thấy tại đây.</p>}
-            </div>
-          </div>
-        </Card>
+        <EmptyState
+          icon="storefront"
+          tone="sky"
+          title="Chưa có nhu cầu nào phù hợp"
+          description={category || appliedWard
+            ? "Thử xóa bộ lọc để xem các nhu cầu đang mở quanh khu vực nhé."
+            : "Khi có nhóm đăng nhu cầu gom chung, bạn sẽ thấy ngay tại đây."}
+          action={category || appliedWard ? (
+            <Button variant="secondary" full={false} onClick={clearFilters}>Xóa bộ lọc</Button>
+          ) : undefined}
+        />
       )}
 
       {status === "error" && (
-        <Card className="ui-status-card border border-rose-200 bg-rose-50/50">
+        <Card className="ui-status-card border border-line bg-rose-tint">
           <CardTitle>Không tải được nhu cầu</CardTitle>
           <p role="alert" className="text-body" style={{ margin: "4px 0 0", color: "var(--oops-danger)" }}>
             {errorMessage}

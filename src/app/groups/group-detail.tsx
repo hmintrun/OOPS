@@ -10,9 +10,41 @@ import { CAMPAIGN_STATUS_LABEL, campaignDisplayState } from "../campaigns/_share
 
 export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
   const isRepresentative = data.repId === userId;
+  const activeCampaigns = data.campaigns.filter(campaign => campaignDisplayState(campaign) === "COLLECTING");
   return (
     <AppShell title="Nhóm của tôi" subtitle={`${data.members.length} hộ gia đình`} icon={{ icon: "groups", tone: "green" }} familyBackground bodyClassName="ui-stack" bare>
-      <FamilyStatusWidget key={userId} userId={userId} />
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)] lg:items-stretch">
+        <FamilyStatusWidget key={userId} userId={userId} />
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-3" aria-label="Tổng quan nhanh của nhóm">
+          <div className="flex flex-col items-center justify-center gap-1.5 rounded-card border border-line bg-surface p-3 text-center shadow-card sm:flex-row sm:gap-2.5 sm:text-left">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700">
+              <MaterialSymbol name="groups" size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-small text-navy-600 leading-tight">Thành viên</p>
+              <strong className="block text-body font-extrabold text-navy-900">{data.members.length} hộ</strong>
+            </div>
+          </div>
+          <div className="flex flex-col items-center justify-center gap-1.5 rounded-card border border-line bg-surface p-3 text-center shadow-card sm:flex-row sm:gap-2.5 sm:text-left">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-tint" style={{ color: "var(--oops-amber-ink)" }}>
+              <MaterialSymbol name="shopping_basket" size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-small text-navy-600 leading-tight">Đợt gom</p>
+              <strong className="block text-body font-extrabold text-navy-900">{activeCampaigns.length} đang gom</strong>
+            </div>
+          </div>
+          <div className="flex flex-col items-center justify-center gap-1.5 rounded-card border border-line bg-surface p-3 text-center shadow-card sm:flex-row sm:gap-2.5 sm:text-left">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-tint" style={{ color: "var(--oops-sky-ink)" }}>
+              <MaterialSymbol name="verified" size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-small text-navy-600 leading-tight">Vai trò</p>
+              <strong className="block text-body font-extrabold text-navy-900">{isRepresentative ? "Đại diện" : "Hộ dân"}</strong>
+            </div>
+          </div>
+        </div>
+      </div>
       <div className="ui-stack">
         <Card className="grid gap-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -21,7 +53,11 @@ export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
               <div>
                 <CardTitle as="h2" className="ui-card__title--flush">Đợt gom</CardTitle>
                 <p className="text-small text-navy-600">
-                  {data.campaigns.length > 0 ? `${data.campaigns.length} đợt gom hiện có` : "Nhóm chưa có đợt gom nào"}
+                  {activeCampaigns.length > 0
+                    ? `${activeCampaigns.length} đợt đang gom`
+                    : data.campaigns.length > 0
+                      ? "Hiện không có đợt đang gom (xem lịch sử ở Quản lý đợt gom)"
+                      : "Nhóm chưa có đợt gom nào"}
                 </p>
               </div>
             </div>
@@ -30,9 +66,9 @@ export function GroupDetail({ data, userId }: { data: Group; userId: string }) {
               {isRepresentative ? "Quản lý đợt gom" : "Xem các đợt gom"}
             </Link>
           </div>
-          {data.campaigns.length > 0 && (
+          {activeCampaigns.length > 0 && (
             <ul className="grid gap-2">
-              {data.campaigns.map(campaign => {
+              {activeCampaigns.map(campaign => {
                 const displayState = campaignDisplayState(campaign);
                 return (
                   <li key={campaign.campaignId}>

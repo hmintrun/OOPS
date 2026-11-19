@@ -49,6 +49,50 @@ function toDraft(cart: Cart | null): Draft {
 
 const detailCacheKey = (campaignId: string) => `campaign-detail:${campaignId}`;
 async function loadCampaign(id: string): Promise<Data> {
+  if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1") {
+    const now = Date.now();
+    const iso = (hoursFromNow: number) => new Date(now + hoursFromNow * 3600_000).toISOString();
+    const waterId = "e7509c34-3063-4be5-8428-77ff563ad1a1";
+    const riceId = "e7509c34-3063-4be5-8428-77ff563ad1a2";
+    const batteryId = "e7509c34-3063-4be5-8428-77ff563ad1a3";
+    return {
+      campaign: {
+        campaignId: id,
+        state: "DRAFT",
+        collectUntil: iso(18),
+        needBy: iso(48),
+      },
+      catalog: [
+        { skuId: waterId, name: "Nước uống", category: "WATER", unit: "chai" },
+        { skuId: riceId, name: "Gạo", category: "FOOD", unit: "kg" },
+        { skuId: batteryId, name: "Pin AA", category: "ESSENTIALS", unit: "viên" },
+      ],
+      cart: {
+        cartId: "80000000-0000-4000-8000-000000000001",
+        version: 1,
+        state: "DRAFT",
+        householdSize: 3,
+        supportRequested: false,
+        lines: [
+          { skuId: waterId, stockQty: 0, needQty: 12 },
+          { skuId: riceId, stockQty: 0, needQty: 3 },
+          { skuId: batteryId, stockQty: 0, needQty: 4 },
+        ],
+      },
+      needs: {
+        campaignState: "DRAFT",
+        activeRounds: [],
+        items: [
+          { skuId: waterId, name: "Nước uống", unit: "chai", target: 12, supportRequested: false },
+          { skuId: riceId, name: "Gạo", unit: "kg", target: 3, supportRequested: false },
+        ],
+      },
+      isRep: true,
+      userId: "60000000-0000-4000-8000-000000000001",
+      displayName: "Giám Khảo Unihack",
+      householdSize: 3,
+    };
+  }
   const context = getMe().then(async profile => {
     if (!profile.groupId) throw new Error("Bạn chưa tham gia nhóm.");
     const group = await getGroup(profile.groupId);
@@ -258,10 +302,17 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         <p>Cần hàng trước {formatDateTime(campaign.needBy)}</p>
       </Card>
       {loadError && <Banner tone="error">{loadError}</Banner>}
-      {notice && <p role="status">{notice}</p>}
-      {walletNotReady && <Card className="grid gap-2" padding="tight">
-        <p className="text-small text-navy-600">Xác minh ví Fuji rồi lưu lại để cập nhật nhu cầu.</p>
-        <LinkButton href="/me">Kiểm tra ví Avalanche Fuji</LinkButton>
+      {notice && (
+        <div role="status" className="flex items-center gap-2 rounded-input bg-green-100 px-3.5 py-2.5 text-small font-semibold text-green-700">
+          <MaterialSymbol name="check_circle" size={18} />
+          <span>{notice}</span>
+        </div>
+      )}
+      {walletNotReady && <Card className="grid gap-2 border-sky-300 bg-sky-tint" padding="tight">
+        <p className="text-small font-semibold text-navy-900">
+          Giỏ của nhà bạn đã lưu nháp. Để góp vào nhu cầu chung của nhóm, hãy thiết lập xác nhận mua chung tại mục Tài khoản rồi quay lại bấm Lưu giỏ.
+        </p>
+        <LinkButton href="/me">Thiết lập xác nhận tại Tài khoản</LinkButton>
       </Card>}
       <Card>
         <div className="campaign-cart-heading">
@@ -275,21 +326,50 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         <form id={cartFormId} className="grid gap-3" onSubmit={event => { event.preventDefault(); save(); }}>
           <table className="campaign-cart-table">
             <thead><tr><th scope="col">Món đồ</th><th scope="col" id={`${cartFormId}-qty`}>Số lượng</th></tr></thead>
-            <tbody>{catalog.map(item => (
-              <tr key={item.skuId}>
-                <th scope="row" id={`${cartFormId}-${item.skuId}`}>{item.name} <span>· {item.unit}</span></th>
-                <td>
-                  <input aria-labelledby={`${cartFormId}-${item.skuId} ${cartFormId}-qty`} type="text" inputMode="numeric"
-                    maxLength={10} disabled={!editable || saving} value={draft.quantities[item.skuId] ?? "0"}
-                    onFocus={event => event.currentTarget.select()}
-                    onChange={event => {
-                      const needQty = event.currentTarget.value;
-                      if (!/^\d*$/.test(needQty)) return;
-                      edit(value => ({ ...value, quantities: { ...value.quantities, [item.skuId]: needQty } }));
-                    }} />
-                </td>
-              </tr>
-            ))}</tbody>
+            <tbody>{catalog.map(item => {
+              const currentQty = Number(draft.quantities[item.skuId] ?? 0) || 0;
+              return (
+                <tr key={item.skuId}>
+                  <th scope="row" id={`${cartFormId}-${item.skuId}`}>{item.name} <span>· {item.unit}</span></th>
+                  <td>
+                    <div className="campaign-cart-stepper">
+                      <button
+                        type="button"
+                        className="campaign-cart-stepper__btn"
+                        aria-label={`Giảm ${item.name}`}
+                        disabled={!editable || saving || currentQty <= 0}
+                        onClick={() => edit(value => ({
+                          ...value,
+                          quantities: { ...value.quantities, [item.skuId]: String(Math.max(0, currentQty - 1)) },
+                        }))}
+                      >
+                        −
+                      </button>
+                      <input aria-labelledby={`${cartFormId}-${item.skuId} ${cartFormId}-qty`} type="text" inputMode="numeric"
+                        maxLength={10} disabled={!editable || saving} value={draft.quantities[item.skuId] ?? "0"}
+                        onFocus={event => event.currentTarget.select()}
+                        onChange={event => {
+                          const needQty = event.currentTarget.value;
+                          if (!/^\d*$/.test(needQty)) return;
+                          edit(value => ({ ...value, quantities: { ...value.quantities, [item.skuId]: needQty } }));
+                        }} />
+                      <button
+                        type="button"
+                        className="campaign-cart-stepper__btn"
+                        aria-label={`Tăng ${item.name}`}
+                        disabled={!editable || saving}
+                        onClick={() => edit(value => ({
+                          ...value,
+                          quantities: { ...value.quantities, [item.skuId]: String(currentQty + 1) },
+                        }))}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}</tbody>
           </table>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={draft.supportRequested} disabled={!editable || saving}
@@ -305,6 +385,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                 quantities: { ...current.quantities, ...suggestedQuantities },
               }));
               setSuggestionOpenedFor(undefined);
+              setNotice("Đã điền gợi ý AI vào giỏ. Kiểm tra lại số lượng và bấm Lưu giỏ bên dưới.");
             }} />
         )}
         {editable && <div className="ui-sticky-actions">

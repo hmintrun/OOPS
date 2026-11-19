@@ -7,8 +7,14 @@ const proposalId = "20000000-0000-4000-8000-000000000001";
 const versionId = "30000000-0000-4000-8000-000000000001";
 const draftId = "40000000-0000-4000-8000-000000000001";
 const contractId = "50000000-0000-4000-8000-000000000001";
+const campaignId = "60000000-0000-4000-8000-000000000001";
 
 describe("notification content", () => {
+  it("opens the published collection's detail page", () => {
+    expect(describeNotification({ entityType: "CAMPAIGN", entityId: campaignId, eventKey: `campaign:${campaignId}:PUBLISHED` }))
+      .toMatchObject({ title: "Đợt gom của nhóm đã được đăng", href: `/campaigns/${campaignId}` });
+  });
+
   it("opens the exact offer when a demand gets a new proposal", () => {
     expect(describeNotification({
       entityType: "DEMAND_ITEM", entityId: needId, eventKey: `offer-created:${proposalId}`, itemName: "Nước uống",
@@ -29,6 +35,13 @@ describe("notification content", () => {
       entityType: "NEGOTIATION_VERSION", entityId: versionId, draftId,
       eventKey: `negotiation-version:${versionId}:${state}`,
     })).toMatchObject({ title, href: `/trade/drafts/${draftId}` });
+  });
+
+  it("opens the proposal from a notice about revised voting terms", () => {
+    expect(describeNotification({
+      entityType: "NEGOTIATION_VERSION", entityId: versionId, draftId,
+      eventKey: `negotiation-version:${versionId}:CHANGES_REQUESTED`, state: "VOTE_REOPENED",
+    })).toMatchObject({ title: "Cửa hàng đã cập nhật đề nghị", href: `/trade/drafts/${draftId}` });
   });
 
   it.each([

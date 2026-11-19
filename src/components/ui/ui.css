@@ -49,6 +49,7 @@
   outline-offset: 2px;
 }
 .ui-btn__icon { font-size: 22px; flex: none; }
+.ui-btn--loading :is(.ui-btn__icon, .material-symbols-rounded) { display: none; }
 .ui-btn__spinner {
   width: 18px;
   height: 18px;
@@ -216,7 +217,7 @@
   align-items: center;
   gap: 12px;
   min-height: var(--oops-control-h);
-  padding: 0 14px 0 12px;
+  padding: 6px 12px;
   background: var(--oops-surface);
   border: 1px solid var(--oops-line);
   border-radius: var(--oops-radius-input);
@@ -231,29 +232,33 @@
   outline: none;
   box-shadow: 0 0 0 3px var(--oops-green-100);
 }
-.ui-select--disabled { opacity: 0.55; }
-.ui-select__label {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--oops-navy-900);
-  white-space: nowrap;
-}
-.ui-select__value-wrap {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
+.ui-select--disabled { opacity: 0.72; }
+.ui-select__content {
+  display: grid;
+  gap: 1px;
   min-width: 0;
+  flex: 1;
+}
+.ui-select__label {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--oops-navy-600);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .ui-select__value {
   font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
   color: var(--oops-navy-900);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ui-select__value--placeholder { color: var(--oops-navy-600); }
-.ui-select__chevron { font-size: 22px; color: var(--oops-navy-600); flex: none; }
+.ui-select__value--placeholder { color: var(--oops-navy-600); font-weight: 500; }
+.ui-select__chevron { font-size: 22px; color: var(--oops-navy-600); flex: none; margin-left: auto; }
 /* Select native phủ cả hàng để chạm mở trên mobile */
 .ui-select__native {
   position: absolute;
@@ -371,7 +376,15 @@
 
 /* ---------- Khung màn hình ---------- */
 .ui-screen-body {
-  padding: 0 var(--oops-space-screen) calc(var(--oops-nav-h) + 24px + env(safe-area-inset-bottom));
+  padding: 0 var(--oops-space-screen) calc(var(--oops-nav-h) + 52px + env(safe-area-inset-bottom));
+}
+
+.ui-app-page select:not(.ui-select__native) {
+  height: var(--oops-control-h);
+  padding: 0 14px;
+  line-height: calc(var(--oops-control-h) - 2px);
+  background-color: var(--oops-surface);
+  cursor: pointer;
 }
 
 .ui-app-page {
@@ -443,9 +456,13 @@
 @media (width >= 64rem) {
   html:has(.ui-nav-shell) { scroll-padding-block-start: calc(var(--oops-nav-h) + 16px); }
   .ui-app-page {
-    --oops-space-screen: 32px;
-    --oops-space-page-top: 32px;
-    --oops-space-section: 24px;
+    --oops-space-screen: 28px;
+    --oops-space-page-top: 14px;
+    --oops-space-section: 14px;
+    --oops-space-card: 16px;
+  }
+  .ui-app-page .ui-screen-body {
+    padding-bottom: 32px;
   }
   .ui-nav-shell {
     position: sticky;
@@ -610,8 +627,8 @@
   position: fixed;
   inset: 0;
   margin: auto;
-  width: min(calc(100vw - 24px), 56rem);
-  max-width: calc(100vw - 24px);
+  width: min(calc(100% - 24px), 56rem);
+  max-width: calc(100% - 24px);
   max-height: min(90dvh, 52rem);
   overflow-y: auto;
   overflow-x: hidden;
@@ -624,6 +641,7 @@
 }
 .ui-widget-dialog::backdrop { background: rgb(14 39 68 / .6); }
 .ui-widget-dialog__panel { min-width: 0; max-width: 100%; overflow-x: hidden; }
+.ui-widget-dialog__body :is(div, form, section, dl, button) { min-width: 0; max-width: 100%; }
 .ui-widget-dialog__header {
   position: sticky;
   top: 0;
