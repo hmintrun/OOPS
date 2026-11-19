@@ -39,11 +39,34 @@ import { POST as postTermination } from "@/app/api/v1/contracts/[id]/termination
 import { POST as acceptCancellation } from "@/app/api/v1/terminations/[id]/accept/route";
 import { POST as postTransfer } from "@/app/api/v1/ops/disbursements/[id]/post/route";
 import { GET as getOps } from "@/app/api/v1/ops/disbursements/route";
+import { GET as getOpsOverview } from "@/app/api/v1/ops/overview/route";
+import { GET as getOpsCharges } from "@/app/api/v1/ops/charges/route";
+import { POST as postReconcileCharge } from "@/app/api/v1/ops/charges/[id]/reconcile/route";
+import { POST as postRefundFundEvent } from "@/app/api/v1/ops/fund-events/[id]/refund/route";
+import { GET as getOpsContracts } from "@/app/api/v1/ops/contracts/route";
+import { GET as getOpsContractDetail } from "@/app/api/v1/ops/contracts/[id]/route";
+import { GET as getOpsAudit } from "@/app/api/v1/ops/audit/route";
 import { GET as getNotices, PATCH as patchAllNotices } from "@/app/api/v1/notifications/route";
 import { PATCH as patchNotice } from "@/app/api/v1/notifications/[id]/route";
 import { POST as postCartAi } from "@/app/api/v1/campaigns/[id]/cart/ai/route";
 import { confirmationRound, draft, draftVersion, offer, offers, offerVoting, sellerDraftView, sentOfferList } from "@/contracts/negotiation";
-import { contract, evidenceResult, notificationList, opsList, postTransferResult, receipt, signedEvidence, terminationResult } from "@/contracts/orders";
+import {
+  contract,
+  evidenceResult,
+  notificationList,
+  opsAuditList,
+  opsChargeList,
+  opsContractDetail,
+  opsContractList,
+  opsList,
+  opsOverview,
+  postTransferResult,
+  receipt,
+  reconcileSimChargeResult,
+  refundFundEventResult,
+  signedEvidence,
+  terminationResult,
+} from "@/contracts/orders";
 import { closeDatabase, transaction } from "@/server/db";
 import { readBuyerDemand } from "@/server/campaigns";
 import { expireSellerResponse } from "@/server/negotiation/versions";
@@ -1735,5 +1758,141 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       await client.query("set local role authenticated");
       await client.query("delete from public.groups where false");
     })).rejects.toMatchObject({ code: "42501" });
+  });
+
+  it("provides admin overview, SIM deposit/goods reconciliation, mismatched refund resolution, and audit trail", async () => {
+    const { id, rep, second, third, seller } = await negotiationWithDraft(48, 2_000);
+    await readyDraft(id, rep, seller, [[rep, 2], [second, 2], [third, 3]]);
+    const order = contract.parse((await finalize(id, rep, "admin-reconcile")).data);
+    const orderId = order.contractId;
+    const ops = await makeOps();
+
+    expect(me.parse((await call(getMe, ops)).data).isOps).toBe(true);
+    expect(me.parse((await call(getMe, seller)).data).isOps).toBeUndefined();
+
+    // Non-ops users receive 403 across all admin/ops endpoints
+    for (const denied of [
+      call(getOpsOverview, seller),
+      call(getOpsCharges, seller),
+      call(getOpsContracts, seller),
+      call(getOpsContractDetail, seller, { id: orderId }),
+      call(getOpsAudit, seller),
+    ]) {
+      expect((await denied).status).toBe(403);
+    }
+
+    const initialOverview = opsOverview.parse((await call(getOpsOverview, ops)).data);
+    expect(initialOverview.paymentMode).toBe("SIM");
+    expect(initialOverview.contracts.total).toBeGreaterThanOrEqual(1);
+
+    const charges = opsChargeList.parse((await call(getOpsCharges, ops, {
+      path: `/api/v1/ops/charges?contractId=${orderId}`,
+    })).data).items;
+    expect(charges).toHaveLength(1);
+    const depositCharge = charges[0];
+    expect(depositCharge).toMatchObject({ kind: "DEPOSIT", state: "PENDING", amountVnd: 50_000, canApplyNow: true });
+
+    // Mismatched deposit triggers REVIEW fund event
+    const mismatchRef = "ADM-MISMATCH-" + randomUUID();
+    const mismatchResult = reconcileSimChargeResult.parse((await call(postReconcileCharge, ops, {
+      id: depositCharge.chargeId,
+      method: "POST",
+      key: "mismatch-1",
+      body: { reference: mismatchRef, amountVnd: 45_000 },
+    })).data);
+    expect(mismatchResult).toMatchObject({ disposition: "REVIEW", chargeState: "PENDING", contractState: "AWAIT_DEPOSIT" });
+
+    // Admin converts REVIEW fund event to REFUND_DUE disbursement
+    const refundOutcome = refundFundEventResult.parse((await call(postRefundFundEvent, ops, {
+      id: mismatchResult.fundEventId,
+      method: "POST",
+      key: "refund-mismatch-1",
+      body: { note: "Hoàn tiền cọc thiếu" },
+    })).data);
+    expect(refundOutcome.disposition).toBe("REFUND_DUE");
+    expect((await call(postRefundFundEvent, ops, {
+      id: mismatchResult.fundEventId,
+      method: "POST",
+      key: "refund-mismatch-2",
+      body: {},
+    })).data).toEqual(refundOutcome);
+
+    // Exact deposit reconciliation advances contract to AWAIT_PAYMENT and creates GOODS charges
+    const exactRef = "ADM-EXACT-" + randomUUID();
+    const exactResult = reconcileSimChargeResult.parse((await call(postReconcileCharge, ops, {
+      id: depositCharge.chargeId,
+      method: "POST",
+      key: "exact-1",
+      body: { reference: exactRef, amountVnd: 50_000 },
+    })).data);
+    expect(exactResult).toMatchObject({ disposition: "APPLIED", chargeState: "RECEIVED", contractState: "AWAIT_PAYMENT" });
+
+    // Duplicate reference with different amount/charge conflicts (409)
+    expect((await call(postReconcileCharge, ops, {
+      id: depositCharge.chargeId,
+      method: "POST",
+      key: "conflict-1",
+      body: { reference: exactRef, amountVnd: 10_000 },
+    })).status).toBe(409);
+
+    // Extra SIM payment after RECEIVED creates REFUND_DUE disbursement
+    const extraRef = "ADM-EXTRA-" + randomUUID();
+    const extraResult = reconcileSimChargeResult.parse((await call(postReconcileCharge, ops, {
+      id: depositCharge.chargeId,
+      method: "POST",
+      key: "extra-1",
+      body: { reference: extraRef, amountVnd: 5_000 },
+    })).data);
+    expect(extraResult).toMatchObject({ disposition: "REFUND_DUE", disbursementId: expect.any(String) });
+
+    // Goods charges are visible to admin; test both admin reconcile and user demo pay audit visibility
+    const goodsCharges = opsChargeList.parse((await call(getOpsCharges, ops, {
+      path: `/api/v1/ops/charges?contractId=${orderId}&kind=GOODS`,
+    })).data).items;
+    expect(goodsCharges).toHaveLength(3);
+    expect((await pay(goodsCharges[0].chargeId, goodsCharges[0].payerId)).status).toBe(200);
+    for (const goodsCharge of goodsCharges.slice(1)) {
+      const paid = reconcileSimChargeResult.parse((await call(postReconcileCharge, ops, {
+        id: goodsCharge.chargeId,
+        method: "POST",
+        key: `goods-${goodsCharge.chargeId}`,
+        body: { reference: "ADM-GOODS-" + randomUUID(), amountVnd: goodsCharge.amountVnd },
+      })).data);
+      expect(paid.disposition).toBe("APPLIED");
+    }
+    expect((await orderFor(orderId, seller)).state).toBe("AWAIT_HANDOFF");
+
+    // Post one of the refund disbursements and inspect POSTED + contract detail + audit log
+    const pendingRefunds = opsList.parse((await call(getOps, ops, {
+      path: `/api/v1/ops/disbursements?state=PENDING&contractId=${orderId}`,
+    })).data).items;
+    expect(pendingRefunds.length).toBeGreaterThanOrEqual(2);
+    const postedRef = "ADM-OUT-" + randomUUID();
+    expect(postTransferResult.parse((await call(postTransfer, ops, {
+      id: refundOutcome.disbursementId,
+      method: "POST",
+      body: { transferRef: postedRef },
+    })).data).state).toBe("POSTED");
+
+    const postedList = opsList.parse((await call(getOps, ops, {
+      path: `/api/v1/ops/disbursements?state=POSTED&contractId=${orderId}`,
+    })).data).items;
+    expect(postedList).toEqual([expect.objectContaining({ disbursementId: refundOutcome.disbursementId, transferRef: postedRef, state: "POSTED" })]);
+
+    const contractsPage = opsContractList.parse((await call(getOpsContracts, ops, {
+      path: "/api/v1/ops/contracts?state=AWAIT_HANDOFF",
+    })).data);
+    expect(contractsPage.items.some(item => item.contractId === orderId)).toBe(true);
+
+    const detail = opsContractDetail.parse((await call(getOpsContractDetail, ops, { id: orderId })).data);
+    expect(detail.charges).toHaveLength(4);
+    expect(detail.auditEvents.some(ev => ev.action === "SIM_REVIEW_REFUND_CREATED")).toBe(true);
+    expect(detail.auditEvents.some(ev => ev.action === "SIM_FUND_APPLIED")).toBe(true);
+
+    const auditPage = opsAuditList.parse((await call(getOpsAudit, ops, {
+      path: `/api/v1/ops/audit?entityType=CONTRACT&entityId=${orderId}&limit=5`,
+    })).data);
+    expect(auditPage.items.length).toBeGreaterThan(0);
+    expect((await call(getOpsAudit, ops, { path: "/api/v1/ops/audit?cursor=bad!" })).status).toBe(422);
   });
 });

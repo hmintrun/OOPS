@@ -5,10 +5,11 @@ const groupId = "abf6a08a-451a-497b-8afd-c633870f0a01";
 const campaignId = "abf6a08a-451a-497b-8afd-c633870f0a02";
 const waterId = "e7509c34-3063-4be5-8428-77ff563ad1a1";
 const needs = [2, 2, 3, 2, 3];
+const adminAccount = { email: "oops-dev-admin@example.test", name: "Quản trị viên OOPS" };
 const accounts = [...needs.map((_, i) => ({
   email: `oops-dev-household-${i + 1}@example.test`,
   name: `Hộ demo ${i + 1}`,
-})), { email: "oops-dev-seller@example.test", name: "Người bán demo" }];
+})), { email: "oops-dev-seller@example.test", name: "Người bán demo" }, adminAccount];
 
 async function seed() {
   const database = env("DATABASE_URL");
@@ -46,6 +47,8 @@ async function seed() {
         await db.query("insert into public.profiles (id, display_name) values ($1, $2) on conflict do nothing",
           [users.get(email), name]);
       }
+      await db.query("insert into public.ops_accounts (user_id) values ($1) on conflict (user_id) do nothing",
+        [users.get(adminAccount.email)]);
       await db.query(
         `insert into public.groups (id, name, district_code, ward_code) values ($1, 'Nhóm demo OOPS', 'OOPS_DEMO', 'OOPS_DEMO')
          on conflict (id) do nothing`,
@@ -87,7 +90,12 @@ async function seed() {
       await db.query("rollback");
       throw error;
     }
-    console.log("Seed Supabase dev thành công.", { groupId, campaignId, householdAccounts: needs.length });
+    console.log("Seed Supabase dev thành công.", {
+      groupId,
+      campaignId,
+      householdAccounts: needs.length,
+      adminEmail: adminAccount.email,
+    });
   } finally {
     await db.end();
   }

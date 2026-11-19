@@ -98,9 +98,9 @@ export default function OrdersPage() {
           {unread > 0 && <span className="orders-notification-count" aria-hidden="true">{unread}</span>}
           <span className="hidden sm:inline">Thông báo</span>
         </Link>
-        <Link href="/ops" aria-label="Đối soát SIM" title="Đối soát SIM" className="ui-btn ui-btn--ghost">
+        <Link href="/ops" aria-label="Quản trị & Đối soát SIM" title="Quản trị & Đối soát SIM" className="ui-btn ui-btn--ghost">
           <MaterialSymbol name="account_balance_wallet" size={20} />
-          <span className="hidden sm:inline">Đối soát SIM</span>
+          <span className="hidden sm:inline">Quản trị &amp; Đối soát SIM</span>
         </Link>
       </nav>
     )}

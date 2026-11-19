@@ -388,6 +388,16 @@ export function LoginForm() {
             >
               Tiệm cung cấp
             </button>
+            <button
+              type="button"
+              className="login-sample__button"
+              onClick={() => {
+                setEmail("oops-dev-admin@example.test");
+                setPassword("DemoPassword123!");
+              }}
+            >
+              Quản trị viên (Admin)
+            </button>
           </div>
         </details>
       )}
