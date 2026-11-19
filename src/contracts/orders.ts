@@ -56,7 +56,7 @@ export const contract = z.strictObject({
   depositDueAt: isoDateTime.optional(), paymentDueAt: isoDateTime.optional(), readyAt: isoDateTime.optional(),
   roundId: uuid.optional(), roundOpenBy: isoDateTime.optional(), confirmBy: isoDateTime.optional(),
   handoffStart: isoDateTime, handoffBy: isoDateTime, approvalDueAt: isoDateTime,
-  allocations: z.array(z.strictObject({ allocationId: uuid, qty: qty.min(1), goodsVnd: amount })),
+  allocations: z.array(z.strictObject({ allocationId: uuid, qty: qty.min(1), goodsVnd: amount, householdName: z.string().optional() })),
   myShare: z.strictObject({ qty: qty.min(1), goodsVnd: amount }).optional(),
   charges: z.array(charge), disbursements: z.array(disbursement),
   evidenceIds: z.array(uuid).optional(), receipt: receipt.optional(), termination: termination.optional(),
@@ -73,9 +73,19 @@ export const postTransferResult = z.strictObject({
 export const notification = z.strictObject({
   notificationId: uuid, entityType: z.string(), entityId: uuid, readAt: isoDateTime.optional(),
 });
+const notificationItem = notification.extend({
+  title: z.string(), detail: z.string(), icon: z.string(), itemName: z.string().optional(),
+  href: z.string().regex(/^\/(?:orders|trade|campaigns)(?:\/|\?|$)/).optional(),
+  createdAt: isoDateTime.optional(),
+});
 export const notificationQuery = z.strictObject(pageQuery);
-export const notificationList = z.strictObject({ items: z.array(notification), nextCursor: uuid.optional() });
+export const notificationList = z.strictObject({
+  items: z.array(notificationItem), unreadCount: amount, nextCursor: uuid.optional(),
+});
+export type NotificationItem = z.infer<typeof notificationItem>;
+export type NotificationList = z.infer<typeof notificationList>;
 export const notificationInput = z.strictObject({ read: z.literal(true) });
+export const notificationReadAllResult = z.strictObject({ updatedCount: amount });
 
 export type Contract = z.infer<typeof contract>;
 export type Receipt = z.infer<typeof receipt>;

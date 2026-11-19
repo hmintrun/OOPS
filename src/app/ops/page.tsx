@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button, Card, CardTitle } from "@/components/ui";
+import { useErrorToast } from "@/components/ui/error-toast";
 import { opsList, postTransferResult } from "@/contracts/orders";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { INPUT_CLASS } from "@/app/campaigns/_shared/ui";
@@ -11,6 +12,7 @@ import { TradeStatus } from "@/app/trade/TradeStatus";
 import { useTrade, vnd } from "@/app/trade/trade-client";
 
 export default function OpsPage() {
+  const showError = useErrorToast();
   const [cursor, setCursor] = useState<string>();
   const load = useCallback(() => apiFetch(`/api/v1/ops/disbursements?state=PENDING${cursor ? `&cursor=${cursor}` : ""}`, {
     schema: opsList,
@@ -30,8 +32,8 @@ export default function OpsPage() {
         <form className="grid gap-3" onSubmit={event => {
           event.preventDefault();
           const transferRef = String(new FormData(event.currentTarget).get("reference")).trim();
-          if (!transferRef) { setNotice("Nhập mã chuyển SIM."); return; }
           setNotice("");
+          if (!transferRef) { showError("Nhập mã chuyển SIM."); return; }
           void trade.run(`transfer:${item.disbursementId}:${transferRef}`, key => apiFetch(
             `/api/v1/ops/disbursements/${item.disbursementId}/post`, {
               method: "POST", body: { transferRef }, schema: postTransferResult, idempotencyKey: key,

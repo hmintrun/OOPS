@@ -43,7 +43,9 @@ it("distinguishes published needs with no offers from active negotiations", asyn
   api.apiFetch.mockResolvedValueOnce({ items: [] });
   expect(await readGroupDemandOrders()).toMatchObject([{ state: "waiting" }]);
   api.apiFetch.mockResolvedValueOnce({ items: [{ state: "SUBMITTED" }] });
-  expect(await readGroupDemandOrders()).toMatchObject([{ state: "negotiating" }]);
+  expect(await readGroupDemandOrders()).toMatchObject([{
+    state: "negotiating", href: `/orders/by-demand/${demoDemand.demandItemId}?view=negotiations`,
+  }]);
 });
 
 it("shows availability after subtracting an accepted order still awaiting commitments", async () => {

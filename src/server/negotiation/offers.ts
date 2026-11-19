@@ -3,6 +3,7 @@ import type { PoolClient } from "pg";
 import type { z } from "zod";
 import type { Offer, createOfferInput } from "@/contracts/negotiation";
 import { conflict, invalid, notFound } from "../errors";
+import { persistNotifications } from "../notifications";
 import { parallelLeadHours, parallelTiming, requiredLeadHours } from "./timing";
 import { enqueueVoteDeadline } from "./versions";
 
@@ -90,6 +91,19 @@ export async function createOffer(client: PoolClient, sellerId: string, demandIt
     "insert into public.negotiations (proposal_id) values ($1) returning id", [proposal.id],
   );
   await enqueueVoteDeadline(client, draft.id, 1);
+  const { rows: recipients } = await client.query<{ user_id: string }>(
+    `select m.user_id from public.demand_items d
+     join public.campaigns c on c.id = d.campaign_id
+     join public.memberships m on m.group_id = c.group_id and m.left_at is null
+     where d.id = $1 and m.user_id <> $2 and (
+       m.role = 'REP' or exists (
+         select 1 from public.demand_shares s where s.demand_item_id = d.id and s.membership_id = m.id
+       )
+     )`,
+    [demandItemId, sellerId],
+  );
+  await persistNotifications(client, "DEMAND_ITEM", demandItemId, `offer-created:${proposal.id}`,
+    recipients.map(row => row.user_id));
   return offerDto(proposal, true, draft.id);
 }
 

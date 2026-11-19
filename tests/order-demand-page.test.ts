@@ -8,13 +8,14 @@ import { OffersPanel } from "@/app/trade/needs/OffersPanel";
 import { notFound, unauthenticated } from "@/server/errors";
 import { demoDemand } from "./fixtures/foundation";
 
-const { authenticate, listOrders, readBuyerDemand, offerResult, db } = vi.hoisted(() => ({
-  authenticate: vi.fn(), listOrders: vi.fn(), readBuyerDemand: vi.fn(), offerResult: vi.fn(), db: {},
+const { authenticate, listOrders, readBuyerDemand, readOffers, offerResult, db } = vi.hoisted(() => ({
+  authenticate: vi.fn(), listOrders: vi.fn(), readBuyerDemand: vi.fn(), readOffers: vi.fn(), offerResult: vi.fn(), db: {},
 }));
 
 vi.mock("@/server/auth", () => ({ authenticatedActor: authenticate }));
 vi.mock("@/server/orders/records", () => ({ listOrdersForDemand: listOrders }));
 vi.mock("@/server/campaigns", () => ({ readBuyerDemand }));
+vi.mock("@/server/negotiation/offers", () => ({ readOffers }));
 vi.mock("@/server/db", () => ({ transaction: (run: (client: object) => unknown) => run(db) }));
 vi.mock("next/navigation", async importOriginal => ({
   ...await importOriginal<typeof import("next/navigation")>(), useRouter: () => ({}),
@@ -42,6 +43,7 @@ describe("orders linked to a published demand", () => {
   beforeEach(() => {
     authenticate.mockReset().mockResolvedValue({ userId: actorId });
     listOrders.mockReset();
+    readOffers.mockReset().mockResolvedValue({ items: [] });
     readBuyerDemand.mockReset().mockResolvedValue(buyerDemand);
     offerResult.mockReset().mockReturnValue({ items: [] });
   });
@@ -57,6 +59,46 @@ describe("orders linked to a published demand", () => {
     listOrders.mockResolvedValue([order, other]);
     const markup = renderToStaticMarkup(await request());
     for (const { contractId } of [order, other]) expect(markup).toContain(`href="/orders/${contractId}"`);
+  });
+
+  it("opens the active negotiation from the demand card even when a separate order already exists", async () => {
+    const proposalId = "55555555-5555-4555-8555-555555555555";
+    const draftId = "66666666-6666-4666-8666-666666666666";
+    listOrders.mockResolvedValue([order]);
+    readOffers.mockResolvedValue({ items: [
+      { proposalId, draftId, demandItemId, state: "SUBMITTED" },
+      { state: "SELECTED" },
+    ] });
+    await expect(OrdersForDemandPage({
+      params: Promise.resolve({ id: demandItemId }),
+      searchParams: Promise.resolve({ view: "negotiations" }),
+    })).rejects.toMatchObject({
+      digest: expect.stringContaining(`/trade/drafts/${draftId}?proposal=${proposalId}&need=${demandItemId}`),
+    });
+    expect(listOrders).not.toHaveBeenCalled();
+  });
+
+  it("lists the open proposals without displaying the selected proposal in negotiation mode", async () => {
+    const options = [
+      { proposalId: "first", draftId: "draft-one", demandItemId, state: "SUBMITTED", qty: 3 },
+      { proposalId: "second", draftId: "draft-two", demandItemId, state: "SUBMITTED", qty: 4 },
+      { proposalId: "accepted", draftId: "draft-selected", demandItemId, state: "SELECTED", qty: 8 },
+    ].map(item => ({
+      ...item, goodsVnd: 0, depositVnd: 50_000, terms: {
+        qty: item.qty, unitPriceVnd: 0, handoffStart: "2026-11-19T09:00:00+07:00", handoffBy: "2026-11-19T10:00:00+07:00",
+      },
+    }));
+    const data = { items: options };
+    readOffers.mockResolvedValue(data);
+    offerResult.mockReturnValue(data);
+    const markup = renderToStaticMarkup(await OrdersForDemandPage({
+      params: Promise.resolve({ id: demandItemId }),
+      searchParams: Promise.resolve({ view: "negotiations" }),
+    }));
+    expect(markup).toContain("/trade/drafts/draft-one?");
+    expect(markup).toContain("/trade/drafts/draft-two?");
+    expect(markup).not.toContain("/trade/drafts/draft-selected?");
+    expect(markup).not.toContain("<form");
   });
 
   it("shows buyer progress directly while waiting for the first offer", async () => {

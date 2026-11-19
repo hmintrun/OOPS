@@ -23,6 +23,8 @@ export const offerVoting = z.strictObject({
   draftId: uuid, round: positiveQuantity, dueAt: isoDateTime, open: z.boolean(), totalQty: quantity,
   seller: z.boolean(),
   myQty: quantity.optional(), availableQty: quantity.optional(), unitPriceVnd: uint,
+  closed: z.boolean().optional(), eligible: z.boolean().optional(), readyToClose: z.boolean().optional(),
+  voters: z.array(z.strictObject({ membershipId: uuid, hasVoted: z.boolean() })).optional(),
 });
 
 export const offer = z.strictObject({

@@ -5,23 +5,18 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { z } from "zod";
 import { AppShell } from "@/components/app-shell";
-import { Button, Card, CardTitle } from "@/components/ui";
+import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
 import { uuid } from "@/contracts/foundation";
 import { confirmationRound, draft, draftVersion, editDraftLineInput, offerVoting, sellerDraftView } from "@/contracts/negotiation";
 import { contract } from "@/contracts/orders";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { INPUT_CLASS } from "@/app/campaigns/_shared/ui";
-import { dateTime, useRoundRefresh, useTrade, vnd } from "../../trade-client";
+import { useRoundRefresh, useTrade, vnd } from "../../trade-client";
 import { TradeStatus } from "../../TradeStatus";
 import { RoundInfo } from "../../RoundInfo";
 import { VotePanel } from "../../VotePanel";
 
-const states: Record<z.infer<typeof draftVersion>["state"], string> = {
-  SUBMITTED: "Chờ cửa hàng phản hồi", CHANGES_REQUESTED: "Cửa hàng yêu cầu sửa",
-  REJECTED: "Cửa hàng đã từ chối", AWAIT_CONFIRMATIONS: "Chờ các hộ xác nhận trên Fuji",
-  AWAIT_REP_APPROVAL: "Chờ đại diện chốt", EXPIRED: "Phiên bản đã hết hạn",
-  STOCK_CONFLICT: "Lượng hàng không còn đủ", FINALIZED: "Đã chốt",
-};
+import { VersionSummary } from "./VersionSummary";
 
 export default function DraftPage() {
   const { id } = useParams<{ id: string }>();
@@ -71,6 +66,14 @@ export default function DraftPage() {
   const closedOfferState = buyer && !buyer.draftOpen && !version ? "EXPIRED" : undefined;
   useRoundRefresh((version?.state === "AWAIT_CONFIRMATIONS" || Boolean(!view && voting?.open)) && !trade.loading && !trade.busy, trade.refresh);
   const versionPath = `${path}/versions/${version?.version}`;
+  const showVoteHistory = Boolean(version && voting && !voting.open);
+  const votePanel = voting && view && <VotePanel
+    proposalId={view.proposalId}
+    offerState={closedOfferState}
+    latestVersionNumber={version?.version}
+    refreshSignal={`${version?.version ?? 0}:${version?.state ?? ""}:${voting.round}:${voting.open}`}
+    onUpdated={() => void trade.refresh()}
+  />;
   return <AppShell title="Thương lượng" illustration="basket" backHref={needHref} bare>
     <div className="grid gap-4">
       <TradeStatus {...trade} retry={() => void trade.refresh()} />
@@ -92,17 +95,11 @@ export default function DraftPage() {
           </p>
         </Card>
       )}
-      {view && isVotingOffer && (
+      {view && isVotingOffer && !showVoteHistory && (
         voting ? (
           <Card className="grid gap-3">
             <CardTitle as="h2">Bỏ phiếu đề nghị</CardTitle>
-            <VotePanel
-              proposalId={view.proposalId}
-              offerState={closedOfferState}
-              latestVersionNumber={version?.version}
-              refreshSignal={`${version?.version ?? 0}:${version?.state ?? ""}:${voting.round}:${voting.open}`}
-              onUpdated={() => void trade.refresh()}
-            />
+            {votePanel}
           </Card>
         ) : (
           <>
@@ -148,21 +145,9 @@ export default function DraftPage() {
           }),
         )}>Gửi bản chung</Button>}
       </Card>}
-      {version && <Card className="grid gap-3">
-        <CardTitle as="h2">Phiên bản {version.version} · {states[version.state]}</CardTitle>
-        <p>{version.qty} đơn vị × {vnd(version.unitPriceVnd)} · Tổng {vnd(version.totalVnd)}</p>
-        <p>Giao {dateTime(version.handoffStart)} đến {dateTime(version.handoffBy)}</p>
-        {version.myLine && <p>Phần của hộ bạn · {version.myLine.qty} đơn vị · {vnd(version.myLine.goodsVnd)}</p>}
-        {version.lines?.length ? <ul>{version.lines.map((line, index) => <li key={index}>{line.qty} đơn vị · {vnd(line.goodsVnd)}</li>)}</ul> : null}
-        {version.sellerNote && <p>Ghi chú cửa hàng · {version.sellerNote}</p>}
-        {version.state === "SUBMITTED" && <p>Hạn phản hồi · {dateTime(version.sellerResponseDueAt)}</p>}
-        {version.state === "AWAIT_REP_APPROVAL" && version.repApproveBy &&
-          <p>Hạn đại diện chốt đơn · {dateTime(version.repApproveBy)}</p>}
-        {version.reasonCode && <p>{
-          { SELLER_TIMEOUT: "Cửa hàng đã quá hạn phản hồi.", CONFIRMATION_TIMEOUT: "Các hộ chưa xác nhận đủ trước hạn.",
-            FINALIZE_TIMEOUT: "Đại diện chưa chốt đơn trước hạn." }[version.reasonCode]
-        }</p>}
-        {!buyer && version.state === "SUBMITTED" && <form className="grid gap-3" onSubmit={event => {
+      {version && <Card aria-label={`Phiên bản ${version.version}`} className="grid min-w-0 gap-4">
+        <VersionSummary version={version} seller={!buyer} />
+        {!buyer && version.state === "SUBMITTED" && <form className="grid min-w-0 gap-3 border-t border-line pt-4" onSubmit={event => {
           event.preventDefault();
           const submitter = (event.nativeEvent as SubmitEvent).submitter;
           if (!(submitter instanceof HTMLButtonElement)) return;
@@ -174,11 +159,18 @@ export default function DraftPage() {
             if (result.contractId) router.push(`/orders/${result.contractId}`);
           });
         }}>
-          <label className="grid gap-1">Ghi chú phản hồi<input className={INPUT_CLASS} name="note" /></label>
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" full={false} value="APPROVE" disabled={trade.busy}>Chấp thuận</Button>
-            <Button type="submit" full={false} value="REQUEST_CHANGES" variant="secondary" disabled={trade.busy}>Yêu cầu sửa</Button>
-            <Button type="submit" full={false} value="REJECT" variant="secondary" disabled={trade.busy}>Từ chối</Button>
+          <label className="grid gap-1.5 text-sm font-semibold">
+            <span>Ghi chú phản hồi <span className="font-normal text-navy-600">(không bắt buộc)</span></span>
+            <textarea className={`${INPUT_CLASS} min-h-18 resize-y py-2.5`} name="note" rows={2} placeholder="Nhập ghi chú" />
+          </label>
+          <div className="grid gap-2">
+            <Button type="submit" value="APPROVE" disabled={trade.busy}>
+              <MaterialSymbol name="check" size={20} /> Chấp thuận
+            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button className="px-2 text-sm" type="submit" value="REQUEST_CHANGES" variant="secondary" disabled={trade.busy}>Yêu cầu sửa</Button>
+              <Button className="px-2 text-sm" type="submit" value="REJECT" variant="ghost" disabled={trade.busy}>Từ chối</Button>
+            </div>
           </div>
         </form>}
         {!isVotingOffer && buyer?.permissions?.manageDraft && !buyer.draftOpen && ["CHANGES_REQUESTED", "EXPIRED", "STOCK_CONFLICT"].includes(version.state) &&
@@ -203,6 +195,16 @@ export default function DraftPage() {
             <Link className="ui-btn ui-btn--primary" href={`/orders/${version.contractId}`}>Xem đơn hàng</Link>
           )
         )}
+      </Card>}
+      {showVoteHistory && <Card padding="flush">
+        <details className="group">
+          <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2.5 px-4 py-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+            <MaterialSymbol name="how_to_vote" size={20} className="shrink-0 text-navy-600" />
+            Kết quả bỏ phiếu
+            <MaterialSymbol name="expand_more" size={20} className="ml-auto shrink-0 text-navy-600 group-open:rotate-180" />
+          </summary>
+          <div className="border-t border-line px-4 py-3">{votePanel}</div>
+        </details>
       </Card>}
     </div>
   </AppShell>;

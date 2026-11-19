@@ -1,225 +1,31 @@
 .orders-shortcuts { display: flex; gap: 8px; }
 .orders-shortcuts .ui-btn { min-inline-size: var(--oops-control-h); padding-inline: 12px; }
 
-.orders-notif-bar {
+.orders-notification-link {
   position: relative;
-  border: 1px solid var(--oops-line);
-  border-radius: var(--oops-radius-card);
-  background: var(--oops-surface);
-  box-shadow: 0 2px 10px rgba(15, 42, 67, 0.04);
-  overflow: hidden;
-  transition: box-shadow .2s ease, border-color .2s ease;
 }
-.orders-notif-bar[data-open="true"] {
-  border-color: color-mix(in srgb, var(--oops-lagoon), var(--oops-line) 55%);
-  box-shadow: 0 10px 26px rgba(15, 42, 67, 0.08);
-}
-.orders-notif-bar__trigger {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-height: 58px;
-  padding: 10px 14px;
-  background: transparent;
-  border: 0;
-  text-align: start;
-  cursor: pointer;
-  transition: background-color .15s ease;
-}
-.orders-notif-bar__trigger:hover { background: var(--oops-haze); }
-.orders-notif-bar__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 11px;
-  flex: none;
-  background: var(--oops-haze);
-  color: var(--oops-navy-600);
-}
-.orders-notif-bar__icon--active {
-  background: var(--oops-sky-tint);
-  color: var(--oops-sky-ink);
-}
-.orders-notif-bar__summary {
+
+.orders-notification-count {
+  position: absolute;
+  inset-block-start: -4px;
+  inset-inline-end: -4px;
   display: grid;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-.orders-notif-bar__title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.orders-notif-bar__title {
-  font-size: .95rem;
-  font-weight: 800;
-  color: var(--oops-navy-900);
+  place-items: center;
+  inline-size: max-content;
+  min-inline-size: 18px;
+  block-size: 18px;
+  padding-inline: 4px;
   white-space: nowrap;
-}
-.orders-notif-bar__badge {
-  display: inline-flex;
-  align-items: center;
-  flex: none;
-  white-space: nowrap;
-  padding: 2px 9px;
+  border: 1px solid var(--oops-surface);
   border-radius: var(--oops-radius-pill);
-  background: var(--oops-sky-tint);
-  color: var(--oops-sky-ink);
-  font-size: .75rem;
+  background: var(--oops-danger);
+  color: var(--oops-surface);
+  font-size: .64rem;
   font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
-.orders-notif-bar__badge--muted {
-  background: var(--oops-haze);
-  color: var(--oops-navy-600);
-}
-.orders-notif-bar__sub {
-  font-size: .84rem;
-  color: var(--oops-navy-600);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.orders-notif-bar__chevron {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
-  flex: none;
-  background: var(--oops-haze);
-  color: var(--oops-navy-600);
-  transition: transform .22s ease, background-color .15s ease;
-}
-.orders-notif-bar[data-open="true"] .orders-notif-bar__chevron {
-  transform: rotate(180deg);
-  background: var(--oops-sky-tint);
-  color: var(--oops-sky-ink);
-}
-.orders-notif-bar__collapse {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows .24s ease;
-}
-.orders-notif-bar[data-open="true"] .orders-notif-bar__collapse {
-  grid-template-rows: 1fr;
-}
-.orders-notif-bar__collapse-inner {
-  min-height: 0;
-  overflow: hidden;
-}
-.orders-notif-bar__drawer {
-  border-top: 1px solid var(--oops-line);
-  background: var(--oops-surface);
-}
-.orders-notif-bar__list {
-  display: grid;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.orders-notif-bar__item {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 14px;
-  border-bottom: 1px solid var(--oops-line);
-  transition: background-color .15s ease;
-}
-.orders-notif-bar__item--unread {
-  background: color-mix(in srgb, var(--oops-sky-tint), var(--oops-surface) 58%);
-}
-.orders-notif-bar__item-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  flex: none;
-}
-.orders-notif-bar__item-icon--sky { background: var(--oops-sky-tint); color: var(--oops-sky-ink); }
-.orders-notif-bar__item-icon--amber { background: var(--oops-amber-tint); color: var(--oops-amber-ink); }
-.orders-notif-bar__item-icon--green { background: var(--oops-green-100); color: var(--oops-green-700); }
-.orders-notif-bar__item-body {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-  flex: 1 1 150px;
-}
-.orders-notif-bar__item-title {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: .92rem;
-  color: var(--oops-navy-900);
-}
-.orders-notif-bar__item-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: .8rem;
-  font-weight: 600;
-  color: var(--oops-navy-600);
-}
-.orders-notif-bar__dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--oops-lagoon);
-  flex: none;
-}
-.orders-notif-bar__item-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-}
-.orders-notif-bar__action-link,
-.orders-notif-bar__action-read {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  min-height: 34px;
-  padding: 0 11px;
-  border-radius: var(--oops-radius-pill);
-  font-size: .8rem;
-  font-weight: 700;
-  white-space: nowrap;
-  text-decoration: none;
-  cursor: pointer;
-}
-.orders-notif-bar__action-link {
-  border: 1px solid var(--oops-line);
-  background: var(--oops-surface);
-  color: var(--oops-navy-900);
-}
-.orders-notif-bar__action-read {
-  border: 0;
-  background: var(--oops-green-100);
-  color: var(--oops-green-700);
-}
-.orders-notif-bar__action-read:disabled { opacity: .6; cursor: wait; }
-.orders-notif-bar__footer-link {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 10px 14px;
-  background: var(--oops-haze);
-  color: var(--oops-navy-900);
-  font-size: .84rem;
-  font-weight: 800;
-  text-decoration: none;
-}
-.orders-notif-bar__footer-link:hover { background: var(--oops-sky-tint); color: var(--oops-sky-ink); }
+
 .orders-role-filter { display: flex; align-items: center; gap: 12px; min-inline-size: 0; }
 .orders-role-filter select {
   min-height: var(--oops-control-h);

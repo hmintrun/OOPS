@@ -12,6 +12,7 @@ import {
 } from "@/lib/api-client";
 import { invalidateClientCache, readClientCache, writeClientCache } from "@/lib/client-cache";
 import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
+import { useErrorToast } from "@/components/ui/error-toast";
 import { defaultFamilyStatus, readSavedFamilyStatus } from "@/lib/family-status";
 import { ReceivingContactCard } from "@/app/groups/ReceivingContactCard";
 import { campaignDisplayState, formatDateTime, isPast } from "../_shared/dates";
@@ -75,9 +76,10 @@ async function loadCampaign(id: string): Promise<Data> {
 export function CampaignDetail({ campaignId }: { campaignId: string }) {
   const cartFormId = useId();
   const router = useRouter();
+  const showError = useErrorToast();
   const [data, setData] = useState<Data | undefined>(() => readClientCache<Data>(detailCacheKey(campaignId))?.value);
   const [draft, setDraft] = useState<Draft>(() => toDraft(readClientCache<Data>(detailCacheKey(campaignId))?.value.cart ?? null));
-  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [notice, setNotice] = useState("");
   const [reload, setReload] = useState(0);
   const [pendingAction, setPendingAction] = useState<CartAction>();
@@ -95,7 +97,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     const key = detailCacheKey(campaignId);
     const entry = readClientCache<Data>(key);
     const cached = reload === 0 ? entry : undefined;
-    setError("");
+    setLoadError("");
     setNeedsStatus("ready");
     setWalletNotReady(false);
 
@@ -123,7 +125,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     }).catch((error: unknown) => {
       if (!active) return;
       if (error instanceof ApiError && error.status === 401) router.replace("/login");
-      else if (!cached) setError(error instanceof Error ? error.message : "Không tải được đợt gom.");
+      else if (!cached) setLoadError(error instanceof Error ? error.message : "Không tải được đợt gom.");
     });
     return () => { active = false; needsRequest.current++; };
   }, [campaignId, reload, router]);
@@ -144,7 +146,6 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     busy.current = true;
     setPendingAction(operation);
     setNotice("");
-    setError("");
     setWalletNotReady(false);
     try {
       const result = await run(key);
@@ -162,7 +163,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         retry.current = undefined;
       }
       if (error instanceof ApiError && error.status === 401) router.replace("/login");
-      else setError(error instanceof Error ? error.message : "Không thực hiện được thao tác.");
+      else showError(error instanceof Error ? error.message : "Không thực hiện được thao tác.");
     } finally {
       busy.current = false;
       setPendingAction(undefined);
@@ -189,9 +190,9 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     }
   }
 
-  if (!data) return error ? (
+  if (!data) return loadError ? (
     <Card>
-      <Banner tone="error">{error}</Banner>
+      <Banner tone="error">{loadError}</Banner>
       <Button variant="secondary" onClick={() => setReload(value => value + 1)}>Thử lại</Button>
     </Card>
   ) : <LoadingState />;
@@ -243,7 +244,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     };
     const parsed = putCartInput.safeParse(body);
     if (!parsed.success) {
-      setError("Nhập số nguyên từ 0 đến 2.147.483.647 cho mỗi món.");
+      showError("Nhập số nguyên từ 0 đến 2.147.483.647 cho mỗi món.");
       return;
     }
     void action("save", JSON.stringify(parsed.data), "Đã lưu giỏ.", key => putCart(campaignId, parsed.data, key), applyCart);
@@ -256,7 +257,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         <p>Gom đến {formatDateTime(campaign.collectUntil)}</p>
         <p>Cần hàng trước {formatDateTime(campaign.needBy)}</p>
       </Card>
-      {error && <Banner tone="error">{error}</Banner>}
+      {loadError && <Banner tone="error">{loadError}</Banner>}
       {notice && <p role="status">{notice}</p>}
       {walletNotReady && <Card className="grid gap-2" padding="tight">
         <p className="text-small text-navy-600">Xác minh ví Fuji rồi lưu lại để cập nhật nhu cầu.</p>

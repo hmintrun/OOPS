@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { z } from "zod";
 import { Button } from "@/components/ui";
+import { useErrorToast } from "@/components/ui/error-toast";
 import { type Offer, type OfferVoting, offerVoting, sellerDraftView, voteInput } from "@/contracts/negotiation";
 import { ApiError, apiFetch, newIdempotencyKey } from "@/lib/api-client";
 import { dateTime, vnd } from "./trade-client";
@@ -38,9 +39,9 @@ export function VotePanel({
 }: VotePanelProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const showError = useErrorToast();
   const [voting, setVoting] = useState<OfferVoting | null | undefined>(undefined);
   const [loadError, setLoadError] = useState("");
-  const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
   const [editingVote, setEditingVote] = useState<string>();
   const [pendingAction, setPendingAction] = useState<"YES" | "NO" | "CLOSE" | null>(null);
@@ -56,16 +57,16 @@ export function VotePanel({
   const submitting = useRef(false);
   const keys = useRef(new Map<string, string>());
   const wasOpen = useRef<{ round: number; open: boolean } | undefined>(undefined);
+  const autoCloseAttempt = useRef<string | undefined>(undefined);
   const onUpdatedRef = useRef(onUpdated);
   useEffect(() => {
     onUpdatedRef.current = onUpdated;
   }, [onUpdated]);
 
   const fetchVoting = useCallback(
-    async (options?: { preserveActionError?: boolean; suppressOnUpdated?: boolean }): Promise<FetchResult> => {
+    async (options?: { suppressOnUpdated?: boolean }): Promise<FetchResult> => {
       const current = ++generation.current;
       setLoadError("");
-      if (!options?.preserveActionError) setActionError("");
       try {
         const next = await apiFetch(`/api/v1/offers/${encodeURIComponent(proposalId)}/vote`, {
           schema: offerVoting,
@@ -100,10 +101,10 @@ export function VotePanel({
 
   useEffect(() => {
     wasOpen.current = undefined;
+    autoCloseAttempt.current = undefined;
     keys.current.clear();
     setVoting(undefined);
     setLoadError("");
-    setActionError("");
     setNotice("");
     setEditingVote(undefined);
     setClosedRound(undefined);
@@ -111,7 +112,7 @@ export function VotePanel({
   }, [proposalId]);
 
   useEffect(() => {
-    void fetchVoting({ preserveActionError: true });
+    void fetchVoting();
     return () => {
       generation.current++;
     };
@@ -142,7 +143,7 @@ export function VotePanel({
   useEffect(() => {
     if (!voting?.open) return;
     const timer = window.setInterval(() => {
-      if (!document.hidden && !submitting.current) void fetchVoting({ preserveActionError: true });
+      if (!document.hidden && !submitting.current) void fetchVoting();
     }, 15_000);
     return () => window.clearInterval(timer);
   }, [voting?.open, fetchVoting]);
@@ -180,7 +181,8 @@ export function VotePanel({
   }, [voting, voteExpired, offerState, latestVersionNumber, refreshSignal, pathname, router]);
 
   async function castVote(choice: "YES" | "NO") {
-    if (!voting || submitting.current || !voting.open || Date.parse(voting.dueAt) <= Date.now()) return;
+    if (!voting || voting.availableQty === undefined || submitting.current || !voting.open ||
+      Date.parse(voting.dueAt) <= Date.now()) return;
     const availableQty = voting.availableQty;
     if (choice === "YES" && (availableQty === undefined || availableQty <= 0)) return;
     const body = voteInput.parse(
@@ -200,7 +202,6 @@ export function VotePanel({
     submitting.current = true;
     generation.current++;
     setPendingAction(choice);
-    setActionError("");
     setNotice("");
     try {
       const next = await apiFetch(`/api/v1/offers/${encodeURIComponent(proposalId)}/vote`, {
@@ -225,9 +226,9 @@ export function VotePanel({
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
         keys.current.delete(op);
       }
-      setActionError(error instanceof Error ? error.message : "Không gửi được phiếu bỏ.");
-      if (error instanceof ApiError && error.status === 409) {
-        const refreshed = await fetchVoting({ preserveActionError: true, suppressOnUpdated: true });
+      showError(error instanceof Error ? error.message : "Không gửi được phiếu.");
+      if (error instanceof ApiError && (error.status === 403 || error.status === 409)) {
+        const refreshed = await fetchVoting({ suppressOnUpdated: true });
         if (refreshed.justClosed || (refreshed.data && !refreshed.data.open)) {
           onUpdatedRef.current?.();
         }
@@ -238,8 +239,8 @@ export function VotePanel({
     }
   }
 
-  async function closeVoteRound() {
-    if (!voting || !voting.seller || submitting.current) return;
+  const closeVoteRound = useCallback(async () => {
+    if (!voting || (!voting.seller && !voting.readyToClose) || submitting.current) return;
     const round = voting.round;
     const op = `vote-close:${voting.draftId}:${round}`;
     const key = keys.current.get(op) ?? newIdempotencyKey();
@@ -247,7 +248,6 @@ export function VotePanel({
 
     submitting.current = true;
     setPendingAction("CLOSE");
-    setActionError("");
     setNotice("");
     try {
       const result = await apiFetch(`/api/v1/drafts/${encodeURIComponent(voting.draftId)}/vote-close`, {
@@ -257,13 +257,13 @@ export function VotePanel({
         idempotencyKey: key,
       });
       keys.current.delete(op);
-      const refreshed = await fetchVoting({ preserveActionError: true, suppressOnUpdated: true });
+      const refreshed = await fetchVoting({ suppressOnUpdated: true });
       if (result.closed) {
         setClosedRound(round);
         setNotice(
           refreshed.data && refreshed.data.totalQty > 0
             ? "Đã đóng vòng bỏ phiếu và lập phiên bản chờ cửa hàng phản hồi."
-            : "Đã đóng vòng bỏ phiếu.",
+            : "",
         );
         onUpdatedRef.current?.();
       } else if (refreshed.data && !refreshed.data.open) {
@@ -271,7 +271,7 @@ export function VotePanel({
         setNotice("Vòng bỏ phiếu đã được đóng trước đó.");
         onUpdatedRef.current?.();
       } else {
-        setNotice("Vòng bỏ phiếu chưa đến hạn đóng.");
+        setNotice("Vòng bỏ phiếu vẫn đang mở.");
       }
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -281,12 +281,23 @@ export function VotePanel({
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
         keys.current.delete(op);
       }
-      setActionError(error instanceof Error ? error.message : "Không đóng được vòng bỏ phiếu.");
+      showError(error instanceof Error ? error.message : "Không đóng được vòng bỏ phiếu.");
     } finally {
       submitting.current = false;
       setPendingAction(null);
     }
-  }
+  }, [fetchVoting, pathname, router, showError, voting]);
+
+  useEffect(() => {
+    if (!voting?.readyToClose) {
+      autoCloseAttempt.current = undefined;
+      return;
+    }
+    const key = `${voting.draftId}:${voting.round}`;
+    if (submitting.current || autoCloseAttempt.current === key) return;
+    autoCloseAttempt.current = key;
+    void closeVoteRound();
+  }, [closeVoteRound, voting]);
 
   if (voting === null) return null;
   if (voting === undefined) {
@@ -305,18 +316,15 @@ export function VotePanel({
   const alreadyEndedInParent =
     (offerState !== undefined && offerState !== "SUBMITTED") ||
     (knownVersion !== undefined && knownVersion >= voting.round);
-  const isClosed = alreadyEndedInParent || closedRound === voting.round;
+  const isClosed = voting.closed === true || alreadyEndedInParent || closedRound === voting.round ||
+    (!voting.open && !pastDue);
   const canCloseExpired = voting.seller && pastDue && !isClosed;
   const hasVoted = voting.myQty !== undefined;
   const voteKey = `${proposalId}:${voting.round}`;
   const canVote = !voting.seller && voting.open && !pastDue && !isClosed && voting.availableQty !== undefined;
   const showVoteChoices = canVote && (!hasVoted || editingVote === voteKey);
 
-  const statusLabel = isClosed ? "Đã đóng" : voting.open && !pastDue
-    ? "Đang mở"
-    : isClosed || !pastDue
-      ? "Đã đóng"
-      : "Đã quá hạn";
+  const statusLabel = isClosed ? "Đã đóng" : pastDue ? "Đã quá hạn" : "Đang mở";
   const myChoiceLabel = voting.seller
     ? undefined
     : voting.myQty !== undefined && voting.myQty > 0
@@ -326,8 +334,12 @@ export function VotePanel({
         : "Chưa bỏ phiếu";
 
   const details = context ?? (resolvedContext?.proposalId === proposalId ? resolvedContext.value : undefined);
+  const voterStatus = new Map(voting.voters?.map(voter => [voter.membershipId, voter.hasVoted]));
+  const eligibleMembers = details?.members?.filter(member => voterStatus.has(member.membershipId)) ?? [];
   const unit = details?.unit ?? "đơn vị";
-  const personalQty = showVoteChoices ? voting.availableQty : voting.myQty ?? voting.availableQty;
+  const personalQty = voting.open && voting.eligible === false
+    ? undefined
+    : showVoteChoices ? voting.availableQty : voting.myQty ?? voting.availableQty;
   const personalAmount = personalQty && personalQty > 0 ? offerAmounts(personalQty, voting.unitPriceVnd)?.goodsVnd : 0;
 
   return (
@@ -346,7 +358,13 @@ export function VotePanel({
         <p className="mt-1 text-small text-navy-600">Tiền hàng của riêng hộ bạn.</p>
       </div>}
       </div>
-      {myChoiceLabel && hasVoted && (
+      {voting.open && voting.eligible === false && (
+        <p className="text-small text-navy-600">Nhà bạn không còn phần nhu cầu để bỏ phiếu cho đề nghị này.</p>
+      )}
+      {isClosed && voting.totalQty === 0 && (
+        <p role="status" className="text-small font-semibold">Vòng đã chốt. Không có hộ chọn nhận hàng.</p>
+      )}
+      {myChoiceLabel && hasVoted && (!voting.open || voting.eligible !== false) && (
         <p role="status" className="text-small">
           Lựa chọn của hộ bạn: <strong>{myChoiceLabel}</strong>
         </p>
@@ -397,14 +415,14 @@ export function VotePanel({
         <ProgressCapsule value={voting.totalQty} total={details.offer.terms.qty} label={`Đã đăng ký nhận (${unit})`} />
         <p className="text-small text-navy-600">Còn {Math.max(0, details.offer.terms.qty - voting.totalQty)} {unit} trong đề nghị.</p>
       </> : <p className="text-small">Tổng đã chọn Có · <strong>{voting.totalQty} {unit}</strong> · Đơn giá {vnd(voting.unitPriceVnd)} / {unit}</p>}
-      {!voting.seller && details?.members && <section className="grid gap-2" aria-label="Các hộ trong cụm">
-        <h3 className="font-bold">Các hộ trong cụm</h3>
+      {voting.open && eligibleMembers.length > 0 && <section className="grid gap-2" aria-label="Các hộ có phần">
+        <h3 className="font-bold">Các hộ có phần</h3>
         <ul className="grid gap-2">
-          {details.members.map(member => <li key={member.membershipId} className="flex flex-wrap items-center justify-between gap-2 rounded-input bg-sky-tint p-3 text-small">
-            <strong>{member.userId === details.userId ? "Nhà bạn" : member.displayName}</strong>
-            <span>{member.userId === details.userId
+          {eligibleMembers.map(member => <li key={member.membershipId} className="flex flex-wrap items-center justify-between gap-2 rounded-input bg-sky-tint p-3 text-small">
+            <strong>{member.userId === details?.userId ? "Nhà bạn" : member.displayName}</strong>
+            <span>{member.userId === details?.userId
               ? voting.myQty === undefined ? "Chờ bạn chọn" : voting.myQty === 0 ? "Không tham gia" : "Đã đồng ý nhận phần"
-              : "Chưa có dữ liệu trạng thái"}</span>
+              : voterStatus.get(member.membershipId) ? "Đã bỏ phiếu" : "Chưa bỏ phiếu"}</span>
           </li>)}
         </ul>
       </section>}
@@ -424,7 +442,6 @@ export function VotePanel({
         </Button>
       )}
       {notice && <p role="status" className="text-small text-green-700">{notice}</p>}
-      {actionError && <p role="alert" className="text-small text-danger">{actionError}</p>}
     </section>
   );
 }
