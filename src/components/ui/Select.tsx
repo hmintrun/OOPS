@@ -7,9 +7,11 @@ export type SelectOption = { value: string; label: string };
 
 type SelectProps = {
   label: string;
+  showLabel?: boolean;
   value: string;
   options: SelectOption[];
   disabled?: boolean;
+  required?: boolean;
   onChange: (value: string) => void;
   className?: string;
   /** Hiện khi chưa chọn gì, màu navy-600. */
@@ -24,9 +26,11 @@ type SelectProps = {
  */
 export function Select({
   label,
+  showLabel = true,
   value,
   options,
   disabled = false,
+  required = false,
   onChange,
   className = "",
   placeholder,
@@ -42,7 +46,7 @@ export function Select({
         className={`ui-select ${disabled ? "ui-select--disabled" : ""}`.trim()}
       >
         {icon && <IconTile icon={icon.name} tone={icon.tone ?? "sky"} size="sm" />}
-        <span className="ui-select__label">{label}</span>
+        {showLabel && <span className="ui-select__label">{label}</span>}
         <div className="ui-select__value-wrap">
           <span
             className={`ui-select__value ${!selected ? "ui-select__value--placeholder" : ""}`.trim()}
@@ -55,6 +59,7 @@ export function Select({
           className="ui-select__native"
           value={value}
           disabled={disabled}
+          required={required}
           onChange={(e) => onChange(e.target.value)}
           aria-label={label}
         >

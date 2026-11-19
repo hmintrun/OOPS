@@ -9,6 +9,7 @@ import {
   OOPS_FUJI_CREDENTIAL_SIGNATURE,
 } from "@/lib/fuji/abi";
 import { ApiError, getWalletChallenge, leaveGroup, linkWallet } from "@/lib/api-client";
+import { transaction } from "@/server/db";
 
 const mocks = vi.hoisted(() => {
   const queries: Array<{ sql: string; params: unknown[] }> = [];
@@ -80,7 +81,7 @@ import {
   type FujiProofReader,
 } from "@/server/fuji/wallet";
 import { openRoundOnChain, syncFujiConfirmations, type FujiPublicAdapter } from "@/server/fuji/indexer";
-import { backoffDelaySeconds, runOutboxBatch, runWorkerCycle } from "@/server/worker/runner";
+import { backoffDelaySeconds, dispatchOutboxItem, runOutboxBatch, runWorkerCycle } from "@/server/worker/runner";
 
 const CONTRACT = "0x1111111111111111111111111111111111111111" as Address;
 const WALLET_A = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Address;
@@ -271,6 +272,58 @@ describe("Wallet challenge & proof verification", () => {
     expect(linkRes).toEqual({ verificationState: "VERIFIED" });
     expect(mocks.queries.some(q => q.sql.includes("insert into public.wallets"))).toBe(true);
     expect(mocks.queries.some(q => q.sql.includes("values ($1, $2, $3, 'USED', $4)"))).toBe(true);
+  });
+
+  it.each([
+    { name: "đúng ví và thử thách", enabled: true, wallet: WALLET_A, emitter: CONTRACT, ok: true },
+    { name: "sai địa chỉ ví", enabled: true, wallet: WALLET_B, emitter: CONTRACT, ok: false },
+    { name: "event phát từ contract khác", enabled: true, wallet: WALLET_A, emitter: WALLET_B, ok: false },
+    { name: "đã tắt tính năng tài trợ", enabled: false, wallet: WALLET_A, emitter: CONTRACT, ok: false },
+  ])("kiểm tra bằng chứng qua ERC-4337: $name", async ({ enabled, wallet, emitter, ok }) => {
+    const expiresAt = "2026-11-15T00:15:00.000Z";
+    const challengeHash = walletChallengeHash({
+      chainId: FUJI_CHAIN_ID, contractAddress: CONTRACT, userId: USER_A, nonce: NONCE_1, expiresAt,
+    });
+    const result = await prepareWalletProofVerification(
+      USER_A,
+      { address: WALLET_A, proofTx: TX_HASH_1, nonce: NONCE_1 },
+      {
+        confirmationContract: CONTRACT,
+        acceptSponsoredProofs: enabled,
+        loadChallenge: async () => ({ expiresAt, challengeHash, used: false, dbNowMs: Date.parse(expiresAt) - 60_000 }),
+        reader: makeProofReader({
+          getBlock: async () => ({ timestamp: BigInt(Date.parse(expiresAt) / 1000 - 30) }),
+          getTransactionReceipt: async () => ({
+            status: "success",
+            from: WALLET_B, // Bundler, không phải ví ký của hộ.
+            to: "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+            blockNumber: 199n,
+            logs: [{ ...buildWalletProvedLog(wallet, challengeHash, 1_800_000_000n), address: emitter }],
+          }),
+        }),
+      },
+    );
+    expect(result.ok).toBe(ok);
+    if (!result.ok) {
+      expect(result.failure.status).toBe(422);
+      return;
+    }
+    expect(result).toMatchObject({ normalizedAddress: WALLET_A, sponsored: true });
+
+    mocks.setQueryHandler(sql => {
+      if (sql.includes("action = 'ISSUED'")) {
+        return { rows: [{ id: "ae-sponsored", reason: `${expiresAt}|${challengeHash}`, expired: false }] };
+      }
+      if (sql.includes("action = 'USED'")) return { rows: [{ exists: false }] };
+      // Another household has already verified a different log from this bundle.
+      if (sql.includes("where lower(proof_tx)")) return { rows: [{ user_id: USER_B }] };
+      return { rows: [], rowCount: 1 };
+    });
+    const linked = await mocks.transaction(db => linkVerifiedWallet(
+      db as never, { userId: USER_A, displayName: "Hộ A" },
+      { address: WALLET_A, proofTx: TX_HASH_1, nonce: NONCE_1 }, result,
+    ));
+    expect(linked).toEqual({ verificationState: "VERIFIED" });
   });
 
   it("từ chối bằng chứng sai (ví gửi khác, hết hạn, challenge sai, nonce đã dùng) với 422", async () => {
@@ -694,6 +747,21 @@ describe("Fuji Indexer (openRoundOnChain & syncFujiConfirmations)", () => {
 });
 
 describe("Background worker & outbox dispatcher", () => {
+  it("keeps finalization notices only for orders that do not wait for a round to open", async () => {
+    const deps = { openRound: vi.fn(async () => undefined), runTx: transaction };
+    const item = { id: "finalized", attempts: 0 };
+    const recipients = { recipientUserIds: [USER_A] };
+    await dispatchOutboxItem({ ...item, kind: "NEGOTIATION_VERSION_STATE_CHANGED",
+      event_key: `negotiation-version:${VERSION_ID}:FINALIZED`, payload: { ...recipients, versionId: VERSION_ID, state: "FINALIZED" },
+    }, deps);
+    const order = { ...item, kind: "ORDER_STATE_CHANGED", event_key: `contract:${CONTRACT_ID}:1:FINALIZED` };
+    const payload = { ...recipients, contractId: CONTRACT_ID, action: "FINALIZED" };
+    await dispatchOutboxItem({ ...order, payload: { ...payload, state: "AWAIT_COMMITMENTS" } }, deps);
+    expect(mocks.persistNotifications).not.toHaveBeenCalled();
+    await dispatchOutboxItem({ ...order, payload: { ...payload, state: "AWAIT_DEPOSIT" } }, deps);
+    expect(mocks.persistNotifications).toHaveBeenCalledExactlyOnceWith(expect.anything(), "CONTRACT", CONTRACT_ID, order.event_key, [USER_A]);
+  });
+
   it("xử lý đủ 9 loại outbox event và đánh dấu processed_at", async () => {
     const items = [
       { id: "o1", kind: "FUJI_ROUND_OPEN_REQUESTED", event_key: "k1", payload: { draftId: DRAFT_ID, versionId: VERSION_ID, roundId: ROUND_ID }, attempts: 0 },

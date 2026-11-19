@@ -3,7 +3,8 @@
  * Nhẹ nhất có thể: chỉ kiểu DTO chung và error envelope, không dùng thư viện ngoài
  * (api-client dùng chung do worker khác sở hữu, không import vào đây).
  */
-import type { Me } from "@/contracts/foundation";
+import type { Me, PatchMeInput } from "@/contracts/foundation";
+import { clearClientCache, invalidateClientCache, writeClientCache } from "@/lib/client-cache";
 
 export type MeCallResult =
   | { ok: true; data: Me }
@@ -31,7 +32,7 @@ function readErrorMessage(raw: unknown): string | undefined {
 
 export async function callMe(
   method: "GET" | "PATCH",
-  body?: { contactPrivate: string },
+  body?: PatchMeInput,
 ): Promise<MeCallResult> {
   let response: Response;
   try {
@@ -54,7 +55,17 @@ export async function callMe(
 
   const raw: unknown = await response.json().catch(() => undefined);
   if (response.ok) {
-    return { ok: true, data: raw as Me };
+    const data = raw as Me;
+    writeClientCache("me", data);
+    if (method === "PATCH") {
+      invalidateClientCache("campaigns:");
+      invalidateClientCache("campaign-detail:");
+      invalidateClientCache("orders:");
+    }
+    return { ok: true, data };
+  }
+  if (response.status === 401) {
+    clearClientCache();
   }
   return {
     ok: false,

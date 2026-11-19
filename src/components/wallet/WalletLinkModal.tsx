@@ -17,15 +17,57 @@ import {
   txExplorerUrl,
 } from "@/lib/fuji/browser";
 import { Button } from "@/components/ui";
+import {
+  embeddedFujiConfigured,
+  sendEmbeddedFujiCall,
+  waitForEmbeddedFujiCall,
+  type SponsoredFujiCall,
+} from "@/lib/fuji/embedded";
 
 type PendingProof = {
   address: string;
   proofTx: string;
   nonce: string;
   idempotencyKey: string;
+  expiresAt: string;
 };
 
+export type WalletMethod = "core" | "embedded";
+type SponsoredProof = SponsoredFujiCall & { nonce: string; expiresAt: string };
+
 type StepPhase = "idle" | "challenge" | "signing" | "verifying" | "done";
+
+export function resolveWalletMethodOnOpen(
+  currentMethod: WalletMethod,
+  nextMethod: WalletMethod,
+  hasProof: boolean,
+): WalletMethod {
+  return hasProof ? currentMethod : nextMethod;
+}
+
+export function resolveWalletLinkAction(input: {
+  proof: { expiresAt: string } | null;
+  sponsored: { expiresAt: string } | null;
+  embedded: boolean;
+  now?: number;
+}): "submit_proof" | "verify_sponsored" | "fresh_challenge" {
+  const now = input.now ?? Date.now();
+  if (input.proof && Date.parse(input.proof.expiresAt) > now) return "submit_proof";
+  if (input.embedded && input.sponsored && Date.parse(input.sponsored.expiresAt) > now) return "verify_sponsored";
+  return "fresh_challenge";
+}
+
+export function walletLinkPrimaryLabel(input: {
+  hasProof: boolean;
+  embedded: boolean;
+  hasSponsored: boolean;
+  hasCurrentAddress: boolean;
+}): string {
+  if (input.hasProof) return "Gửi lại xác minh";
+  if (input.embedded && input.hasSponsored) return "Kiểm tra giao dịch";
+  if (input.embedded) return "Xác minh ví OOPS";
+  return input.hasCurrentAddress ? "Ký đổi ví trên Core Wallet" : "Kết nối & Ký trên Core Wallet";
+}
 
 export function WalletLinkModal({
   currentAddress,
@@ -42,12 +84,17 @@ export function WalletLinkModal({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [proof, setProof] = useState<PendingProof | null>(null);
+  const [sponsored, setSponsored] = useState<SponsoredProof | null>(null);
+  const [method, setMethod] = useState<WalletMethod>("core");
+  const embeddedEnabled = embeddedFujiConfigured();
+  const embedded = method === "embedded";
 
   useEffect(() => {
     setHasProvider(getInjectedWalletProvider() !== null);
   }, [open]);
 
-  function openModal() {
+  function openModal(nextMethod: WalletMethod) {
+    setMethod(current => resolveWalletMethodOnOpen(current, nextMethod, Boolean(proof)));
     setError("");
     setNotice("");
     setHasProvider(getInjectedWalletProvider() !== null);
@@ -68,32 +115,65 @@ export function WalletLinkModal({
     onData?.(updated);
     setProof(null);
     setPhase("done");
-    setNotice("Đã liên kết và xác minh ví Core Wallet trên Avalanche Fuji.");
+    setNotice("Đã xác minh ví. Bạn có thể kiểm tra điều kiện xác nhận ở trang Tài khoản.");
     setOpen(false);
+  }
+
+  async function verifySponsoredProof(pending: SponsoredProof) {
+    const txHash = await waitForEmbeddedFujiCall(pending.id);
+    setSponsored(null);
+    if (!txHash) throw new Error("Giao dịch thử không thành công. Vui lòng xác nhận lại.");
+    const nextProof = {
+      address: pending.address,
+      proofTx: txHash,
+      nonce: pending.nonce,
+      expiresAt: pending.expiresAt,
+      idempotencyKey: newIdempotencyKey(),
+    };
+    setProof(nextProof);
+    await submitProofToServer(nextProof);
   }
 
   async function runLinkFlow() {
     setError("");
     setNotice("");
     try {
-      if (proof) {
+      const action = resolveWalletLinkAction({ proof, sponsored, embedded });
+      if (action === "submit_proof" && proof) {
         await submitProofToServer(proof);
         return;
       }
+      if (action === "verify_sponsored" && sponsored) {
+        setPhase("signing");
+        await verifySponsoredProof(sponsored);
+        return;
+      }
+      setProof(null);
+      if (embedded) setSponsored(null);
 
       setPhase("challenge");
       const challenge = await getWalletChallenge();
 
       setPhase("signing");
-      const { address, txHash } = await sendProveWalletTransaction({
+      const call = {
         contractAddress: challenge.contractAddress,
         challengeHash: challenge.challengeHash as Hex,
-      });
+      };
+      if (embedded) {
+        const operation = await sendEmbeddedFujiCall(call);
+        const pending = { ...operation, nonce: challenge.nonce, expiresAt: challenge.expiresAt };
+        setSponsored(pending);
+        await verifySponsoredProof(pending);
+        return;
+      }
+
+      const { address, txHash } = await sendProveWalletTransaction(call);
 
       const nextProof: PendingProof = {
         address,
         proofTx: txHash,
         nonce: challenge.nonce,
+        expiresAt: challenge.expiresAt,
         idempotencyKey: newIdempotencyKey(),
       };
       setProof(nextProof);
@@ -113,10 +193,20 @@ export function WalletLinkModal({
 
   return (
     <div className="grid gap-2">
+      {embeddedEnabled && (
+        <Button
+          variant={currentAddress ? "secondary" : "primary"}
+          full={false}
+          onClick={() => openModal("embedded")}
+          data-testid="open-embedded-wallet"
+        >
+          {currentAddress ? "Dùng ví tích hợp OOPS" : "Thiết lập xác nhận trong OOPS"}
+        </Button>
+      )}
       <Button
-        variant={currentAddress ? "secondary" : "primary"}
+        variant={currentAddress || embeddedEnabled ? "secondary" : "primary"}
         full={false}
-        onClick={openModal}
+        onClick={() => openModal("core")}
         data-testid="open-wallet-link"
       >
         {currentAddress ? "Đổi ví Core Wallet" : "Liên kết ví Core Wallet"}
@@ -125,24 +215,26 @@ export function WalletLinkModal({
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
           role="dialog"
           aria-modal="true"
           aria-labelledby="wallet-link-title"
         >
-          <div className="grid w-full max-w-md gap-4 rounded-card border border-line bg-surface p-5 shadow-xl">
+          <div className="grid max-h-full w-full min-w-0 max-w-md grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto overscroll-contain rounded-card border border-line bg-surface p-5 shadow-xl [overflow-wrap:anywhere]">
             <div className="flex items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0">
                 <h3 id="wallet-link-title" className="text-lg font-bold text-navy-900">
-                  {currentAddress ? "Đổi ví Avalanche Fuji" : "Liên kết Core Wallet (Fuji)"}
+                  {embedded ? "Thiết lập ví OOPS" : currentAddress ? "Đổi ví Avalanche Fuji" : "Liên kết Core Wallet (Fuji)"}
                 </h3>
                 <p className="text-small text-navy-600">
-                  Xác thực quyền sở hữu ví on-chain trên mạng Avalanche Fuji (Chain ID: 43113).
+                  {embedded
+                    ? "Dùng tài khoản OOPS để thiết lập ví xác nhận. Phí giao dịch thử được tài trợ."
+                    : "Xác thực quyền sở hữu ví on-chain trên mạng Avalanche Fuji (Chain ID: 43113)."}
                 </p>
               </div>
               <button
                 type="button"
-                className="rounded-input px-2 py-1 text-small font-semibold text-navy-600 hover:bg-sky-tint"
+                className="min-h-11 shrink-0 self-start whitespace-nowrap rounded-input px-2 text-small font-semibold text-navy-600 hover:bg-sky-tint"
                 disabled={busy}
                 onClick={() => setOpen(false)}
               >
@@ -150,7 +242,7 @@ export function WalletLinkModal({
               </button>
             </div>
 
-            {!hasProvider && (
+            {!embedded && !hasProvider && (
               <div className="rounded-input bg-sun-tint p-3 text-small text-navy-900">
                 <p className="font-semibold">Chưa phát hiện tiện ích Core Wallet trên trình duyệt này.</p>
                 <p className="mt-1">
@@ -177,6 +269,16 @@ export function WalletLinkModal({
               </div>
             )}
 
+            {embedded && currentAddress && (
+              <p className="text-small text-navy-600">
+                Nếu ví OOPS có địa chỉ khác, thao tác này sẽ đổi ví. OOPS sẽ chặn đổi ví khi bạn còn nghĩa vụ với đơn.
+              </p>
+            )}
+            {embedded ? (
+              busy && <p role="status" className="text-small text-navy-600">
+                {phase === "verifying" ? "Đang xác minh ví…" : "Đang chuẩn bị xác nhận trên Fuji…"}
+              </p>
+            ) : (
             <ol className="grid gap-2 rounded-input bg-sky-tint p-3 text-small text-navy-900">
               <li className={phase === "challenge" ? "font-bold text-green-700" : ""}>
                 1. Nhận thử thách một lần từ hệ thống OOPS
@@ -188,6 +290,7 @@ export function WalletLinkModal({
                 3. Xác minh biên nhận giao dịch và cập nhật trạng thái đủ điều kiện
               </li>
             </ol>
+            )}
 
             {proof && (
               <p className="text-small text-green-700">
@@ -209,12 +312,17 @@ export function WalletLinkModal({
               </p>
             )}
 
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button variant="ghost" full={false} disabled={busy} onClick={() => setOpen(false)}>
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-[auto_minmax(0,1fr)] sm:justify-self-end">
+              <Button variant="ghost" disabled={busy} onClick={() => setOpen(false)}>
                 Huỷ
               </Button>
-              <Button loading={busy} full={false} onClick={() => void runLinkFlow()}>
-                {proof ? "Gửi lại xác minh" : currentAddress ? "Ký đổi ví trên Core Wallet" : "Kết nối & Ký trên Core Wallet"}
+              <Button loading={busy} onClick={() => void runLinkFlow()}>
+                {walletLinkPrimaryLabel({
+                  hasProof: Boolean(proof),
+                  embedded,
+                  hasSponsored: Boolean(sponsored),
+                  hasCurrentAddress: Boolean(currentAddress),
+                })}
               </Button>
             </div>
           </div>

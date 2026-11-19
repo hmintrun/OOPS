@@ -14,6 +14,7 @@ export type OrderRow = {
   rep_contact: string | null;
   handoff_private: string;
   qty: number;
+  unit: string;
   unit_price_vnd: string;
   goods_vnd: string;
   deposit_vnd: string;
@@ -31,7 +32,7 @@ export type OrderRow = {
   version: number;
 };
 
-export type AllocationRow = { id: string; membership_id: string; qty: number; goods_vnd: string; user_id: string };
+export type AllocationRow = { id: string; membership_id: string; qty: number; goods_vnd: string; user_id: string; display_name: string };
 export type ReceiptRow = {
   id: string; contract_id: string; version: number; handed_at: Date; scheduled_handoff_by: Date;
   received_lines: Receipt["lines"]; evidence_ids: string[]; state: Receipt["state"];
@@ -42,8 +43,14 @@ export type TerminationRow = {
 };
 
 const orderFrom = `from public.contracts c join public.proposals p on p.id = c.proposal_id
+  join public.demand_items d on d.id = p.demand_item_id
+  join public.catalog_items ci on ci.id = d.sku_id
   join public.profiles rep on rep.id = c.rep_id`;
-const orderColumns = "c.*, p.demand_item_id, p.seller_id, p.handoff_private, rep.contact_private as rep_contact";
+const orderColumns = "c.*, p.demand_item_id, p.seller_id, p.handoff_private, ci.unit, rep.contact_private as rep_contact";
+const buyerOfOrder = `(c.rep_id = $1 or exists (
+  select 1 from public.allocations a join public.memberships m on m.id = a.membership_id
+  where a.contract_id = c.id and m.user_id = $1
+))`;
 
 export async function findOrder(db: PoolClient, id: string, lock = false) {
   const { rows: [order] } = await db.query<OrderRow>(
@@ -69,9 +76,18 @@ export async function lockStock(db: PoolClient, demandItemId: string, membership
 }
 
 export async function orderAllocations(db: PoolClient, id: string) {
+  // The timestamp is optional during rollout and was never stored for older votes.
   const { rows } = await db.query<AllocationRow>(
-    `select a.id, a.membership_id, a.qty, a.goods_vnd, m.user_id from public.allocations a
-     join public.memberships m on m.id = a.membership_id where a.contract_id = $1 order by a.id`,
+    `select a.id, a.membership_id, a.qty, a.goods_vnd, m.user_id, p.display_name
+     from public.allocations a
+     join public.memberships m on m.id = a.membership_id
+     join public.profiles p on p.id = m.user_id
+     join public.contracts c on c.id = a.contract_id
+     join public.negotiation_versions v on v.id = c.source_version_id
+     left join public.offer_votes vote on vote.negotiation_id = v.negotiation_id and vote.round = v.version
+       and vote.membership_id = a.membership_id and vote.qty > 0
+     where a.contract_id = $1
+     order by (to_jsonb(vote)->>'accepted_at')::timestamptz nulls first, a.id`,
     [id],
   );
   return rows;
@@ -106,8 +122,13 @@ export async function receiptDto(db: PoolClient, row: ReceiptRow, ownAllocations
 export async function orderDto(db: PoolClient, order: OrderRow, actorId: string): Promise<Contract> {
   const party = actorId === order.rep_id || actorId === order.seller_id;
   const all = await orderAllocations(db, order.id);
-  const allocations = party ? all : all.filter(row => row.user_id === actorId);
-  if (!party && allocations.length === 0) throw notFound();
+  const own = all.filter(row => row.user_id === actorId);
+  if (!party && own.length === 0) throw notFound();
+  const allocations = party ? all : own;
+  const myShare = own.reduce((sum, row) => ({
+    qty: sum.qty + row.qty,
+    goodsVnd: sum.goodsVnd + Number(row.goods_vnd),
+  }), { qty: 0, goodsVnd: 0 });
   const { rows: charges } = await db.query<{
     id: string; kind: Contract["charges"][number]["kind"]; state: Contract["charges"][number]["state"]; amount_vnd: string; due_at: Date;
     can_pay: boolean;
@@ -145,7 +166,7 @@ export async function orderDto(db: PoolClient, order: OrderRow, actorId: string)
   return {
     contractId: order.id, demandItemId: order.demand_item_id, sourceVersionId: order.source_version_id,
     sellerId: order.seller_id, repId: order.rep_id, version: order.version, state: order.state,
-    qty: order.qty, unitPriceVnd: Number(order.unit_price_vnd), goodsVnd: Number(order.goods_vnd), depositVnd: Number(order.deposit_vnd),
+    qty: order.qty, unit: order.unit, unitPriceVnd: Number(order.unit_price_vnd), goodsVnd: Number(order.goods_vnd), depositVnd: Number(order.deposit_vnd),
     handoffStart: order.handoff_start.toISOString(),
     handoffBy: order.handoff_by.toISOString(), approvalDueAt: order.approval_due_at.toISOString(),
     ...(order.review_scope && { reviewScope: order.review_scope }),
@@ -156,7 +177,11 @@ export async function orderDto(db: PoolClient, order: OrderRow, actorId: string)
     }),
     ...(round && { roundId: round.id, roundOpenBy: round.open_by.toISOString() }),
     ...(order.ready_at && { readyAt: order.ready_at.toISOString() }),
-    allocations: allocations.map(row => ({ allocationId: row.id, qty: row.qty, goodsVnd: Number(row.goods_vnd) })),
+    allocations: allocations.map(row => ({
+      allocationId: row.id, qty: row.qty, goodsVnd: Number(row.goods_vnd),
+      ...(actorId === order.rep_id && { householdName: row.display_name }),
+    })),
+    ...(own.length > 0 && { myShare }),
     charges: charges.map(row => ({
       chargeId: row.id, kind: row.kind, state: row.state, amountVnd: Number(row.amount_vnd),
       ...(!round?.awaiting_open && { dueAt: row.due_at.toISOString() }),
@@ -186,10 +211,7 @@ export async function listOrders(db: PoolClient, actorId: string, filters: z.out
   const { rows } = await db.query<OrderRow>(
     `select ${orderColumns} ${orderFrom} where (
        ($2::text is distinct from 'buyer' and p.seller_id = $1)
-       or ($2::text is distinct from 'seller' and (c.rep_id = $1 or exists (
-         select 1 from public.allocations a join public.memberships m on m.id = a.membership_id
-         where a.contract_id = c.id and m.user_id = $1
-       )))
+       or ($2::text is distinct from 'seller' and ${buyerOfOrder})
      ) and ($3::text is null or c.state = $3) and ($4::uuid is null or c.id > $4)
      order by c.id limit $5`,
     [actorId, filters.role ?? null, filters.state ?? null, filters.cursor ?? null, limit + 1],
@@ -198,4 +220,17 @@ export async function listOrders(db: PoolClient, actorId: string, filters: z.out
     items: await Promise.all(rows.slice(0, limit).map(row => orderDto(db, row, actorId))),
     ...(rows.length > limit && { nextCursor: rows[limit - 1].id }),
   };
+}
+
+export async function listOrdersForDemand(db: PoolClient, actorId: string, demandItemId: string) {
+  const { rows } = await db.query<{
+    contractId: string; itemName: string; state: Contract["state"]; qty: number; unit: string; handoffStart: Date;
+  }>(
+    `select c.id as "contractId", ci.name as "itemName", c.state, c.qty, ci.unit, c.handoff_start as "handoffStart"
+     ${orderFrom}
+     where p.demand_item_id = $2 and (p.seller_id = $1 or ${buyerOfOrder})
+     order by c.handoff_start desc, c.id`,
+    [actorId, demandItemId],
+  );
+  return rows;
 }

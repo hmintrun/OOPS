@@ -5,9 +5,9 @@ import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import type { Me } from "@/contracts/foundation";
+import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { PwaInstallCard } from "@/components/pwa";
 import { AccountSection } from "./AccountSection";
-import { ContactSection } from "./ContactSection";
 import { SignOutSection } from "./SignOutSection";
 import { WalletSection } from "./WalletSection";
 import { callMe } from "./me-api";
@@ -18,17 +18,20 @@ type State =
   | { phase: "error"; message: string }
   | { phase: "ready"; data: Me };
 
-/** Màn Tài khoản: đọc GET /api/v1/me, sửa liên hệ riêng qua PATCH, xem ví Fuji, đăng xuất. */
 export default function MePage() {
   const router = useRouter();
-  const [state, setState] = useState<State>({ phase: "loading" });
+  const [state, setState] = useState<State>(() => {
+    const cached = readClientCache<Me>("me");
+    return cached ? { phase: "ready", data: cached.value } : { phase: "loading" };
+  });
 
   const goLogin = useCallback(() => {
     router.replace("/login");
   }, [router]);
 
-  const load = useCallback(async () => {
-    setState({ phase: "loading" });
+  const load = useCallback(async (options?: { background?: boolean }) => {
+    const background = options?.background ?? false;
+    if (!background) setState({ phase: "loading" });
     const result = await callMe("GET");
     if (result.ok) {
       setState({ phase: "ready", data: result.data });
@@ -38,15 +41,24 @@ export default function MePage() {
       goLogin();
       return;
     }
-    setState({ phase: "error", message: result.message });
+    if (!background) {
+      setState({ phase: "error", message: result.message });
+    }
   }, [goLogin]);
 
-  function onData(data: Me) {
-    setState({ phase: "ready", data });
+  function mergeData(fields: Partial<Me>) {
+    setState(current => {
+      if (current.phase !== "ready") return current;
+      const next = { ...current.data, ...fields };
+      writeClientCache("me", next);
+      return { phase: "ready", data: next };
+    });
   }
 
   useEffect(() => {
-    void load();
+    const cached = readClientCache<Me>("me");
+    if (!cached) void load();
+    else if (!cached.isFresh) void load({ background: true });
   }, [load]);
 
   return (
@@ -85,9 +97,17 @@ export default function MePage() {
 
         {state.phase === "ready" && (
           <>
-            <AccountSection data={state.data} />
-            <ContactSection data={state.data} onData={onData} onUnauthorized={goLogin} />
-            <WalletSection data={state.data} onData={onData} onUnauthorized={goLogin} />
+            <AccountSection
+              data={state.data}
+              onData={({ displayName, location, contactPrivate }) => mergeData({ displayName, location, contactPrivate })}
+              onUnauthorized={goLogin}
+            />
+            <WalletSection
+              data={state.data}
+              onData={({ wallet, confirmationEligible, confirmationEligibilityUnavailable }) =>
+                mergeData({ wallet, confirmationEligible, confirmationEligibilityUnavailable })}
+              onUnauthorized={goLogin}
+            />
             <SignOutSection />
           </>
         )}

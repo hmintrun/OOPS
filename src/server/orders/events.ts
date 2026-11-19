@@ -5,9 +5,9 @@ export const demoTiming = { confirm: 8, representative: 4, deposit: 4, goods: 6,
 
 export async function recordOrderEvent(
   db: PoolClient, contractId: string, action: string, revision: number, actor: string | null,
-  disbursement?: { id: string; payeeId: string },
+  target?: { recipientUserId: string; disbursementId?: string },
 ) {
-  const eventKey = `contract:${contractId}:${revision}:${action}${disbursement ? `:${disbursement.id}` : ""}`;
+  const eventKey = `contract:${contractId}:${revision}:${action}${target?.disbursementId ? `:${target.disbursementId}` : ""}`;
   const event = await db.query(
     `insert into public.outbox (kind, event_key, payload)
      select 'ORDER_STATE_CHANGED', $2, jsonb_strip_nulls(jsonb_build_object(
@@ -20,7 +20,7 @@ export async function recordOrderEvent(
        ) recipients) end))
      from public.contracts c join public.proposals p on p.id = c.proposal_id where c.id = $1
      on conflict (event_key) do nothing`,
-    [contractId, eventKey, action, disbursement?.id ?? null, disbursement?.payeeId ?? null],
+    [contractId, eventKey, action, target?.disbursementId ?? null, target?.recipientUserId ?? null],
   );
   if (!event.rowCount) return false;
   await db.query(

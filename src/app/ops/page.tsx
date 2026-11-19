@@ -7,6 +7,7 @@ import { Button, Card, CardTitle } from "@/components/ui";
 import { Banner } from "@/app/campaigns/_shared/ui";
 import { opsOverview } from "@/contracts/orders";
 import { ApiError, apiFetch } from "@/lib/api-client";
+import { invalidateClientCache } from "@/lib/client-cache";
 import { TradeStatus } from "@/app/trade/TradeStatus";
 import { useTrade, vnd } from "@/app/trade/trade-client";
 import { AuditTab } from "./AuditTab";
@@ -21,12 +22,13 @@ export default function OpsPage() {
   const [contractFilter, setContractFilter] = useState<string>();
 
   const loadOverview = useCallback(() => apiFetch("/api/v1/ops/overview", { schema: opsOverview }), []);
-  const overviewTrade = useTrade(loadOverview);
+  const overviewTrade = useTrade(loadOverview, "ops:overview");
   const denied = overviewTrade.failure instanceof ApiError && overviewTrade.failure.status === 403;
   const overview = overviewTrade.data;
 
   async function refreshOverview() {
-    await overviewTrade.refresh({ background: true });
+    invalidateClientCache();
+    await overviewTrade.refresh({ background: true, force: true });
   }
 
   return (
@@ -34,12 +36,12 @@ export default function OpsPage() {
       title="Quản trị & Đối soát SIM"
       subtitle="Theo dõi hợp đồng, đối soát cọc người bán, tiền hàng hộ dân và chi/hoàn SIM."
       icon={{ icon: "admin_panel_settings", tone: "amber" }}
+      backHref="/orders"
       bare
     >
       <div className="grid gap-4">
         <Card className="flex flex-wrap items-center justify-between gap-2" padding="tight">
           <div className="flex flex-wrap gap-2">
-            <Link href="/orders" className="ui-btn ui-btn--secondary">Về đơn hàng</Link>
             <Link href="/me" className="ui-btn ui-btn--ghost">Tài khoản</Link>
           </div>
           {overview && (
@@ -55,7 +57,10 @@ export default function OpsPage() {
                 full={false}
                 variant="secondary"
                 disabled={overviewTrade.loading}
-                onClick={() => void overviewTrade.refresh()}
+                onClick={() => {
+                  invalidateClientCache();
+                  void overviewTrade.refresh({ force: true });
+                }}
               >
                 Làm mới
               </Button>
@@ -75,7 +80,7 @@ export default function OpsPage() {
             </div>
           </Card>
         ) : (
-          <TradeStatus {...overviewTrade} retry={() => void overviewTrade.refresh()} />
+          <TradeStatus {...overviewTrade} retry={() => void overviewTrade.refresh({ force: true })} />
         )}
 
         {overview && (

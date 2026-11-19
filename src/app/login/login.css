@@ -84,28 +84,14 @@
 .login-form-heading p { color: var(--oops-navy-600); margin-top: 4px; line-height: 1.4; }
 .login-field { background: var(--oops-haze); }
 .login-field:focus-within { border-color: var(--oops-jade); box-shadow: 0 0 0 3px var(--oops-mint); }
+.login-password-toggle { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; }
+.login-password-toggle input { accent-color: var(--oops-green-700); }
 .login-page :is(button, a, summary):focus-visible { outline: 2px solid var(--oops-navy-900); outline-offset: 3px; }
 .login-sample { margin-top: 12px; padding-inline: 12px; border-radius: var(--oops-radius-input); background: var(--oops-sky-100); }
 .login-sample summary { padding-block: 12px; cursor: pointer; font-weight: 700; color: var(--oops-navy-900); }
 .login-sample__actions { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 12px; }
 .login-sample__button { min-height: 44px; padding-inline: 12px; border-radius: var(--oops-radius-pill); background: var(--oops-surface); font-weight: 700; cursor: pointer; }
 .login-sample__button:hover { background: var(--oops-green-100); }
-.login-demo { display: grid; margin-top: 4px; }
-.login-demo__link {
-  display: flex;
-  min-height: 44px;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: var(--oops-radius-input);
-  background: var(--oops-sun-tint);
-  color: var(--oops-navy-900);
-  font-weight: 800;
-  text-align: center;
-}
-.login-demo__link .material-symbols-rounded { flex: none; color: var(--oops-amber-ink); }
-.login-demo__link:hover { background: color-mix(in srgb, var(--oops-sun) 40%, var(--oops-sun-tint)); }
 
 @media (width >= 52rem) {
   .login-page { padding: 24px; }

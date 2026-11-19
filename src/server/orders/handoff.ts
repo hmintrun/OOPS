@@ -55,19 +55,18 @@ export async function createReceipt(db: PoolClient, actorId: string, id: string,
   if (proof.rowCount !== input.evidenceIds.length || (input.lines.some(line => line.receivedQty > 0) && !proof.rowCount)) {
     throw invalid("Biên nhận cần bằng chứng hợp lệ của hợp đồng.");
   }
-  const validTime = await db.query(
-    `select 1 from public.contracts where id = $1 and $2::timestamptz >= handoff_eligible_at
-     and $2::timestamptz <= clock_timestamp()`, [id, input.handedAt],
-  );
-  if (!validTime.rowCount) throw invalid("Thời điểm thực nhận không hợp lệ.");
-
   await db.query("update public.receipts set state = 'SUPERSEDED' where contract_id = $1 and state = 'DRAFT'", [id]);
   const { rows: [saved] } = await db.query<ReceiptRow>(
-    `insert into public.receipts (contract_id, version, received_lines, evidence_ids, handed_at, scheduled_handoff_by, state)
+    `with submitted as (select coalesce($4::timestamptz, statement_timestamp()) as handed_at)
+     insert into public.receipts (contract_id, version, received_lines, evidence_ids, handed_at, scheduled_handoff_by, state)
      select c.id, coalesce((select max(version) from public.receipts where contract_id = c.id), 0) + 1,
-       $2, $3, $4, c.handoff_by, 'DRAFT' from public.contracts c where c.id = $1 returning *`,
-    [id, JSON.stringify(input.lines), input.evidenceIds, input.handedAt],
+       $2, $3, submitted.handed_at, c.handoff_by, 'DRAFT'
+     from public.contracts c cross join submitted where c.id = $1
+       and submitted.handed_at between c.handoff_eligible_at and statement_timestamp()
+     returning *`,
+    [id, JSON.stringify(input.lines), input.evidenceIds, input.handedAt ?? null],
   );
+  if (!saved) throw invalid("Giờ thực nhận phải từ lúc đơn đủ điều kiện bàn giao đến hiện tại.");
   await db.query(
     `with next as (
        select id, state = 'NEEDS_REVIEW' or approval_due_at <= clock_timestamp()
@@ -211,7 +210,7 @@ export async function cancelBySeller(db: PoolClient, actorId: string, id: string
 
 export async function proposeTermination(db: PoolClient, actorId: string, id: string, input: z.output<typeof terminationInput>) {
   const { order, allocations } = await lockOrderStock(db, id);
-  requireHandoffParty(order, actorId);
+  const role = requireHandoffParty(order, actorId);
   if (await expireCollectionUnderLock(db, order, allocations)) {
     return conflict("Đã hết hạn thu tiền. Hợp đồng đã được hủy theo điều khoản.");
   }
@@ -228,7 +227,9 @@ export async function proposeTermination(db: PoolClient, actorId: string, id: st
     [id, actorId, input.version, input.note ?? null],
   );
   if (!saved) throw conflict("Đơn đã có yêu cầu hủy đang chờ.");
-  await recordOrderEvent(db, id, "TERMINATION_PROPOSED", order.version, actorId);
+  await recordOrderEvent(db, id, "TERMINATION_PROPOSED", order.version, actorId, {
+    recipientUserId: role === "SELLER" ? order.rep_id : order.seller_id,
+  });
   return { terminationId: saved.id, state: "PENDING" as const };
 }
 

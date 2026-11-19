@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
+import { invalidateClientCache } from "@/lib/client-cache";
+import { parseGroupInviteEntry } from "@/lib/group-invite";
 
 /** Kết quả thành công của POST /api/v1/invites/accept (contract `membership`). */
 type AcceptedMembership = { groupId: string; membershipId: string; role: "MEMBER" | "REP" };
@@ -50,9 +52,9 @@ function loginHref(token: string): string {
   return `/login?next=${encodeURIComponent(joinHref(token))}`;
 }
 
-function InviteLinkForm() {
+function InviteEntryForm() {
   const router = useRouter();
-  const [link, setLink] = useState("");
+  const [entry, setEntry] = useState("");
   const [error, setError] = useState("");
 
   return (
@@ -62,40 +64,30 @@ function InviteLinkForm() {
         className="grid gap-3"
         onSubmit={event => {
           event.preventDefault();
-          const origin = window.location.origin;
-          let url: URL;
-          try {
-            url = new URL(link.trim(), origin);
-          } catch {
-            setError("Liên kết mời không hợp lệ.");
-            return;
-          }
-          const tokens = url.searchParams.getAll("token");
-          const token = tokens.length === 1 ? tokens[0].trim() : "";
-          if (url.origin !== origin || url.pathname !== "/join" || url.username || url.password || !token) {
-            setError("Vui lòng dán đúng liên kết mời của OOPS trên địa chỉ bạn đang dùng.");
+          const token = parseGroupInviteEntry(entry, window.location.origin);
+          if (!token) {
+            setError("Nhập liên kết mời của OOPS hoặc mã nhóm từ 6 đến 8 chữ cái và chữ số.");
             return;
           }
           router.replace(joinHref(token));
         }}
       >
         <p id="invite-link-help" className="text-body text-navy-600">
-          Liên kết do đại diện gửi, có hiệu lực 24 giờ và chỉ dùng được một lần.
+          Nhập liên kết hoặc mã nhóm do đại diện chia sẻ.
         </p>
-        <label htmlFor="invite-link" className="text-label text-navy-900">Liên kết mời</label>
+        <label htmlFor="invite-link" className="text-label text-navy-900">Liên kết mời hoặc mã nhóm</label>
         <input
           id="invite-link"
           className="h-control w-full rounded-input border border-line bg-surface px-4 text-body text-navy-900"
           type="text"
-          inputMode="url"
           autoComplete="off"
           autoCapitalize="none"
           spellCheck={false}
-          value={link}
+          value={entry}
           required
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? "invite-link-help invite-link-error" : "invite-link-help"}
-          onChange={event => { setLink(event.target.value); setError(""); }}
+          onChange={event => { setEntry(event.target.value); setError(""); }}
         />
         {error && <p id="invite-link-error" role="alert" className="text-small text-danger">{error}</p>}
         <Button type="submit">Tham gia nhóm</Button>
@@ -113,7 +105,7 @@ function InviteLinkForm() {
 export function JoinForm() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token")?.trim() ?? "";
-  return token ? <AcceptInvite key={token} token={token} /> : <InviteLinkForm />;
+  return token ? <AcceptInvite key={token} token={token} /> : <InviteEntryForm />;
 }
 
 function AcceptInvite({ token }: { token: string }) {
@@ -153,6 +145,8 @@ function AcceptInvite({ token }: { token: string }) {
           return;
         }
         startedRef.current = true;
+        invalidateClientCache();
+        router.refresh();
         setState({ kind: "success", membership });
         return;
       }
@@ -235,7 +229,7 @@ function AcceptInvite({ token }: { token: string }) {
           <p className="text-body text-navy-600">{state.message}</p>
         </div>
         <p className="mt-3 text-body text-navy-900">
-          Đăng nhập xong, bạn sẽ quay lại đúng liên kết mời này để vào nhóm.
+          Đăng nhập xong, bạn sẽ quay lại để nhận lời mời.
         </p>
         <div className="mt-4">
           <Link href={loginHref(token)} className="no-underline">
@@ -256,16 +250,13 @@ function AcceptInvite({ token }: { token: string }) {
         <IconTile icon="error" tone="rose" />
         <p className="text-body text-navy-900">{state.message}</p>
       </div>
-      <p className="mt-3 text-small text-navy-600">
-        Lời mời có hiệu lực 24 giờ. Nếu đã hết hạn, hãy nhờ đại diện nhóm gửi liên kết mới.
-      </p>
       <div className="mt-4 grid gap-2">
         <Button onClick={retry}>
           <MaterialSymbol name="refresh" className="ui-btn__icon" />
           Thử lại
         </Button>
         <Link href="/join" className="ui-btn ui-btn--secondary ui-btn--full">
-          Nhập liên kết khác
+          Nhập liên kết hoặc mã khác
         </Link>
         <Link href="/groups" className="no-underline">
           <span className="ui-btn ui-btn--ghost ui-btn--full">

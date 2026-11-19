@@ -9,7 +9,8 @@ import { WidgetDialog } from "@/components/ui/WidgetDialog";
 import { DemandCard } from "@/app/feed/DemandCard";
 import { FEED_PAGE_SIZE, FeedPagination } from "@/app/feed/FeedPagination";
 import { OfferModalWidget, type OfferSubmitData } from "@/app/feed/OfferModalWidget";
-import { FamilyStatusWidget, readFamilyStatus, type FamilyStatusData } from "@/app/groups/FamilyStatusWidget";
+import { FamilyStatusWidget } from "@/app/groups/FamilyStatusWidget";
+import { defaultFamilyStatus, readFamilyStatus, type FamilyStatusData } from "@/lib/family-status";
 import { PwaInstallCard } from "@/components/pwa";
 import { CAMPAIGN_STATUS_LABEL, campaignDisplayState, formatDateTime, toLocalInputValue } from "@/app/campaigns/_shared/dates";
 import type { CatalogItem, DemandItem } from "@/contracts/foundation";
@@ -331,7 +332,7 @@ const INITIAL_DEMO_ORDERS: DemoOrderItem[] = [
 
 export function OopsDemo() {
   const [tab, setTab] = useState<Tab>("groups");
-  const [people, setPeople] = useState(() => readFamilyStatus().members);
+  const [people, setPeople] = useState(defaultFamilyStatus.members);
   const [itemQuantities, setItemQuantities] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState(false);
   const [isCampaignManageOpen, setIsCampaignManageOpen] = useState(false);
@@ -343,6 +344,29 @@ export function OopsDemo() {
 
   // Phân trang Feed demo
   const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab") as Tab | null;
+      if (tabParam && ["groups", "feed", "orders", "me"].includes(tabParam)) {
+        setTab(tabParam);
+      }
+      const orderIdParam = params.get("orderId");
+      if (orderIdParam) {
+        setSelectedOrderId(orderIdParam);
+      }
+      if (params.get("offer") === "true") {
+        setSelectedDemand(SAMPLE_DEMANDS[0].item);
+      }
+      if (params.get("modal") === "campaigns") {
+        setIsCampaignListOpen(true);
+      } else if (params.get("modal") === "manage") {
+        setIsCampaignManageOpen(true);
+        setCampaignDraft(current => current ?? defaultCampaignDraft());
+      }
+    }
+  }, []);
 
   // Quản lý danh sách đơn hàng đa dạng kiểu Shopee
   const [orders, setOrders] = useState<DemoOrderItem[]>(INITIAL_DEMO_ORDERS);
@@ -409,18 +433,19 @@ export function OopsDemo() {
 
   function handleOfferSuccess(data: OfferSubmitData) {
     const isWater = data.name.toLowerCase().includes("nước");
+    const isGift = data.unitPrice === 0;
     const newOrder: DemoOrderItem = {
       id: `ord-${Date.now()}`,
       orderNumber: `OOPS-${Math.floor(2700 + Math.random() * 300)}`,
-      supplier: "Cửa hàng của bạn (Chào hàng mới)",
+      supplier: isGift ? "Bạn (Ủng hộ cứu trợ 0đ)" : "Cửa hàng của bạn (Chào hàng mới)",
       item: data.name,
       unit: data.unit,
       quantity: data.quantity,
       unitPrice: data.unitPrice,
       totalVnd: data.quantity * data.unitPrice,
       stage: "negotiation",
-      statusText: "Vừa gửi chào hàng · Chờ nhóm thương lượng",
-      badgeClass: "bg-amber-100 text-amber-900 border-amber-300",
+      statusText: isGift ? "Vừa gửi tặng 0đ · Chờ nhóm biểu quyết" : "Vừa gửi chào hàng · Chờ nhóm thương lượng",
+      badgeClass: isGift ? "bg-emerald-100 text-emerald-900 border-emerald-300" : "bg-amber-100 text-amber-900 border-amber-300",
       image: isWater ? "/assets/water-bottles.jpg" : "/assets/groceries-box.webp",
       deliveryTime: data.deliveryTime,
       note: data.note,
@@ -717,7 +742,17 @@ export function OopsDemo() {
                         <span>{t.label}</span>
                         <span
                           className={`rounded-full px-1.5 py-0.2 text-[10px] font-black ${
-                            isActive ? "bg-white text-emerald-800" : "bg-slate-200 text-navy-800"
+                            isActive
+                              ? "bg-white text-emerald-800"
+                              : t.key === "negotiation"
+                              ? "bg-amber-200/90 text-amber-900"
+                              : t.key === "fuji"
+                              ? "bg-sky-200/90 text-sky-900"
+                              : t.key === "handoff"
+                              ? "bg-purple-200/90 text-purple-900"
+                              : t.key === "complete"
+                              ? "bg-emerald-200/90 text-emerald-900"
+                              : "bg-slate-200 text-navy-800"
                           }`}
                         >
                           {count}
@@ -734,10 +769,19 @@ export function OopsDemo() {
                       <p>Không có đơn hàng nào trong mục này.</p>
                     </Card>
                   ) : (
-                    filteredOrders.map((ord) => (
+                    filteredOrders.map((ord) => {
+                      const stageBorder =
+                        ord.stage === "negotiation"
+                          ? "border-l-4 border-l-amber-500"
+                          : ord.stage === "fuji"
+                          ? "border-l-4 border-l-sky-500"
+                          : ord.stage === "handoff"
+                          ? "border-l-4 border-l-purple-500"
+                          : "border-l-4 border-l-emerald-500";
+                      return (
                       <Card
                         key={ord.id}
-                        className="p-3.5 space-y-3 border border-slate-200 hover:border-emerald-300 transition-all cursor-pointer shadow-xs"
+                        className={`p-3.5 space-y-3 border border-slate-200 hover:border-emerald-300 transition-all cursor-pointer shadow-xs rounded-2xl bg-white ${stageBorder}`}
                       >
                         {/* Header: Cửa hàng + Badge trạng thái */}
                         <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
@@ -783,7 +827,8 @@ export function OopsDemo() {
                           </button>
                         </div>
                       </Card>
-                    ))
+                    );
+                  })
                   )}
                 </div>
               </div>

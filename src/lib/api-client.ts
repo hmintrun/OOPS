@@ -8,7 +8,6 @@ import {
   category,
   confirmCartInput,
   createCampaignInput,
-  createGroupInput,
   createInviteInput,
   feed,
   group,
@@ -26,6 +25,13 @@ import {
   walletLinkInput,
   walletLinkResult,
 } from "@/contracts/foundation";
+import {
+  CATALOG_FRESH_MS,
+  clearClientCache,
+  invalidateClientCache,
+  readClientCache,
+  writeClientCache,
+} from "./client-cache";
 
 export type Category = z.infer<typeof category>;
 export type Me = z.infer<typeof me>;
@@ -43,7 +49,6 @@ export type PublishResult = z.infer<typeof publishResult>;
 export type Feed = z.infer<typeof feed>;
 
 export type LinkWalletBody = z.input<typeof walletLinkInput>;
-export type CreateGroupBody = z.input<typeof createGroupInput>;
 export type CreateInviteBody = z.input<typeof createInviteInput>;
 export type CreateCampaignBody = z.input<typeof createCampaignInput>;
 export type PutCartBody = z.input<typeof putCartInput>;
@@ -145,6 +150,7 @@ export async function apiFetch<S extends z.ZodType>(
   const payload: unknown = await response.json().catch(() => null);
 
   if (!response.ok) {
+    if (response.status === 401) clearClientCache();
     const parsed = apiError.safeParse(payload);
     if (parsed.success) {
       throw new ApiError({
@@ -164,18 +170,19 @@ export async function apiFetch<S extends z.ZodType>(
 
   const result = schema.safeParse(payload);
   if (!result.success) throw invalidResponse();
+  if (isWrite) invalidateClientCache();
   return result.data;
 }
 
 /** `GET /api/v1/me` — hồ sơ người dùng đang đăng nhập. Ném ApiError 401 khi chưa đăng nhập. */
 export function getMe(): Promise<Me> {
-  return apiFetch("/api/v1/me", { schema: me });
+  return apiFetch("/api/v1/me", { schema: me }).then(data => writeClientCache("me", data));
 }
 
 /** `PATCH /api/v1/me` — cập nhật liên hệ riêng. */
 export function updateMe(contactPrivate: string): Promise<Me> {
   const body = patchMeInput.parse({ contactPrivate });
-  return apiFetch("/api/v1/me", { method: "PATCH", body, schema: me });
+  return apiFetch("/api/v1/me", { method: "PATCH", body, schema: me }).then(data => writeClientCache("me", data));
 }
 
 /** `GET /api/v1/wallet/challenge` — nhận thử thách một lần để ký proveWallet trên Fuji. */
@@ -187,12 +194,6 @@ export function getWalletChallenge(): Promise<WalletChallenge> {
 export function linkWallet(input: LinkWalletBody, idempotencyKey?: string): Promise<WalletLinkResult> {
   const body = walletLinkInput.parse(input);
   return apiFetch("/api/v1/wallet/link", { method: "POST", body, idempotencyKey, schema: walletLinkResult });
-}
-
-/** `POST /api/v1/groups` → 201 Membership. */
-export function createGroup(input: CreateGroupBody): Promise<Membership> {
-  const body = createGroupInput.parse(input);
-  return apiFetch("/api/v1/groups", { method: "POST", body, schema: membership });
 }
 
 /** `GET /api/v1/groups/{id}` — nhóm, thành viên và các đợt gom. */
@@ -240,8 +241,11 @@ export function createCampaign(groupId: string, input: CreateCampaignBody): Prom
 
 /** `GET /api/v1/catalog?category=` — danh mục hàng hoá. */
 export function getCatalog(categoryFilter?: Category): Promise<Catalog> {
+  const key = `catalog:${categoryFilter ?? ""}`;
+  const cached = readClientCache<Catalog>(key, CATALOG_FRESH_MS);
+  if (cached?.isFresh) return Promise.resolve(cached.value);
   const query = categoryFilter ? `?category=${encodeURIComponent(categoryFilter)}` : "";
-  return apiFetch(`/api/v1/catalog${query}`, { schema: catalog });
+  return apiFetch(`/api/v1/catalog${query}`, { schema: catalog }).then(data => writeClientCache(key, data));
 }
 
 /** `GET /api/v1/campaigns/{id}/cart` */
@@ -291,6 +295,7 @@ export function publishCampaign(campaignId: string, idempotencyKey?: string): Pr
 }
 
 export type FeedFilters = {
+  province?: string;
   district?: string;
   ward?: string;
   category?: Category;
@@ -302,6 +307,7 @@ export type FeedFilters = {
 /** `GET /api/v1/feed?district&ward&category&cursor&limit` */
 export function getFeed(filters: FeedFilters = {}): Promise<Feed> {
   const params = new URLSearchParams();
+  if (filters.province) params.set("province", filters.province);
   if (filters.district) params.set("district", filters.district);
   if (filters.ward) params.set("ward", filters.ward);
   if (filters.category) params.set("category", filters.category);

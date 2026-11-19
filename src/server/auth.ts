@@ -3,8 +3,10 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { requiredEnv } from "./config";
 import { ApiFailure, unauthenticated, unavailable } from "./errors";
+import { userLocation, type UserLocation } from "@/lib/locations";
+import { phoneInput } from "@/lib/receiving-contact";
 
-export type Actor = { userId: string; displayName: string };
+export type Actor = { userId: string; displayName: string; phone?: string; location?: UserLocation };
 
 export async function authenticatedActor({ readOnly = false } = {}): Promise<Actor> {
   const cookieStore = await cookies();
@@ -28,5 +30,9 @@ export async function authenticatedActor({ readOnly = false } = {}): Promise<Act
   if (error && (!error.status || error.status >= 500)) throw unavailable();
   if (error || !data.user) throw unauthenticated();
   const displayName = data.user.user_metadata.display_name;
-  return { userId: data.user.id, displayName: typeof displayName === "string" && displayName.trim() ? displayName : "Hộ gia đình" };
+  const location = userLocation.safeParse(data.user.user_metadata.location);
+  const phone = phoneInput.safeParse(data.user.user_metadata.phone);
+  return { userId: data.user.id, displayName: typeof displayName === "string" && displayName.trim() ? displayName : "Hộ gia đình",
+    ...(location.success && { location: location.data }),
+    ...(phone.success && { phone: phone.data }) };
 }

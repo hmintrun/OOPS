@@ -4,6 +4,8 @@ Hợp đồng API cho web và worker của [OOPS MVP](requirements.md). Xem [Sch
 
 ## Quy ước
 
+Cập nhật 17/11/2026: hồ sơ/nhóm hỗ trợ `location`, nhu cầu thêm `provinceCode?`, Feed thêm bộ lọc `province`. Xem [hợp đồng vị trí và tương thích dữ liệu cũ](locations.md#hợp-đồng-và-dữ-liệu).
+
 - Đường dẫn HTTP trong các bảng dùng tiền tố `/api/v1`.
 - API dùng JSON, trừ upload bằng chứng qua `multipart/form-data`. API web xác thực phiên Supabase qua cookie bảo mật và nhận request cùng origin.
 - ID là UUID. Thời gian theo ISO 8601 có múi giờ. Trường JSON dùng camelCase, enum viết hoa và `?` biểu thị trường có thể vắng mặt.
@@ -42,17 +44,21 @@ Hợp đồng API cho web và worker của [OOPS MVP](requirements.md). Xem [Sch
 | demandItemId | UUID | Có | Dòng nhu cầu được đáp ứng. |
 | state | enum | Có | Xem bảng trạng thái trong [kiến trúc](architecture.md#trạng-thái-theo-dõi). |
 | qty | integer | Có | Số lượng cam kết trong đơn vị SKU. |
+| unit | string | Có khi đọc đơn | Đơn vị SKU theo danh mục, ví dụ `chai` hoặc `kg`. Phản hồi phát lại từ trước khi bổ sung trường này có thể thiếu `unit`. |
+| myShare | object | Khi người gọi có phần trong đơn | `qty` và `goodsVnd` của phần đã chốt cho tài khoản hiện tại. |
 | unitPriceVnd | integer | Có | Đơn giá, kể cả 0. |
 | goodsVnd | integer | Có | Tổng tiền hàng do backend tính. |
 | depositVnd | integer | Có | Cọc do người bán nộp. |
 
-Contract còn có sourceVersionId, version, sellerId, repId, depositDueAt, paymentDueAt?, handoffStart, handoffBy, approvalDueAt, readyAt?, allocations, charges, disbursements, evidenceIds?, receipt?, termination?, reviewScope?, handoffPrivate? và repContact?. `reviewScope` là `HANDOFF` hoặc `DEPOSIT` khi `NEEDS_REVIEW`. Allocation có allocationId, qty, goodsVnd. Người bán và đại diện của hợp đồng thấy evidenceIds ngay khi đã lưu bằng chứng, kể cả trước khi lập biên nhận. Khoản thu hoặc chi có ID, kind, amountVnd, state và dueAt hoặc postedAt?.
+Contract còn có sourceVersionId, version, sellerId, repId, depositDueAt, paymentDueAt?, handoffStart, handoffBy, approvalDueAt, readyAt?, allocations, charges, disbursements, evidenceIds?, receipt?, termination?, reviewScope?, handoffPrivate? và repContact?. `reviewScope` là `HANDOFF` hoặc `DEPOSIT` khi `NEEDS_REVIEW`. Allocation có allocationId, qty, goodsVnd và householdName? dành cho đại diện. Các phần được xếp theo thời điểm chọn Có trong vòng đã chốt. Phần thiếu mốc vote được xếp trước theo ID phân bổ. Người bán và đại diện của hợp đồng thấy evidenceIds ngay khi đã lưu bằng chứng, kể cả trước khi lập biên nhận. Khoản thu hoặc chi có ID, kind, amountVnd, state và dueAt hoặc postedAt?.
 
 Đơn theo luồng mới có `roundId` và `roundOpenBy`. Sau khi xác minh vòng đã mở trên Fuji, API trả `confirmBy`, `depositDueAt`, `dueAt` của khoản thu và `paymentDueAt` nếu đơn có giá. Khoản thu của người gọi có `canPay` cho biết khoản đang chờ, còn hạn và đã đủ điều kiện ký tương ứng. Dùng `canPay` để hiển thị nút thu SIM, sau đó tải lại Contract để lấy tiến độ mới. Server kiểm lại điều kiện khi ghi thu.
 
 ### Campaign, DemandItem và Cart
 
 Campaign gồm campaignId, state, collectUntil và needBy. DemandItem gồm demandItemId, campaignId, skuId, name, unit, districtCode, wardCode, needBy, supportRequested, target, pending, reserved, received, missing, offerable và state. Cart gồm cartId, version, state, householdSize, supportRequested và lines theo dữ liệu PUT.
+
+Giao diện dùng `offerable` để hiện số lượng còn có thể chốt, kể cả khi hợp đồng mới tạo đang chờ ký và thu. `missing` là lượng còn thiếu sau khi trừ phần đã giữ chính thức và phần đã nhận. API chào hàng vẫn dùng `missing` làm giới hạn để hỗ trợ đề nghị dự phòng.
 
 `needQty` là lượng còn thiếu. Ví dụ hộ đang có 3 chai và cần thêm 7 chai thì gửi `stockQty: 3, needQty: 7`. Khi đăng nhu cầu, cộng trực tiếp `needQty` của các giỏ đã xác nhận.
 
@@ -143,24 +149,26 @@ type ConfirmationRound = {
 ## Tài khoản nhóm và giỏ
 
 - `members` gồm các phần tử `{membershipId, userId, displayName, role}`. Role của nhóm là `MEMBER` hoặc `REP`. `repId` là userId của đại diện.
-- Lời mời hết hạn sau 24 giờ. Frontend đọc token từ `/join?token=…` và gửi đến `POST /invites/accept` sau khi có phiên.
+- Link vào nhóm chứa mã 8 ký tự tại `/join?token=…`. Đại diện lấy lại cùng link và mã cho mỗi nhóm. Người nhận có thể dán link hoặc nhập mã, không phân biệt hoa thường. Frontend gửi giá trị đến `POST /invites/accept` sau khi có phiên. Lời mời chỉ định tài khoản, lời mời REP và link JOIN cũ vẫn dùng một lần trong 24 giờ.
 - `category` nhận `WATER`, `FOOD` hoặc `ESSENTIALS`.
-- GET giỏ trả `404` nếu chưa tạo. PUT tạo với `version: 0` và trả bản đã lưu ở version 1. Sửa hoặc xác nhận thành công tăng version thêm 1. Phát lại cùng khóa idempotency trả kết quả cũ.
+- GET giỏ trả `404` nếu chưa tạo. PUT tạo với `version: 0` và trả bản đã lưu ở version 1. Lưu kèm `includeInNeeds: true` có thể ghi giỏ `CONFIRMED` ngay trong cùng lần tăng version. Phát lại cùng khóa idempotency trả kết quả cũ.
 - AI trả `draft: {householdSize?, lines: [{skuId, stockQty?, needQty?}]}`, `unresolved: string[]` và `ruleRefs: string[]`. Mỗi dòng có ít nhất một lượng được trích rõ. Thiếu lượng, SKU hoặc đơn vị khớp được đưa vào `unresolved`. Người dùng nhập đủ trước khi lưu giỏ. `ruleRefs` rỗng khi chỉ trích dữ liệu đã nhập.
+- Khi hộ chưa nêu số chai muốn mua, server lấy mốc 3 lít nước uống/người/ngày, điều chỉnh theo mức độ cấp thiết, làm tròn lên theo chai 500 mL, rồi trừ số chai đang có cùng dung tích. [Tài liệu chuẩn bị ứng phó của WHO](https://applications.emro.who.int/dsaf/libcat/WHO_CBDRM_Participants_Work_Book_Module_2_EN.pdf?ua=1#page=9)
+- `householdStatus` là tùy chọn và nhận `{members, adults, children, elderly, housingType, incomeLevel?, notes}` từ phần Hiện trạng gia đình đã lưu theo tài khoản trên trình duyệt. `members` từ 1 đến 30. Mỗi nhóm tuổi từ 0 đến 20. `housingType` nhận `kienco`, `bankienco`, `cap4`, `vungtrung`. `incomeLevel` nhận `low`, `medium`, `high`. `notes` tối đa 1.000 ký tự. Khi có hiện trạng, Gemini dùng ngữ cảnh này kể cả khi `text` trống. Lượng đang có và lượng muốn mua ưu tiên mô tả hiện tại. Mức thu nhập dùng để ưu tiên mặt hàng, không thay đổi quyền được hỗ trợ.
 
 | Endpoint và quyền | Dữ liệu vào | Phản hồi |
 | --- | --- | --- |
-| `GET /me` và `PATCH /me`<br>Đã đăng nhập | Supabase Auth quản lý phiên. PATCH {contactPrivate}. | 200 {userId, groupId?, wallet?: {address, verificationState}, confirmationEligible, contactPrivate?, isOps?}. verificationState là PENDING, VERIFIED hoặc FAILED. confirmationEligible còn phụ thuộc chính sách Fuji. `isOps: true` chỉ xuất hiện khi tài khoản có quyền vận hành (`ops_accounts`). |
+| `GET /me` và `PATCH /me`<br>Đã đăng nhập | Cấp nhóm riêng nếu tài khoản chưa có nhóm. PATCH nhận ít nhất một trong `displayName` (1–80 ký tự sau khi bỏ khoảng trắng đầu/cuối), `contactPrivate`, `location` ({provinceCode, wardCode} thuộc danh mục TP.HCM). Số điện thoại thêm hoặc đổi trong `contactPrivate` phải có đúng 10 chữ số. | 200 {userId, displayName, groupId, location?, wallet?: {address, verificationState}, confirmationEligible, confirmationEligibilityUnavailable?, contactPrivate?, isOps?}. verificationState là PENDING, VERIFIED hoặc FAILED. Khi Fuji không phản hồi, hồ sơ vẫn tải được với `confirmationEligible: false` và `confirmationEligibilityUnavailable: true`. `isOps: true` chỉ xuất hiện khi tài khoản có quyền vận hành (`ops_accounts`). |
+| `POST /wallet/embedded-session`<br>Chủ phiên | Cấp phiên khôi phục ví Openfort dùng một lần cho mọi tài khoản OOPS đã đăng nhập. Chỉ bật trong cấu hình Fuji testnet. | 200 {userId, encryptionSession}, 404 nếu tính năng tắt hoặc khóa không phải test (`pk_test_`), 503 khi dịch vụ ví bận. Phản hồi không cache (`no-store`). |
 | `POST /wallet/link`<br>Chủ phiên | {address, proofTx, nonce}. GET /wallet/challenge cấp nonce một lần và expiresAt. Fuji ghi hash thử thách gắn với ví. | 202 {verificationState}. GET /me cho biết kết quả. 422 nếu bằng chứng sai. Khi lưu thay đổi ví, 409 `ACTIVE_COMMITMENT` nếu còn nghĩa vụ theo [G-09](OOPS-Spec.md#66-rời-nhóm-và-đổi-ví-g-09). |
-| `POST /groups`<br>Người chưa có nhóm | {name, districtCode, wardCode, pickupPrivate?}. Người tạo xác nhận nhận vai trò đại diện khi gửi. | 201 {groupId, membershipId, role}. 409 nếu đã có nhóm. |
 | `GET /groups/{id}`<br>Thành viên | id là groupId. | 200 {groupId, repId, members, campaigns: Campaign[]}. Ẩn điểm nhận cụ thể với hộ chưa chốt. |
 | `POST /groups/{id}/leave`<br>Thành viên tự rời | {}. Xem [G-09](OOPS-Spec.md#66-rời-nhóm-và-đổi-ví-g-09). | 200 {groupId, membershipId, leftAt}. 409 `REP_TRANSFER_REQUIRED`, `ACTIVE_COMMITMENT` hoặc `PUBLISHED_NEED_ACTIVE`. 404 nếu người gọi không còn là thành viên. |
-| `POST /groups/{id}/invites`<br>Đại diện | {kind: JOIN hoặc REP, targetUserId?}. REP bắt buộc có targetUserId đang trong nhóm. | 201 {inviteId, inviteUrl, expiresAt}. |
-| `POST /invites/accept`<br>Người được mời | {token}. JOIN cần chưa có nhóm. REP kiểm tra đúng tài khoản đích. | 200 {groupId, membershipId, role}. 409 nếu link hết hạn, đã dùng hoặc không còn hợp lệ. |
+| `POST /groups/{id}/invites`<br>Đại diện | {kind: JOIN hoặc REP, targetUserId?}. REP bắt buộc có targetUserId đang trong nhóm. | 201 {inviteId, inviteUrl, joinCode} với JOIN không chỉ định tài khoản. Lời mời một lần trả {inviteId, inviteUrl, expiresAt}. |
+| `POST /invites/accept`<br>Người được mời | {token}. JOIN áp dụng cho tài khoản chưa có nhóm hoặc là đại diện duy nhất của nhóm đã xong đợt gom và nghĩa vụ. REP kiểm tra đúng tài khoản đích. | 200 {groupId, membershipId, role}. 409 nếu lời mời hoặc điều kiện chuyển nhóm không hợp lệ. |
 | `POST /groups/{id}/campaigns`<br>Đại diện | {collectUntil, needBy, supportRequested?}. Kiểm tra thời điểm hiện tại < collectUntil < needBy. | 201 Campaign ở DRAFT. |
 | `GET /catalog`<br>Đã đăng nhập | category? | 200 {items: [{skuId, name, category, unit}]}. |
-| `GET /campaigns/{id}/cart` và `PUT /campaigns/{id}/cart`<br>Hộ trong nhóm | PUT {householdSize, supportRequested, lines: [{skuId, stockQty, needQty}], version}. version = 0 để tạo. householdSize > 0, stockQty ≥ 0, needQty ≥ 0. | 200 Cart. PUT lưu DRAFT. 409 nếu version cũ, đã đăng hoặc đã tới hạn gom. 422 nếu số lượng sai. |
-| `POST /campaigns/{id}/cart/ai`<br>Hộ trong nhóm | {text, householdSize?}. Chỉ trong thời gian gom. Trích dữ liệu, đối chiếu SKU và áp quy tắc nếu đủ đầu vào. | 200 {draft, unresolved, ruleRefs}. 409 nếu đã đóng gom. 503 khi AI lỗi. Hộ tiếp tục nhập tay. |
+| `GET /campaigns/{id}/cart` và `PUT /campaigns/{id}/cart`<br>Hộ trong nhóm | PUT {householdSize, supportRequested, lines: [{skuId, stockQty, needQty}], version, includeInNeeds?}. version = 0 để tạo. householdSize > 0, stockQty ≥ 0, needQty ≥ 0. | 200 Cart. PUT lưu `CONFIRMED` khi `includeInNeeds: true` và ví đã xác minh, đủ điều kiện Fuji. Nếu chưa đủ điều kiện, PUT vẫn lưu `DRAFT`. Khi Fuji không phản hồi, PUT trả thêm `confirmationEligibilityUnavailable: true`. 409 nếu version cũ, đã đăng hoặc đã tới hạn gom. 422 nếu số lượng sai. |
+| `POST /campaigns/{id}/cart/ai`<br>Hộ trong nhóm | {text?, householdSize?, days?, householdStatus?}. Chỉ trong thời gian gom. Trích dữ liệu, mặc định các sản phẩm chưa nêu là chưa có (`stockQty = 0`), đối chiếu SKU và suy luận lượng theo ngữ cảnh hoặc áp quy tắc theo số ngày dự trữ (`days`, mặc định 3 ngày), kèm 1 câu động viên ngắn. | 200 {draft, encouragement?, unresolved, ruleRefs}. 409 nếu đã đóng gom. 503 khi AI lỗi. Hộ tiếp tục nhập tay. |
 | `POST /campaigns/{id}/cart/confirm`<br>Chủ giỏ | {version}. Đợt còn DRAFT, chưa tới collectUntil và ví đã xác minh, đủ quyền Fuji. | 200 Cart ở CONFIRMED. 409 nếu version cũ hoặc đã đóng gom. `409 WALLET_NOT_READY` giữ giỏ đã lưu để hộ xử lý ví rồi thử lại. 503 khi dịch vụ kiểm quyền Fuji không sẵn sàng. |
 
 ## Nhu cầu, đề nghị và xác nhận hợp đồng
@@ -174,9 +182,10 @@ type ConfirmationRound = {
 | `GET /feed`<br>Đã đăng nhập | district?, ward?, category?, cursor?, limit?. limit mặc định 20, tối đa 50. | 200 {items: DemandItem[], nextCursor?}. Chỉ đợt đã đăng, còn hạn và missing > 0. offerable có thể bằng 0 khi đơn đang giữ lượng tạm. |
 | `POST /needs/{id}/offers`<br>Người bán | {qty, unitPriceVnd, supportOffer, handoffStart, handoffBy, handoffPrivate}. Lượng dương đến missing, kể cả khi offerable bằng 0. | 201 Offer có draftId và voteDueAt. 409 nếu vượt missing, người bán là đại diện của nhóm mua hoặc lịch giao không đủ thời gian theo [cấu hình](architecture.md#trạng-thái-thương-lượng-và-thời-hạn). 503 nếu thiếu cấu hình hợp lệ. |
 | `GET /needs/{id}/offers`<br>Thành viên nhóm hoặc người bán | id là demandItemId. Người bán chỉ đọc đề nghị của mình. Thành viên chỉ đọc đề nghị trong nhóm. | 200 {items: Offer[]}. Địa chỉ và liên hệ lọc theo quyền. |
-| `GET /offers/{id}/vote`<br>Hộ có phần nhu cầu hoặc người bán | id là proposalId. | 200 OfferVoting. |
-| `POST /offers/{id}/vote`<br>Hộ có phần nhu cầu | Có: {round, choice: "YES", qty, unitPriceVnd}. Gửi qty đúng bằng availableQty vừa hiển thị. Không: {round, choice: "NO"}. | 200 OfferVoting. 409 nếu vòng đóng, số vòng cũ hoặc lượng/giá đã đổi. Khi lượng đổi, đọc lại GET và để hộ chọn lại. |
-| `POST /drafts/{id}/vote-close`<br>Người bán | {round}. Dùng để xử lý vòng đã tới hạn khi worker chưa chạy. | 200 {closed: boolean}. true khi vừa đóng vòng. false nếu vòng chưa đến hạn, đã đóng hoặc số vòng cũ. |
+| `GET /offers`<br>Người bán | Danh sách đề nghị do tài khoản hiện tại gửi, trước khi đề nghị có hợp đồng. Nhận cursor? và limit?. | 200 {items: SentOffer[], nextCursor?}. SentOffer là Offer có thêm itemName và unit. Chi tiết nơi giao xem trong trang đề nghị. |
+| `GET /offers/{id}/vote`<br>Hộ trong nhóm hoặc người bán | id là proposalId. | 200 OfferVoting. Hộ không còn phần nhu cầu có thể xem tiến độ. |
+| `POST /offers/{id}/vote`<br>Hộ còn lượng có thể chốt | Có: {round, choice: "YES", qty, unitPriceVnd}. Gửi qty đúng bằng availableQty vừa hiển thị. Không: {round, choice: "NO"}. | 200 OfferVoting. 409 nếu vòng đóng, số vòng cũ hoặc lượng/giá đã đổi. Khi lượng đổi, đọc lại GET và để hộ chọn lại. |
+| `POST /drafts/{id}/vote-close`<br>Người bán hoặc hộ trong nhóm | {round}. Đồng bộ vòng đã đủ phiếu, kể cả dữ liệu từ trước. Người bán cũng có thể đóng vòng quá hạn. | 200 {closed: boolean}. true khi vừa chốt; false nếu vòng chưa sẵn sàng, đã đóng hoặc số vòng cũ. |
 | `POST /offers/{id}/draft`<br>Hộ có nhu cầu | {}. Hộ khởi tạo mở nháp cho đề nghị còn hiệu lực. Seller của đề nghị không tham gia mua. | 201 Draft. 409 nếu đã có hồ sơ, đề nghị đã đóng hoặc còn dưới 30 giờ trước lúc bắt đầu giao. |
 | `GET /drafts/{id}`<br>Thành viên liên quan hoặc seller | id là draftId. | 200 Draft cho thành viên liên quan hoặc SellerDraftView cho seller. |
 | `PUT /drafts/{id}/my-line`<br>Hộ có nhu cầu | {qty, note?, editRevision}. qty bằng 0 bỏ phần của hộ. Lượng góp tối đa là nhu cầu đã đăng của hộ cho món. Nháp mới có editRevision 0. | 200 Draft với editRevision tăng 1. 409 nếu revision cũ, nháp đã khóa, đề nghị hết hạn hoặc còn dưới 30 giờ trước lúc bắt đầu giao. |
@@ -190,7 +199,7 @@ type ConfirmationRound = {
 
 Các route mở nháp, sửa dòng, submit, revise và đại diện finalize trong bảng phục vụ đề nghị cũ không có `voteDueAt`. Với dữ liệu cũ, APPROVE trả `AWAIT_CONFIRMATIONS` và sau khi đủ xác nhận, đại diện dùng finalize.
 
-`OfferVoting` gồm `{draftId, round, dueAt, open, seller, totalQty, unitPriceVnd, myQty?, availableQty?}`. `myQty: 0` là phiếu Không, trường vắng mặt nghĩa là chưa bỏ phiếu. `availableQty` trả cho hộ có quyền khi vòng mở. Hộ có thể đổi phiếu trong vòng đang mở. Khi đủ lượng chào hoặc tới hạn, backend đóng vòng và chụp phiên bản nếu còn hộ tham gia. Người bán đọc kết quả chốt từ `latestVersion.qty` và `latestVersion.totalVnd` của `GET /drafts/{id}`.
+`OfferVoting` gồm `{draftId, round, dueAt, open, seller, totalQty, unitPriceVnd, myQty?, availableQty?}`. `myQty: 0` là phiếu Không, trường vắng mặt nghĩa là chưa bỏ phiếu. `availableQty` trả cho hộ có quyền khi vòng mở. Với hộ trong nhóm, `eligible` cho biết hộ còn lượng có thể chốt và `voters` gồm `membershipId` cùng `hasVoted` của các hộ đủ điều kiện. `closed` cho biết vòng đã chốt kết quả, `readyToClose` cho biết mọi hộ đủ điều kiện đã chọn nhưng vòng chưa được chốt. Hộ có thể đổi phiếu trong vòng đang mở. Backend đóng vòng khi đủ lượng chào, tất cả hộ đủ điều kiện đã chọn hoặc tới hạn. Nếu có phiếu Có hợp lệ, backend chụp phiên bản. Nếu không có, đề nghị kết thúc. Người bán đọc kết quả chốt từ `latestVersion.qty` và `latestVersion.totalVnd` của `GET /drafts/{id}`.
 
 Ví dụ đề nghị chào 10 chai, khi đóng phiếu có ba hộ chọn Có với phần 2+2+3. Ở giá 2.000đ/chai, bản chụp có `qty: 7`, `totalVnd: 14000`, cọc là 50.000đ. Với nhu cầu 12 chai, sau khi người bán chốt 7 chai, Feed trả `pending: 7`, `missing: 12` và `offerable: 5` nếu chưa có đơn khác. Khi đủ chữ ký và thu, Feed trả `reserved: 7` và `missing: 5`.
 
@@ -236,7 +245,7 @@ Giữ phiên bản ở `SUBMITTED`. Khi điều kiện ví đã thay đổi, ng�
 | `POST /contracts/{id}/ready`<br>Người bán | {}. Trong AWAIT_HANDOFF và trước lúc bắt đầu giao. | 200 Contract có readyAt. Gửi thông báo sẵn sàng. |
 | `POST /contracts/{id}/evidence`<br>Người bán | multipart/form-data với trường `file` chứa một ảnh PNG, JPEG hoặc WebP, tối đa 5 MiB. | 201 {evidenceId}. 409 nếu trạng thái không cho ghi bằng chứng hoặc cùng khóa idempotency dùng cho ảnh khác. 413 nếu vượt giới hạn. |
 | `GET /evidence/{id}`<br>Người bán hoặc đại diện của hợp đồng | id lấy từ evidenceIds của hợp đồng. | 200 {url, expiresAt}. URL ký có hạn. 404 khi bằng chứng không thuộc hợp đồng người gọi được xem. |
-| `POST /contracts/{id}/receipts`<br>Đại diện | {handedAt, lines: [{allocationId, receivedQty}], evidenceIds}. Áp dụng quy tắc bàn giao bên dưới. Mỗi allocation phải xuất hiện đúng một lần và lượng thực nhận từ 0 đến lượng đã chốt. | 201 Receipt. Hệ thống cập nhật trạng thái hợp đồng trong cùng giao dịch. 409 nếu trạng thái không cho lập biên nhận. 422 nếu thời điểm, dòng hàng hoặc bằng chứng sai. |
+| `POST /contracts/{id}/receipts`<br>Đại diện | {handedAt?, lines: [{allocationId, receivedQty}], evidenceIds}. Nếu bỏ qua `handedAt`, máy chủ ghi giờ gửi biên nhận. Mỗi allocation phải xuất hiện đúng một lần và lượng thực nhận từ 0 đến lượng đã chốt. | 201 Receipt. Hệ thống cập nhật trạng thái hợp đồng trong cùng giao dịch. 409 nếu trạng thái không cho lập biên nhận. 422 nếu thời điểm, dòng hàng hoặc bằng chứng sai. |
 | `POST /receipts/{id}/approve`<br>Người bán hoặc đại diện | {version}. Role lấy từ hợp đồng. Chỉ duyệt phiên bản DRAFT hiện hành khi AWAIT_APPROVAL hoặc NEEDS_REVIEW với reviewScope HANDOFF và còn đủ điều kiện bàn giao. Hai bên có thể thống nhất kết quả sau hạn duyệt. | 200 Receipt với trạng thái hai lượt duyệt. Lượt duyệt thứ hai ghi lượng nhận và giải phóng lượng giữ đúng một lần. |
 
 Đơn mới tự chuyển `AWAIT_COMMITMENTS → AWAIT_HANDOFF` khi đủ chữ ký, cọc và tiền hàng nếu có. Đơn 0đ chỉ có khoản `DEPOSIT`. Quá hạn mà thiếu điều kiện thì backend hủy đơn, giải phóng lượng và lập hoàn các khoản đã thu. Frontend tải lại Contract sau `409` từ API thu hoặc hủy để hiển thị trạng thái và khoản hoàn mới nhất.
@@ -255,7 +264,7 @@ Checkout QR và webhook trong mục này phục vụ tích hợp sau demo. MVP c
 | --- | --- | --- |
 | `POST /contracts/{id}/issues`<br>Người bán hoặc đại diện | {reasonCode, note?}. Mã nhận `QUANTITY_MISMATCH`, `NO_SHOW`, `UNSAFE_HANDOFF` hoặc `CONFLICTING_EVIDENCE`. | 200 Contract ở NEEDS_REVIEW với reviewScope HANDOFF. Giữ lượng và tạm dừng chi, hoàn. Lệch lượng, bằng chứng mâu thuẫn hoặc báo NO_SHOW khi bản đang ghi lượng nhận dương chuyển biên nhận DRAFT hiện hành sang SUPERSEDED. Thông báo bên kia. |
 | `POST /contracts/{id}/cancel`<br>Người bán | {reason}. Khi đang AWAIT_COMMITMENTS hoặc AWAIT_HANDOFF, hoặc AWAIT_DEPOSIT / AWAIT_PAYMENT với đơn cũ. Đơn chưa có bằng chứng, biên nhận hay sự cố bàn giao. | 200 Contract. Giải phóng lượng và lập hoàn tiền hàng. Cọc chưa rõ thì NEEDS_REVIEW với reviewScope DEPOSIT. 409 khi đã có dấu hiệu bàn giao, tranh chấp hoặc hợp đồng phải xử lý theo nhánh quá hạn thu. |
-| `POST /contracts/{id}/terminations`<br>`POST /terminations/{id}/accept`<br>Hai bên hợp đồng | Đề xuất {version, reason: EXCUSED_CANCEL, note?}. Bên kia duyệt {} nếu hai bên đồng ý hủy theo điều khoản. Khi đề xuất và duyệt, hợp đồng phải còn PENDING hoặc RESERVED về lượng, chưa có biên nhận được áp dụng. | 201 {terminationId, state} hoặc 200 Contract. Giải phóng lượng đúng một lần và hoàn theo điều khoản. 409 nếu phiên bản đã đổi, biên nhận đã được áp dụng hoặc hợp đồng phải xử lý theo nhánh quá hạn thu. |
+| `POST /contracts/{id}/terminations`<br>`POST /terminations/{id}/accept`<br>Hai bên hợp đồng | Đề xuất {version, reason: EXCUSED_CANCEL, note?}. Chỉ bên có quyền duyệt yêu cầu nhận thông báo. Bên kia duyệt {} nếu hai bên đồng ý hủy theo điều khoản. Khi đề xuất và duyệt, hợp đồng phải còn PENDING hoặc RESERVED về lượng, chưa có biên nhận được áp dụng. | 201 {terminationId, state} hoặc 200 Contract. Giải phóng lượng đúng một lần và hoàn theo điều khoản. 409 nếu phiên bản đã đổi, biên nhận đã được áp dụng hoặc hợp đồng phải xử lý theo nhánh quá hạn thu. |
 | `GET /ops/overview`<br>Tài khoản quản trị/vận hành | — | 200 {paymentMode, contracts, simLedger, platform}. Tổng hợp đồng, tình trạng thu cọc/tiền hàng SIM, số dư đối soát và lệch tiền `REVIEW`. |
 | `GET /ops/charges`<br>Tài khoản quản trị/vận hành | kind?, state?, contractId?, hasReviewEvent=true?, cursor?, limit?. | 200 {items: OpsCharge[], nextCursor?}. Danh sách khoản thu cọc/tiền hàng SIM kèm `fundEvents` và điều kiện khớp sổ hiện tại. |
 | `POST /ops/charges/{id}/reconcile`<br>Tài khoản quản trị/vận hành | {reference, amountVnd, occurredAt?}. | 200 {fundEventId, chargeId, chargeState, disposition, contractId, contractState, disbursementId?}. Ghi nhận/đối soát giao dịch SIM thủ công (`APPLIED`, `REVIEW` nếu lệch tiền, hoặc `REFUND_DUE` nếu trễ/không đủ điều kiện). |
@@ -264,7 +273,10 @@ Checkout QR và webhook trong mục này phục vụ tích hợp sau demo. MVP c
 | `POST /ops/disbursements/{id}/post`<br>Tài khoản vận hành | {transferRef}. Demo dùng mã chuyển SIM duy nhất cho khoản đủ điều kiện. Kiểm và ghi dưới khóa của hợp đồng và khoản chi. | 200 {disbursementId, state: POSTED, contractState}. Gửi lại cùng mã của cùng khoản trả kết quả đã ghi. 409 nếu mã thuộc khoản khác, khoản bị khóa hoặc khoản đã POSTED bằng mã khác. |
 | `GET /ops/contracts`<br>`GET /ops/contracts/{id}`<br>Tài khoản quản trị/vận hành | state?, reviewScope?, cursor?, limit?. | 200 {items: OpsContractSummary[], nextCursor?} hoặc OpsContractDetail gồm khoản thu, sự kiện SIM, khoản chi/hoàn, sự cố và nhật ký audit (ẩn dữ liệu riêng tư). |
 | `GET /ops/audit`<br>Tài khoản quản trị/vận hành | entityType?, entityId?, action?, cursor?, limit?. | 200 {items: OpsAuditEvent[], nextCursor?}. Nhật ký thay đổi nghiệp vụ và đối soát SIM. |
-| `GET /notifications`<br>`PATCH /notifications/{id}`<br>Chủ thông báo | GET cursor?, limit?. PATCH {read: true}. | 200 danh sách hoặc mục đã đọc. entityType và entityId mở đúng nhu cầu, bản thương lượng, vòng xác nhận hoặc hợp đồng. |
+| `GET /notifications`<br>`PATCH /notifications/{id}`<br>Chủ thông báo | GET cursor?, limit?. PATCH {read: true}. | GET trả `items`, tổng `unreadCount` qua mọi trang và `nextCursor?`. Mục có `title`, `detail`, `icon`, cùng `itemName?`, `href?` và `createdAt?`. PATCH trả mục với `readAt`. |
+| `PATCH /notifications`<br>Chủ thông báo | {read: true}. | 200 {updatedCount}. Đánh dấu đã đọc mọi thông báo chưa đọc của tài khoản hiện tại qua tất cả các trang. |
+
+Khi vòng ký của đơn mới mở, người bán, đại diện và mỗi hộ có phần nhận một thông báo theo vai trò, dẫn thẳng đến đơn hàng. Hộp thư gộp các mục chốt đề nghị, lập đơn và mở vòng đã lưu cho cùng phiên bản, ưu tiên mục mở vòng nếu đã có.
 
 Đổi giá/lượng và đổi lịch sau khi chốt thuộc phạm vi sau demo.
 

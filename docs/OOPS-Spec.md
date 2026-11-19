@@ -57,7 +57,7 @@ Ba cơ chế tạo niềm tin:
 | Tác nhân | Quyền chính | Giới hạn |
 | --- | --- | --- |
 | **Hộ (member)** | Tạo, sửa và xác nhận giỏ của mình. Bỏ phiếu Có hoặc Không, ký xác nhận Fuji, thanh toán và xem phần của mình. | Không duyệt biên nhận thay đại diện, không thấy dữ liệu nhóm khác. |
-| **Đại diện (REP)** | Tạo đợt gom nháp, mở đợt gom chính thức và đăng nhu cầu, mời hoặc chuyển vai trò, lập và duyệt biên nhận, báo sự cố, hủy theo điều kiện. | Tối đa một REP đang hoạt động mỗi nhóm. Quyền trên hợp đồng dựa trên `repId` đã chụp lúc chốt. |
+| **Đại diện (REP)** | Tạo đợt gom nháp, mở đợt gom chính thức và đăng nhu cầu, mời hoặc chuyển vai trò, lập và duyệt biên nhận, báo sự cố, hủy theo điều kiện. | Tối đa một REP đang hoạt động mỗi nhóm. Quyền trên hợp đồng dựa trên `repId` đã chụp lúc chốt. Đại diện vẫn lập biên nhận nếu không có phần hàng trong đơn. |
 | **Người bán (seller)** | Gửi đề nghị vào một dòng nhu cầu, quyết định bán theo tổng lượng đã bỏ phiếu, nộp cọc, báo sẵn sàng, tải bằng chứng, duyệt biên nhận, hủy trực tiếp theo điều kiện. | Không tham gia mua trong đề nghị của chính mình; chỉ thấy liên hệ của đại diện. |
 | **Tài khoản vận hành (ops)** | Xem khoản chờ chi/hoàn, ghi `POSTED` kèm mã chuyển duy nhất. | Tách khỏi vai trò đại diện; chỉ môi trường demo có route mô phỏng. |
 | **Worker** | Mở vòng Fuji, đọc log, chạy hạn, tạo thông báo, đối soát. | Không quyết định chuyển trạng thái nghiệp vụ; gọi hàm nghiệp vụ đã thống nhất. |
@@ -68,7 +68,7 @@ Một người có thể mua ở đơn này và bán ở đơn khác. Người b
 
 ```mermaid
 flowchart TD
-    A["Tạo tài khoản và vào nhóm"] --> B["Lưu giỏ, kiểm tra ví khi xác nhận giỏ đã lưu"]
+    A["Tạo tài khoản và vào nhóm"] --> B["Lưu giỏ và cộng vào nhu cầu khi ví đủ điều kiện"]
     B --> C["Đại diện mở đợt gom, khóa giỏ đã xác nhận và đăng nhu cầu"]
     C --> D["Người bán chào lượng tối đa cho một món"]
     D --> E["Hộ bỏ phiếu Có hoặc Không theo phần hiển thị"]
@@ -92,11 +92,11 @@ flowchart TD
 Mười bước tương ứng với các mục dưới đây:
 
 1. **Tài khoản và ví.** Supabase Auth giữ phiên. Hộ liên kết Core Wallet bằng challenge có nonce dùng một lần; bằng chứng ghi trên Fuji. Trạng thái `PENDING`, `VERIFIED`, `FAILED`; `confirmationEligible` do backend kiểm theo chính sách.
-2. **Nhóm.** Người tạo nhóm xác nhận nhận vai trò đại diện khi gửi. Người khác vào bằng link `JOIN` dùng một lần. Chuyển vai trò `REP` cần đúng `targetUserId` đang trong nhóm và người nhận chấp thuận.
-3. **Lưu và xác nhận giỏ.** Trong đợt nháp, mỗi hộ lưu số người, cờ cần hỗ trợ và các dòng `stockQty`, `needQty`. Khi thêm món, app có thể báo ví đã sẵn sàng hoặc hiện nút **Liên kết ví**. Hộ được lưu giỏ nháp khi ví chưa sẵn sàng. Khi hộ bấm **Xác nhận giỏ đã lưu**, backend kiểm phiên bản giỏ và điều kiện ví đã xác minh, đủ quyền xác nhận Fuji. Giỏ chỉ chuyển `CONFIRMED` khi đạt cả hai điều kiện. Nếu ví chưa sẵn sàng, app hướng dẫn liên kết hoặc xác minh và giữ dữ liệu đã lưu. Giỏ từ Gemini đi qua cùng bước xác nhận. Nếu AI lỗi, hộ tiếp tục nhập tay với dữ liệu đang sửa.
+2. **Nhóm.** Tài khoản chưa tham gia nhóm có nhóm riêng và là đại diện. Đại diện tạo link `JOIN` dùng một lần để mời hộ khác. Vị trí nhóm lấy từ nơi sinh sống của đại diện. Chuyển vai trò `REP` cần đúng `targetUserId` đang trong nhóm và người nhận chấp thuận.
+3. **Lưu giỏ.** Trong đợt nháp, mỗi hộ lưu số người, cờ cần hỗ trợ và các dòng `stockQty`, `needQty`. Khi hộ bấm **Lưu giỏ**, backend kiểm phiên bản giỏ và ví Fuji. Ví đã xác minh, đủ điều kiện thì giỏ được lưu ở `CONFIRMED` và lượng mua được cộng vào nhu cầu. Nếu ví chưa sẵn sàng, app lưu giỏ nháp và hướng dẫn hộ xác minh ví rồi lưu lại. Giỏ từ Gemini đi qua cùng bước lưu. Nếu AI lỗi, hộ tiếp tục nhập tay với dữ liệu đang sửa.
 4. **Mở đợt gom chính thức.** Đại diện đăng nhu cầu lên Feed trước `needBy`, có thể đăng sớm để kết thúc nhập giỏ. Giao dịch đăng khóa đợt, chụp `needQty` của các giỏ `CONFIRMED` thành `demand_items` và `demand_shares`. Từ mốc này, hộ đọc giỏ đã chốt và dùng lượng đó làm căn cứ bỏ phiếu cho từng đề nghị.
 5. **Đề nghị.** Người bán gửi cho một `demandItemId`: lượng tối đa đến `missing`, đơn giá (kể cả 0), cờ hỗ trợ, khung giao `handoffStart..handoffBy`, thông tin điểm nhận riêng. Điều khoản bất biến sau khi gửi. App hiển thị trước tiền hàng và cọc dự kiến.
-6. **Bỏ phiếu theo giỏ đã chốt.** App hiển thị số lượng và tiền của phần hộ có thể mua. Hộ chọn **Có** hoặc **Không**. Lượng hiển thị là phần nhu cầu còn có thể chốt của hộ, giới hạn theo lượng đề nghị còn trống. Ví dụ, hộ cần 3 chai mà đề nghị còn 1 thì phiếu Có đăng ký 1 chai đã hiển thị. Hai chai còn lại tiếp tục nằm trong nhu cầu của hộ. Backend kiểm lượng dưới khóa khi ghi phiếu. Nếu lượng đã đổi do hộ khác vừa xác nhận, app hiển thị lại phần còn trống để hộ tự quyết định. Vòng tự đóng khi đủ lượng chào hoặc tới hạn. Hộ chưa phản hồi được tính là không tham gia. Nếu có phiếu Có, backend tự chụp phiên bản bất biến gồm phần từng hộ, tổng lượng, giá, lịch và `versionHash` để gửi người bán.
+6. **Bỏ phiếu theo giỏ đã chốt.** App hiển thị số lượng và tiền của phần hộ có thể mua. Hộ chọn **Có** hoặc **Không**. Lượng hiển thị là phần nhu cầu còn có thể chốt của hộ, giới hạn theo lượng đề nghị còn trống. Ví dụ, hộ cần 3 chai mà đề nghị còn 1 thì phiếu Có đăng ký 1 chai đã hiển thị. Hai chai còn lại tiếp tục nằm trong nhu cầu của hộ. Backend kiểm lượng dưới khóa khi ghi phiếu. Nếu lượng đã đổi do hộ khác vừa xác nhận, app hiển thị lại phần còn trống để hộ tự quyết định. Chỉ hộ còn lượng có thể chốt của món được bỏ phiếu. Vòng tự đóng khi đủ lượng chào, mọi hộ đủ điều kiện đã chọn hoặc tới hạn. Hộ chưa phản hồi khi tới hạn được tính là không tham gia. Nếu cả vòng không có phiếu Có hợp lệ, đề nghị kết thúc. Nếu có phiếu Có, backend tự chụp phiên bản bất biến gồm phần từng hộ, tổng lượng, giá, lịch và `versionHash` để gửi người bán.
 7. **Người bán chốt bán.** Người bán thấy tổng lượng từ phiếu Có và chọn bán đúng lượng đó, từ chối hoặc yêu cầu sửa. Ví dụ, chào tối đa 10 chai mà có 7 chai được đăng ký thì người bán quyết định bán 7 chai. Nếu điều khoản thay đổi, hệ thống mở vòng phiếu mới. Khi người bán đồng ý, backend kiểm lại lượng theo món và theo hộ dưới khóa. Thiếu lượng thì ghi `STOCK_CONFLICT` và trả `409`. Backend cũng kiểm lại ví hợp lệ và duy nhất của mọi hộ có phần dương để mở đúng một vòng Fuji cho bản đó. Khi đủ điều kiện, hệ thống tạo một hợp đồng chờ ký và thu, giữ lượng ở `pending` và đưa yêu cầu mở vòng vào outbox.
 8. **Ký Fuji và thu SIM song song.** Khi vòng ký mở, người bán có thể nộp cọc. Mỗi hộ ký đúng phiên bản và có thể thanh toán phần mình ngay khi backend xác minh chữ ký của hộ đó. Đơn 0đ chỉ yêu cầu hộ ký, người bán vẫn nộp cọc. Tiến độ chữ ký và khoản thu được theo dõi riêng theo từng bên.
 9. **Tự chuyển sang bàn giao.** Khi đủ chữ ký của mọi hộ có phần, cọc người bán và toàn bộ tiền hàng nếu có, backend chuyển `pending` → `reserved` và đưa hợp đồng sang `AWAIT_HANDOFF` trong cùng giao dịch. Nếu quá hạn mà còn thiếu điều kiện, backend hủy đơn, giải phóng lượng giữ tạm và lập hoàn các khoản đã thu. Đại diện tham gia ở bước nhận hàng và duyệt biên nhận.
@@ -107,10 +107,10 @@ Mười bước tương ứng với các mục dưới đây:
 | Màn hình | Nội dung bắt buộc | Yêu cầu |
 | --- | --- | --- |
 | **Tài khoản** | Đăng ký, đăng nhập, liên kết ví Core, trạng thái xác minh và bước còn thiếu để được xác nhận. | FR01 |
-| **Nhóm của tôi** | Tạo nhóm, vào bằng link, mời và xác nhận đại diện, danh sách hộ, điểm nhận dự kiến, hạn gom. Mỗi hộ quản lý giỏ của mình. | FR01, FR02 |
-| **Giỏ nhu yếu phẩm** | Chọn món hoặc mô tả bằng câu tự nhiên, sửa và lưu giỏ nháp. Hiện trạng thái ví và kiểm ví khi hộ bấm **Xác nhận giỏ đã lưu**. | FR01, FR02 |
+| **Nhóm của tôi** | Nhóm riêng mặc định, vào bằng link, mời và xác nhận đại diện, danh sách hộ, hạn gom. Mỗi hộ quản lý giỏ của mình. | FR01, FR02 |
+| **Giỏ nhu yếu phẩm** | Chọn món hoặc mô tả bằng câu tự nhiên. Hộ sửa số lượng và bấm **Lưu giỏ** để cập nhật nhu cầu khi ví đủ điều kiện. | FR01, FR02 |
 | **Nhu cầu của nhóm** | Tổng theo món, hạn cần hàng, nút đăng Feed, và với mỗi món: **đã giữ**, **đã nhận**, **còn thiếu**. | FR02 |
-| **Feed và gửi đề nghị** | Lọc theo quận/khu vực, phường, nhóm mặt hàng. Form chào có lượng, giá, khung giờ, điểm nhận; hiện tiền hàng và cọc dự kiến trước khi gửi. | FR02, FR03 |
+| **Feed và gửi đề nghị** | Lọc theo nhóm mặt hàng và chọn khu vực từ danh sách phường, xã, đặc khu. Form chào có lượng, giá, khung giờ, điểm nhận; hiện tiền hàng và cọc dự kiến trước khi gửi. | FR02, FR03 |
 | **Bỏ phiếu và xác nhận** | Hộ xem phần mua từ giỏ đã chốt và bấm Có hoặc Không. Người bán xem lượng đã gom để quyết định bán. Hộ có phần ký Fuji theo đúng phiên bản đã chốt. | FR03 |
 | **Đơn của tôi** | Cả đơn mua và đơn bán: cọc, tiền hàng, hạn nộp, lịch nhận, tiến độ, khoản chi/hoàn. Đơn 0đ bỏ bước nộp tiền hàng của hộ và vẫn hiển thị cọc cho người bán. | FR03, FR04 |
 | **Bàn giao** | Người bán báo sẵn sàng và tải bằng chứng; đại diện nhập lượng thực nhận; hai bên duyệt cùng biên nhận hoặc báo sự cố. | FR04 |
@@ -232,11 +232,11 @@ Backend tạo `versionId` và lưu `versionHash = keccak256(abi.encode(...))` kh
 
 | Giai đoạn | Hành động hoặc mốc | Kết quả | Thông báo |
 | --- | --- | --- | --- |
-| Đang bỏ phiếu | Đủ lượng chào hoặc tới hạn và có ít nhất một phiếu Có | Chụp bản bất biến ở `SUBMITTED` | Người bán |
-| Đang bỏ phiếu | Tới hạn và không có phiếu Có | Kết thúc đề nghị | Người bán |
+| Đang bỏ phiếu | Đủ lượng chào, mọi hộ đủ điều kiện đã chọn hoặc tới hạn, và có ít nhất một phiếu Có hợp lệ | Chụp bản bất biến ở `SUBMITTED` | Người bán |
+| Đang bỏ phiếu | Mọi hộ đủ điều kiện đã chọn hoặc tới hạn, và không có phiếu Có hợp lệ | Kết thúc đề nghị | Người bán |
 | `SUBMITTED` | Người bán yêu cầu sửa hoặc từ chối | `CHANGES_REQUESTED` để mở vòng phiếu mới, hoặc `REJECTED` | Các hộ đã bỏ phiếu Có |
 | `SUBMITTED` | Hết hạn phản hồi | `EXPIRED` với lý do `SELLER_TIMEOUT` | Người bán và các hộ có phần |
-| `SUBMITTED` | Người bán đồng ý và kiểm lượng, ví thành công | Tạo hợp đồng chờ ký và thu, giữ lượng và yêu cầu mở vòng Fuji | Người bán và các hộ có phần khi vòng mở |
+| `SUBMITTED` | Người bán đồng ý và kiểm lượng, ví thành công | Tạo hợp đồng chờ ký và thu, giữ lượng và yêu cầu mở vòng Fuji | Khi vòng mở, mỗi bên nhận một thông báo dẫn đến đơn hàng để hộ ký xác nhận, người bán nộp cọc và đại diện theo dõi nếu không có phần hàng. |
 | `SUBMITTED` | Thiếu lượng khi người bán đồng ý | `STOCK_CONFLICT`, trả `409` | Người bán và các hộ có phần |
 | Chờ ký và thu | Đủ chữ ký, cọc và tiền hàng trước hạn tương ứng | `AWAIT_HANDOFF` | Người bán, đại diện và các hộ có phần |
 | Chờ ký và thu | Hết hạn và còn thiếu điều kiện | `CANCELED`, giải phóng lượng và lập hoàn các khoản đã thu | Các bên |
@@ -297,7 +297,7 @@ Tiền tố `/api/v1`. JSON, trừ upload bằng chứng (`multipart/form-data`)
 | Nhóm | Endpoint |
 | --- | --- |
 | Tài khoản, ví | `GET/PATCH /me`, `GET /wallet/challenge`, `POST /wallet/link` |
-| Nhóm | `POST /groups`, `GET /groups/{id}`, `POST /groups/{id}/invites`, `POST /invites/accept` |
+| Nhóm | `GET /me` cấp nhóm mặc định, `GET /groups/{id}`, `POST /groups/{id}/invites`, `POST /invites/accept` |
 | Đợt gom và giỏ | `POST /groups/{id}/campaigns`, `GET /catalog`, `GET/PUT /campaigns/{id}/cart`, `POST /campaigns/{id}/cart/ai`, `POST /campaigns/{id}/cart/confirm`, `POST /campaigns/{id}/publish`, `GET /campaigns/{id}/needs` |
 | Feed và đề nghị | `GET /feed`, `POST /needs/{id}/offers`, `GET /needs/{id}/offers` |
 | Thương lượng hiện hành, cần đồng bộ với luồng bỏ phiếu | `POST /offers/{id}/draft`, `GET /drafts/{id}`, `PUT /drafts/{id}/my-line`, `POST /drafts/{id}/submit`, `POST /drafts/{id}/versions/{version}/seller-response`, `POST /drafts/{id}/revise` |
@@ -306,7 +306,7 @@ Tiền tố `/api/v1`. JSON, trừ upload bằng chứng (`multipart/form-data`)
 | Thu tiền | `POST /demo/charges/{id}/receive`; sau demo: `POST /charges/{id}/checkout`, `POST /webhooks/payos` |
 | Bàn giao | `POST /contracts/{id}/evidence`, `GET /evidence/{id}`, `POST /contracts/{id}/receipts`, `POST /receipts/{id}/approve` |
 | Sự cố và hủy | `POST /contracts/{id}/issues`, `POST /contracts/{id}/cancel`, `POST /contracts/{id}/terminations`, `POST /terminations/{id}/accept` |
-| Vận hành và thông báo | `GET /ops/disbursements`, `POST /ops/disbursements/{id}/post`, `GET /notifications`, `PATCH /notifications/{id}` |
+| Vận hành và thông báo | `GET /ops/disbursements`, `POST /ops/disbursements/{id}/post`, `GET /notifications`, `PATCH /notifications`, `PATCH /notifications/{id}` |
 
 Mã lỗi chung: `401` thiếu phiên, `403` thiếu quyền, `404` không tồn tại hoặc cần ẩn, `409` xung đột phiên bản/trạng thái/idempotency, `422` dữ liệu sai, `429` vượt giới hạn, `503` phụ thuộc lỗi tạm thời. Envelope lỗi gồm `error.code`, `error.message` và `requestId`.
 
@@ -334,7 +334,7 @@ Sơ đồ thành phần, ranh giới dữ liệu và các phương án đã cân
 | # | Kịch bản | Kết quả đúng |
 | --- | --- | --- |
 | AC-01 | Nhu cầu 12 chai, chưa có đơn khác. Chào 10 chai. Khi đóng phiếu có ba hộ chọn Có theo phần 2+2+3. Người bán đồng ý bán 7 chai. | Tạo một hợp đồng 7 chai với `pending=7`, `reserved=0`, `missing=12`, `offerable=5`. Sau khi đủ chữ ký, cọc và tiền hàng nếu có, tự chuyển sang `AWAIT_HANDOFF` với `pending=0`, `reserved=7`, `missing=5`. |
-| AC-02 | Hộ chưa có ví sẵn sàng khi bấm **Xác nhận giỏ đã lưu** | Hộ vẫn lưu được giỏ nháp. Khi xác nhận, app hướng dẫn liên kết hoặc xác minh ví. Giỏ giữ dữ liệu đã lưu và chỉ chuyển `CONFIRMED` sau khi ví đủ điều kiện. |
+| AC-02 | Hộ bấm **Lưu giỏ** | Giỏ cập nhật nhu cầu ngay khi ví đủ điều kiện. Nếu ví chưa sẵn sàng, app lưu giỏ nháp và hướng dẫn hộ xác minh ví rồi lưu lại. |
 | AC-03 | Người bán yêu cầu sửa điều khoản | Mở vòng phiếu mới. Phiếu và chữ ký gắn với bản tương ứng. |
 | AC-04 | Nhu cầu 12 chai, đơn 8 chai đang chờ ký và thu | `missing = 12`, `offerable = 4`. Feed vẫn nhận đề nghị dự phòng. |
 | AC-05 | Nhận cọc 50.000đ khi còn thiếu chữ ký hoặc tiền hàng | 8 chai vẫn ở `pending`. Khi đã đủ mọi điều kiện, 8 chai chuyển sang `reserved`, `missing = 4`. Bài còn trên Feed trong thời hạn với 4 chai thiếu và rời Feed khi `missing = 0`. |

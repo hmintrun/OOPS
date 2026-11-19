@@ -4,7 +4,6 @@ import { createClient } from "@supabase/supabase-js";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { apiError, campaign, cart, cartAiResult, feed, group, invite, leftGroup, me, membership, needs, publishResult } from "@/contracts/foundation";
 import { GET as getMe, PATCH as patchMe } from "@/app/api/v1/me/route";
-import { POST as postGroup } from "@/app/api/v1/groups/route";
 import { GET as getGroup } from "@/app/api/v1/groups/[id]/route";
 import { POST as postInvite } from "@/app/api/v1/groups/[id]/invites/route";
 import { POST as postLeave } from "@/app/api/v1/groups/[id]/leave/route";
@@ -17,7 +16,9 @@ import { POST as postPublish } from "@/app/api/v1/campaigns/[id]/publish/route";
 import { GET as getFeed } from "@/app/api/v1/feed/route";
 import { GET as getOffers, POST as postOffer } from "@/app/api/v1/needs/[id]/offers/route";
 import { POST as postDraft } from "@/app/api/v1/offers/[id]/draft/route";
+import { GET as getSentOffers } from "@/app/api/v1/offers/route";
 import { GET as getVote, POST as postVote } from "@/app/api/v1/offers/[id]/vote/route";
+import { POST as postVoteClose } from "@/app/api/v1/drafts/[id]/vote-close/route";
 import { GET as getDraft } from "@/app/api/v1/drafts/[id]/route";
 import { PUT as putDraftLine } from "@/app/api/v1/drafts/[id]/my-line/route";
 import { POST as postSubmit } from "@/app/api/v1/drafts/[id]/submit/route";
@@ -45,10 +46,10 @@ import { POST as postRefundFundEvent } from "@/app/api/v1/ops/fund-events/[id]/r
 import { GET as getOpsContracts } from "@/app/api/v1/ops/contracts/route";
 import { GET as getOpsContractDetail } from "@/app/api/v1/ops/contracts/[id]/route";
 import { GET as getOpsAudit } from "@/app/api/v1/ops/audit/route";
-import { GET as getNotices } from "@/app/api/v1/notifications/route";
+import { GET as getNotices, PATCH as patchAllNotices } from "@/app/api/v1/notifications/route";
 import { PATCH as patchNotice } from "@/app/api/v1/notifications/[id]/route";
 import { POST as postCartAi } from "@/app/api/v1/campaigns/[id]/cart/ai/route";
-import { confirmationRound, draft, draftVersion, offer, offers, offerVoting, sellerDraftView } from "@/contracts/negotiation";
+import { confirmationRound, draft, draftVersion, offer, offers, offerVoting, sellerDraftView, sentOfferList } from "@/contracts/negotiation";
 import {
   contract,
   evidenceResult,
@@ -67,12 +68,14 @@ import {
   terminationResult,
 } from "@/contracts/orders";
 import { closeDatabase, transaction } from "@/server/db";
+import { readBuyerDemand } from "@/server/campaigns";
 import { expireSellerResponse } from "@/server/negotiation/versions";
 import { advanceVerifiedRound, approveWithFujiEligibility, expireFujiStage, fujiRoundKey, recordVerifiedRoundOpening } from "@/server/negotiation/rounds";
 import { expireOfferVoting } from "@/server/negotiation/votes";
 import * as profiles from "@/server/profiles";
 import { applySimFundEvent, expireOrderDeadline } from "@/server/orders/collections";
 import { persistNotifications } from "@/server/orders/ops";
+import { listOrdersForDemand } from "@/server/orders/records";
 import { householdNeeds, waterSkuId } from "./fixtures/foundation";
 
 vi.mock("server-only", () => ({}));
@@ -92,7 +95,6 @@ const authFetch = globalThis.fetch.bind(globalThis);
 const users: string[] = [];
 const district = "OOPS_TEST_" + randomUUID();
 const dateIn = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
-const groupInput = { name: "Nhóm kiểm thử", districtCode: district, wardCode: "WARD", pickupPrivate: "private" };
 const origin = "http://localhost:3000";
 type Handler = (request: Request, context: { params: Promise<{ id?: string; version?: string }> }) => Promise<Response>;
 
@@ -137,7 +139,14 @@ async function newUser() {
 }
 
 async function newGroup(userId: string) {
-  return membership.parse((await call(postGroup, userId, { method: "POST", body: groupInput })).data).groupId;
+  const profile = me.parse((await call(getMe, userId)).data);
+  expect(profile.groupId).toBeDefined();
+  // Fixture for the old district-based Feed query and cleanup of its campaigns.
+  await transaction(client => client.query(
+    "update public.groups set district_code = $1, ward_code = 'WARD', pickup_private = 'private' where id = $2",
+    [district, profile.groupId],
+  ));
+  return profile.groupId!;
 }
 
 async function makeInvite(rep: string, id: string, target?: string, key?: string) {
@@ -350,6 +359,13 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
         await client.query(`delete from public.invites where group_id in ${groups}`, [district]);
         await client.query(`delete from public.memberships where group_id in ${groups}`, [district]);
         await client.query("delete from public.groups where district_code = $1", [district]);
+        // Groups provisioned when test users open /me or leave a group.
+        const soloGroups = "(select group_id from public.memberships where user_id = any($1::uuid[]))";
+        await client.query("delete from public.invites where group_id in " + soloGroups, [users]);
+        const { rows: solo } = await client.query<{ group_id: string }>(
+          "delete from public.memberships where user_id = any($1::uuid[]) returning group_id", [users],
+        );
+        await client.query("delete from public.groups where id = any($1::uuid[])", [solo.map(row => row.group_id)]);
         await client.query("delete from public.audit_events where actor_id = any($1::uuid[])", [users]);
         await client.query("delete from public.idempotency_keys where actor_id = any($1::uuid[])", [users]);
         await client.query("delete from public.wallets where user_id = any($1::uuid[])", [users]);
@@ -376,12 +392,53 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     }
   }, 180_000);
 
+  it("updates the signed-in profile without overwriting omitted fields", async () => {
+    const userId = await newUser();
+    const initial = me.parse((await call(getMe, userId)).data);
+    expect(initial.displayName).toBe("Hộ kiểm thử");
+    expect(initial.location).toBeUndefined();
+
+    const rename = await call(patchMe, userId, { method: "PATCH", body: { displayName: " Hộ Bến Thành " } });
+    expect(rename.status).toBe(200);
+    expect(me.parse(rename.data)).toEqual({ ...initial, displayName: "Hộ Bến Thành" });
+
+    const location = { provinceCode: "79", wardCode: "26743" };
+    const move = await call(patchMe, userId, { method: "PATCH", body: { location } });
+    expect(move.status).toBe(200);
+    const expected = { ...initial, displayName: "Hộ Bến Thành", location };
+    expect(me.parse(move.data)).toEqual(expected);
+
+    const invalid = await call(patchMe, userId, {
+      method: "PATCH", body: { displayName: "Tên khác", location: { ...location, wardCode: "99999" } },
+    });
+    expect(invalid.status).toBe(422);
+    expect(me.parse((await call(getMe, userId)).data)).toEqual(expected);
+
+    const updateContact = (contactPrivate: string) => call(patchMe, userId, { method: "PATCH", body: { contactPrivate } });
+    for (const contact of ["090123456", "SĐT: 09012345678", "SĐT: 090 123 4567"]) {
+      expect(await updateContact(contact)).toMatchObject({
+        status: 422, data: { error: { message: "Số điện thoại phải có đúng 10 chữ số." } },
+      });
+    }
+    expect(me.parse((await call(getMe, userId)).data)).toEqual(expected);
+
+    const oldPhone = "+84 901 234 567";
+    await transaction(db => db.query("update public.profiles set contact_private = $2 where id = $1", [userId, oldPhone]));
+    const legacyContact = `SĐT: ${oldPhone}\nĐiểm nhận: Sảnh A`;
+    expect(await updateContact(legacyContact)).toMatchObject({ status: 200, data: { contactPrivate: legacyContact } });
+    const currentContact = "SĐT: 0901234567\nĐiểm nhận: Sảnh A";
+    expect(await updateContact(currentContact)).toMatchObject({ status: 200, data: { contactPrivate: currentContact } });
+
+    const membership = group.parse((await call(getGroup, userId, { id: initial.groupId })).data);
+    expect(membership.members).toEqual([expect.objectContaining({ userId, displayName: "Hộ Bến Thành" })]);
+  });
+
   it("publishes 12 confirmed units, protects private data, and paginates Feed", async () => {
     const [rep, ...others] = await Promise.all(Array.from({ length: 6 }, newUser));
     const buyerIds = [rep, ...others.slice(0, 4)];
     const outsider = others[4];
     expect((await call(getMe)).status).toBe(401);
-    expect(me.parse((await call(getMe, rep)).data)).toEqual({ userId: rep, confirmationEligible: false });
+    expect(me.parse((await call(getMe, rep)).data)).toMatchObject({ userId: rep, displayName: "Hộ kiểm thử", confirmationEligible: false });
     expect((await call(patchMe, rep, { method: "PATCH", origin: "https://elsewhere.test", body: { contactPrivate: "private" } })).status).toBe(403);
     expect(me.parse((await call(patchMe, rep, { method: "PATCH", body: { contactPrivate: "private" } })).data).contactPrivate).toBe("private");
 
@@ -434,18 +491,33 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
   });
 
   it.each(["paid", "free", "expired"])("processes parallel commitments for a %s order", async mode => {
-    const { rep, second, third, seller, item } = await negotiationWithDraft(48);
+    const { rep, second, third, seller, item, campaignId } = await negotiationWithDraft(48);
     const price = mode === "free" ? 0 : 2_000;
     const proposal = offer.parse((await call(postOffer, seller, { id: item.demandItemId, method: "POST", body: {
       qty: mode === "paid" ? 7 : 10, unitPriceVnd: price, supportOffer: price === 0,
       handoffStart: dateIn(48), handoffBy: dateIn(49), handoffPrivate: "Sảnh A",
     } })).data);
     const draftId = proposal.draftId!;
+    const sent = (actor: string, query = "") => call(getSentOffers, actor, { path: `/api/v1/offers${query}` });
+    const sellerOffers = sentOfferList.parse((await sent(seller, "?limit=1")).data);
+    expect(sellerOffers.nextCursor).toBeDefined();
+    const rest = sentOfferList.parse((await sent(seller, `?limit=1&cursor=${sellerOffers.nextCursor}`)).data);
+    expect(rest.nextCursor).toBeUndefined();
+    const tracking = [...sellerOffers.items, ...rest.items].find(row => row.proposalId === proposal.proposalId);
+    expect(tracking).toMatchObject({ draftId, itemName: item.name, unit: "chai", state: "SUBMITTED" });
+    expect(tracking?.terms.handoffPrivate).toBeUndefined();
+    expect((await sent(rep)).data).toEqual({ items: [] });
     const vote = (actor: string, qty: number) => call(postVote, actor, { id: proposal.proposalId, method: "POST",
-      body: { round: 1, choice: "YES", qty, unitPriceVnd: price } });
+      body: qty === 0 ? { round: 1, choice: "NO" } : { round: 1, choice: "YES", qty, unitPriceVnd: price } });
     expect(offerVoting.parse((await call(getVote, rep, { id: proposal.proposalId })).data).availableQty).toBe(2);
     expect((await vote(rep, 1)).status).toBe(409);
-    for (const [buyer, qty] of [[rep, 2], [second, 2], [third, 3]] as const) {
+    await transaction(db => db.query(
+      `update public.profiles p set display_name = t.name
+       from unnest($1::uuid[], $2::text[]) as t(id, name) where t.id = p.id`,
+      [[rep, second, third], ["Hộ Mai", "Hộ Linh", "Hộ Nam"]],
+    ));
+    // A household that withdraws and votes Yes again joins behind households that are still in.
+    for (const [buyer, qty] of [[third, 3], [rep, 2], [third, 0], [third, 3], [rep, 2], [second, 2]] as const) {
       expect((await vote(buyer, qty)).status).toBe(200);
     }
     if (mode !== "paid") await transaction(async db => {
@@ -476,8 +548,19 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     });
     const contractId = approved.contractId!;
     const roundId = approved.roundId!;
+    const remainingOffers = sentOfferList.parse((await sent(seller)).data);
+    expect(remainingOffers.items.map(row => row.proposalId)).not.toContain(proposal.proposalId);
+    const demand = async () => needs.parse((await call(getNeeds, rep, { id: campaignId })).data).items[0];
+    const pendingDemand = { target: 12, pending: 7, reserved: 0, received: 0, offerable: 5 };
+    expect(await demand()).toMatchObject(pendingDemand);
+    expect(feed.parse((await call(getFeed, seller)).data).items.find(row => row.demandItemId === item.demandItemId))
+      .toMatchObject(pendingDemand);
     expect((await finalize(draftId, rep, "new-contract")).status).toBe(409);
     const sellerOrder = await orderFor(contractId, seller);
+    const repOrder = await orderFor(contractId, rep);
+    expect(repOrder.allocations.map(row => [row.householdName, row.qty])).toEqual([["Hộ Mai", 2], ["Hộ Nam", 3], ["Hộ Linh", 2]]);
+    expect(sellerOrder.allocations).toEqual(repOrder.allocations.map(({ householdName, ...row }) => row));
+    expect((await orderFor(contractId, third)).allocations).toEqual([sellerOrder.allocations[1]]);
     const deposit = sellerOrder.charges[0];
     expect(sellerOrder).toMatchObject({ state: "AWAIT_COMMITMENTS", qty: 7, roundId, roundOpenBy: expect.any(String) });
     expect(sellerOrder.depositDueAt).toBeUndefined();
@@ -491,6 +574,33 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(await recordOpening(new Date(+openedAt + 13 * 3_600_000).toISOString())).toBe(false);
     expect(await recordOpening(confirmBy)).toBe(true);
     expect(await recordOpening(confirmBy)).toBe(false);
+    if (mode === "paid") {
+      await transaction(async db => {
+        await persistNotifications(db, "NEGOTIATION_VERSION", version.versionId,
+          `negotiation-version:${version.versionId}:FINALIZED`, [rep]);
+        await persistNotifications(db, "CONTRACT", contractId, `contract:${contractId}:1:FINALIZED`, [rep]);
+      });
+      const inbox = async (actor: string, query = "") => notificationList.parse((await call(getNotices, actor, {
+        path: `/api/v1/notifications${query}`,
+      })).data);
+      const first = await inbox(rep, "?limit=1");
+      expect(first.unreadCount).toBe(2);
+      expect(first.items).toMatchObject([{ title: "Đơn hàng đang chờ bạn ký", href: `/orders/${contractId}` }]);
+      expect(first.nextCursor).toBeDefined();
+      const older = await inbox(rep, `?limit=1&cursor=${first.nextCursor}`);
+      expect(older.items).toMatchObject([{ title: "Nhu cầu của nhóm có đề nghị mới" }]);
+      expect(older.nextCursor).toBeUndefined();
+      expect((await inbox(seller)).items).toMatchObject([{ title: "Đơn hàng đang chờ bạn nộp cọc", href: `/orders/${contractId}` }]);
+
+      const markAll = () => call(patchAllNotices, rep, { method: "PATCH", body: { read: true } });
+      expect(await markAll()).toMatchObject({ status: 200, data: { updatedCount: 4 } });
+      expect(await markAll()).toMatchObject({ status: 200, data: { updatedCount: 0 } });
+      const read = await inbox(rep);
+      expect(read.unreadCount).toBe(0);
+      expect(read.items).toHaveLength(2);
+      expect(read.items.every(notice => Boolean(notice.readAt))).toBe(true);
+      expect((await inbox(seller)).unreadCount).toBe(1);
+    }
     expect(await orderFor(contractId, seller)).toMatchObject({
       confirmBy, depositDueAt: new Date(+openedAt + 6 * 3_600_000).toISOString(),
       ...(price > 0 && { paymentDueAt: confirmBy }),
@@ -532,6 +642,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       expect((await orderFor(contractId, seller)).disbursements).toMatchObject([{ kind: "DEPOSIT_REFUND", amountVnd: 50_000 }]);
       expect((await orderFor(contractId, rep)).disbursements).toMatchObject([{ kind: "GOODS_REFUND", amountVnd: 4_000 }]);
       expect(await stock()).toEqual({ pending: 0, reserved: 0 });
+      expect(await demand()).toMatchObject({ offerable: 12 });
     } else {
       await sign(second);
       await sign(third);
@@ -543,32 +654,158 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       }
       expect((await orderFor(contractId, seller)).state).toBe("AWAIT_HANDOFF");
       expect(await stock()).toEqual({ pending: 0, reserved: 7 });
+      expect(await demand()).toMatchObject({ offerable: 5, received: 0 });
     }
   });
 
-  it("makes idempotency atomic and a JOIN token usable by only one account", async () => {
-    const [rep, first, second] = await Promise.all([newUser(), newUser(), newUser()]);
-    const options = { method: "POST", body: groupInput, key: "same-key", path: "/api/v1/groups" };
-    const [one, replay] = await Promise.all([call(postGroup, rep, options), call(postGroup, rep, options)]);
-    expect([one.status, replay.status]).toEqual([201, 201]);
-    expect(one.data).toEqual(replay.data);
-    expect((await call(postGroup, rep, { ...options, body: { ...groupInput, name: "Different" } })).status).toBe(409);
-    const id = membership.parse(one.data).groupId;
+  it("closes voting after every eligible household responds and keeps the representative's handoff role separate", async () => {
+    const [rep, second, third, seller] = await Promise.all(Array.from({ length: 4 }, newUser));
+    const groupId = await newGroup(rep);
+    for (const buyer of [second, third]) {
+      const { token } = await makeInvite(rep, groupId);
+      expect((await accept(buyer, token)).status).toBe(200);
+    }
+    const campaignId = await newCampaign(rep, groupId, { collectUntil: dateIn(1), needBy: dateIn(96) });
+    for (const [buyer, qty] of [[rep, 2], [second, 2], [third, 3]] as const) {
+      const saved = cart.parse((await put(buyer, campaignId, qty)).data);
+      expect((await confirm(buyer, campaignId, saved.version)).status).toBe(200);
+    }
+    const { items: [item] } = publishResult.parse((await publish(rep, campaignId)).data);
+    const { rows: [{ id: buyerMembership }] } = await transaction(async db => {
+      await db.query(`update public.demand_shares s set received = s.target from public.memberships m
+        where s.membership_id = m.id and m.user_id = $1 and m.group_id = $2 and s.demand_item_id = $3`,
+      [rep, groupId, item.demandItemId]);
+      await db.query("update public.demand_items set received = 2 where id = $1", [item.demandItemId]);
+      return db.query<{ id: string }>("select id from public.memberships where user_id = $1 and group_id = $2", [second, groupId]);
+    });
+    const price = 1_000;
+    const send = async (qty: number) => offer.parse((await call(postOffer, seller, {
+      id: item.demandItemId, method: "POST", body: {
+        qty, unitPriceVnd: price, supportOffer: false,
+        handoffStart: dateIn(48), handoffBy: dateIn(49), handoffPrivate: "Sảnh A",
+      },
+    })).data);
+    const proposal = await send(5);
+    const vote = (id: string, actor: string, round: number, qty = 0) => call(postVote, actor, {
+      id, method: "POST", body: qty ? { round, choice: "YES", qty, unitPriceVnd: price } : { round, choice: "NO" },
+    });
+    const repVote = offerVoting.parse((await call(getVote, rep, { id: proposal.proposalId })).data);
+    expect(repVote).toMatchObject({ eligible: false, open: true });
+    expect(repVote.availableQty).toBeUndefined();
+    expect(repVote.voters).toHaveLength(2);
+    expect((await vote(proposal.proposalId, rep, 1)).status).toBe(403);
+    expect(offerVoting.parse((await vote(proposal.proposalId, second, 1, 2)).data)).toMatchObject({
+      open: true, myQty: 2, totalQty: 2,
+    });
+    expect(offerVoting.parse((await vote(proposal.proposalId, third, 1)).data)).toMatchObject({
+      open: false, closed: true, myQty: 0, totalQty: 2,
+    });
+    expect(sellerDraftView.parse((await call(getDraft, seller, { id: proposal.draftId })).data).latestVersion.qty).toBe(2);
+    expect((await call(postSellerResponse, seller, {
+      id: proposal.draftId, version: "1", method: "POST", body: { action: "REQUEST_CHANGES", note: "Kiểm tra lại" },
+    })).status).toBe(200);
+    expect(offerVoting.parse((await vote(proposal.proposalId, second, 2)).data)).toMatchObject({ open: true, myQty: 0 });
+    expect(offerVoting.parse((await vote(proposal.proposalId, third, 2)).data)).toMatchObject({
+      round: 2, open: false, closed: true, myQty: 0, totalQty: 0,
+    });
+    expect((await vote(proposal.proposalId, second, 2)).status).toBe(409);
+    expect(offerVoting.parse((await call(getVote, seller, { id: proposal.proposalId })).data)).toMatchObject({
+      round: 2, closed: true, totalQty: 0,
+    });
+    expect(sellerDraftView.parse((await call(getDraft, seller, { id: proposal.draftId })).data).latestVersion.version).toBe(1);
 
-    const issued = await makeInvite(rep, id, undefined, "invite-replay");
+    const next = await send(5);
+    const close = { id: next.draftId, method: "POST", body: { round: 1 } };
+    expect((await call(postVoteClose, rep, close)).data).toEqual({ closed: false });
+    // Simulate an existing round whose ballots were recorded before early closing was supported.
+    await transaction(db => db.query(
+      `insert into public.offer_votes (negotiation_id, membership_id, qty, round)
+       select $1, id, case when user_id = $2 then 2 else 0 end, 1 from public.memberships
+       where group_id = $3 and user_id = any($4::uuid[]) and left_at is null`,
+      [next.draftId, second, groupId, [second, third]],
+    ));
+    expect(offerVoting.parse((await call(getVote, rep, { id: next.proposalId })).data)).toMatchObject({
+      open: true, readyToClose: true, totalQty: 2,
+    });
+    expect((await call(postVoteClose, rep, close)).data).toEqual({ closed: true });
+    expect((await call(postVoteClose, rep, close)).data).toEqual({ closed: false });
+    const { latestVersion: version } = sellerDraftView.parse((await call(getDraft, seller, { id: next.draftId })).data);
+    const approved = draftVersion.parse(await transaction(db => approveWithFujiEligibility(db, seller, next.draftId!, version.versionId, {
+      chainId: 43113, contractAddress: "0x" + "1".repeat(40), roundKey: fujiRoundKey(version.versionId),
+      eligibleWallets: [{ membershipId: buyerMembership, wallet: walletOf(second) }],
+    })));
+    const contractId = approved.contractId!;
+    const roundId = approved.roundId!;
+    const repRound = confirmationRound.parse((await call(getRound, rep, { id: roundId })).data);
+    expect(repRound.requiredCount).toBe(1);
+    expect(repRound.myConfirmation).toBeUndefined();
+    expect(confirmationRound.parse((await call(getRound, second, { id: roundId })).data).myConfirmation?.state).toBe("PENDING");
+    expect((await call(getRound, third, { id: roundId })).status).toBe(404);
+    const repOrder = await orderFor(contractId, rep);
+    expect(repOrder.repId).toBe(rep);
+    expect(repOrder.myShare).toBeUndefined();
+    expect(repOrder.charges).toEqual([]);
+    const [deposit] = (await orderFor(contractId, seller)).charges;
+    const [goods] = (await orderFor(contractId, second)).charges;
+    expect(deposit.kind).toBe("DEPOSIT");
+    expect(goods.kind).toBe("GOODS");
+    expect((await pay(goods.chargeId, rep)).status).toBe(404);
+
+    const openedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
+    await transaction(async db => {
+      expect(await recordVerifiedRoundOpening(db, next.draftId!, version.versionId, roundId, openedAt.toISOString(),
+        new Date(+openedAt + 12 * 3_600_000).toISOString())).toBe(true);
+      await db.query(`insert into public.confirmations (round_id, membership_id, chain_id, tx_hash, log_index, block_no)
+        values ($1, $2, 43113, $3, 0, 1)`, [roundId, buyerMembership, version.versionHash]);
+    });
+    const notices = notificationList.parse((await call(getNotices, rep)).data);
+    expect(notices.items.filter(item => item.entityId === contractId)).toMatchObject([
+      { title: "Đơn hàng đã mở vòng ký", href: `/orders/${contractId}` },
+    ]);
+    expect((await pay(goods.chargeId, second)).status).toBe(200);
+    expect((await pay(deposit.chargeId, seller)).status).toBe(200);
+    expect((await orderFor(contractId, rep)).state).toBe("AWAIT_HANDOFF");
+    const submission = {
+      id: contractId, method: "POST",
+      body: { evidenceIds: [], lines: repOrder.allocations.map(part => ({ allocationId: part.allocationId, receivedQty: 0 })) },
+    };
+    expect((await call(postReceipt, second, submission)).status).toBe(404);
+    expect((await call(postReceipt, rep, submission)).status).toBe(201);
+  });
+
+  it("shares a stable JOIN code across accounts and keeps targeted invites one-time", async () => {
+    const [rep, first, second] = await Promise.all([newUser(), newUser(), newUser()]);
+    const id = await newGroup(rep);
+
+    const [issued, issuedAgain] = await Promise.all([
+      makeInvite(rep, id, undefined, "invite-replay"),
+      makeInvite(rep, id, undefined, "invite-other-request"),
+    ]);
+    expect(issued).toEqual(issuedAgain);
+    expect(issued).toMatchObject({ joinCode: issued.token });
+    expect(issued.token).toMatch(/^[A-Z0-9]{8}$/);
     expect(await makeInvite(rep, id, undefined, "invite-replay")).toEqual(issued);
-    const expired = await makeInvite(rep, id);
+    expect((await call(getMe, first)).status).toBe(200);
+    const targeted = await call(postInvite, rep, { id, method: "POST", body: { kind: "JOIN", targetUserId: first } });
+    expect(targeted.status).toBe(201);
+    const expired = invite.parse(targeted.data);
+    const expiredToken = new URL(expired.inviteUrl).searchParams.get("token")!;
     await transaction(client => client.query(
       "update public.invites set expires_at = clock_timestamp() - interval '1 second' where id = $1", [expired.inviteId],
     ));
-    expect((await accept(first, expired.token)).status).toBe(409);
-    const joined = await Promise.all([accept(first, issued.token), accept(second, issued.token)]);
-    expect(joined.map(result => result.status).sort()).toEqual([200, 409]);
-    const newRep = joined[0].status === 200 ? first : second;
+    expect((await accept(first, expiredToken)).status).toBe(409);
+    expect((await accept(first, "00000000")).status).toBe(409);
+    const joined = await Promise.all([accept(first, issued.token), accept(second, issued.token.toLowerCase())]);
+    expect(joined.map(result => result.status)).toEqual([200, 200]);
+    for (const result of joined) expect(membership.parse(result.data)).toMatchObject({ groupId: id, role: "MEMBER" });
+    expect((await accept(first, issued.token)).status).toBe(409);
+    const newRep = first;
     const roleInvite = await makeInvite(rep, id, newRep);
     expect((await accept(rep, roleInvite.token)).status).toBe(409);
     expect(membership.parse((await accept(newRep, roleInvite.token)).data).role).toBe("REP");
+    expect((await accept(newRep, roleInvite.token)).status).toBe(409);
     expect(group.parse((await call(getGroup, rep, { id })).data).repId).toBe(newRep);
+    expect(await makeInvite(newRep, id)).toEqual(issued);
     expect((await call(postInvite, rep, {
       id, method: "POST", body: { kind: "JOIN" }, key: "invite-replay",
     })).status).toBe(403);
@@ -622,11 +859,14 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
 
   it("prevents two active memberships when group creation races", async () => {
     const rep = await newUser();
-    const options = { method: "POST", body: groupInput };
-    const responses = await Promise.all([call(postGroup, rep, options), call(postGroup, rep, options)]);
-    expect(responses.map(result => result.status).sort()).toEqual([201, 409]);
-    const profile = me.parse((await call(getMe, rep)).data);
+    const [one, two] = await Promise.all([call(getMe, rep), call(getMe, rep)]);
+    expect([one.status, two.status]).toEqual([200, 200]);
+    const profile = me.parse(one.data);
     expect(profile.groupId).toBeDefined();
+    expect(me.parse(two.data).groupId).toBe(profile.groupId);
+    const data = group.parse((await call(getGroup, rep, { id: profile.groupId })).data);
+    expect(data.repId).toBe(rep);
+    expect(data.members).toHaveLength(1);
   });
 
   it("opens an offer and draft while enforcing roles, revisions and stock boundaries", async () => {
@@ -680,6 +920,25 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       draftId: expect.any(String), voteDueAt: expect.any(String),
     });
     expect((await call(getOffers, outsider, { id })).status).toBe(404);
+    const firstNotice = notificationList.parse((await call(getNotices, rep, { path: "/test/notices?limit=1" })).data);
+    expect(firstNotice.unreadCount).toBe(2);
+    expect(firstNotice.items).toHaveLength(1);
+    expect(firstNotice.items[0]).toMatchObject({
+      entityId: id, title: "Nhu cầu của nhóm có đề nghị mới",
+      href: expect.stringContaining(`/trade/needs/${id}?proposal=`),
+    });
+    const nextNotice = notificationList.parse((await call(getNotices, rep, {
+      path: `/test/notices?limit=1&cursor=${firstNotice.nextCursor}`,
+    })).data);
+    expect(nextNotice.unreadCount).toBe(2);
+    expect(nextNotice.items.map(item => item.href).concat(firstNotice.items[0].href)).toEqual(
+      expect.arrayContaining([
+        `/trade/needs/${id}?proposal=${proposal.proposalId}`,
+        `/trade/needs/${id}?proposal=${supported.proposalId}`,
+      ]),
+    );
+    expect(notificationList.parse((await call(getNotices, outsider)).data)).toMatchObject({ items: [], unreadCount: 0 });
+    expect(notificationList.parse((await call(getNotices, seller)).data)).toMatchObject({ items: [], unreadCount: 0 });
     const sellerOffers = offers.parse((await call(getOffers, seller, { id })).data).items;
     expect(sellerOffers).toEqual([{ ...proposal, canOpenDraft: false }]);
     const memberOffers = offers.parse((await call(getOffers, second, { id })).data).items;
@@ -978,6 +1237,15 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     const order = contract.parse(results[0].data);
     const orderId = order.contractId;
     expect(order).toMatchObject({ state: "AWAIT_DEPOSIT", qty: 7, goodsVnd: 0, depositVnd: 50_000 });
+    await transaction(async db => {
+      for (const userId of [rep, second, seller]) {
+        expect(await listOrdersForDemand(db, userId, item.demandItemId)).toEqual([
+          expect.objectContaining({ contractId: orderId, qty: 7, unit: "chai" }),
+        ]);
+      }
+      expect(await listOrdersForDemand(db, spare, item.demandItemId)).toEqual([]);
+      expect(await listOrdersForDemand(db, rep, randomUUID())).toEqual([]);
+    }, true);
     expect((await call(postLeave, second, leaveRequest)).data).toMatchObject({ error: { code: "ACTIVE_COMMITMENT" } });
     await expect(changeWallet()).rejects.toMatchObject({ code: "23514", constraint: "wallet_active_commitment" });
     expect(order.paymentDueAt).toBeUndefined();
@@ -998,7 +1266,11 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
        from public.charges c join public.fund_events f on f.charge_id = c.id where c.id = $1`, [deposit.chargeId],
     ))).rows).toEqual([{ disposition: "APPLIED", started: true }]);
     expect((await orderFor(orderId, second)).charges).toEqual([]);
-    expect((await orderFor(orderId, rep)).state).toBe("AWAIT_HANDOFF");
+    const handoffOrder = await orderFor(orderId, rep);
+    expect(handoffOrder.state).toBe("AWAIT_HANDOFF");
+    const allocationIds = handoffOrder.allocations.map(row => row.allocationId);
+    expect(allocationIds).toEqual([...allocationIds].sort());
+    expect(handoffOrder.allocations.every(row => Boolean(row.householdName))).toBe(true);
     expect(await readStock()).toEqual({ pending: 0, reserved: 7, received: 0 });
     expect(contract.parse((await call(postReady, seller, { id: orderId, method: "POST", body: {} })).data).readyAt)
       .toEqual(expect.any(String));
@@ -1033,9 +1305,18 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     }
     expect((await call(postCancel, seller, { id: orderId, method: "POST", body: { reason: "SELLER_CANCEL" } })).status).toBe(409);
     const lines = order.allocations.map(part => ({ allocationId: part.allocationId, receivedQty: part.qty }));
-    const handoff = receipt.parse((await call(postReceipt, rep, { id: orderId, method: "POST", body: {
-      handedAt: await databaseTime(), evidenceIds: [evidenceId], lines,
-    } })).data);
+    const submission = { id: orderId, method: "POST", key: "receipt-now", body: { evidenceIds: [evidenceId], lines } };
+    const before = await databaseTime();
+    const created = await call(postReceipt, rep, submission);
+    expect(created.status).toBe(201);
+    const handoff = receipt.parse(created.data);
+    expect(Date.parse(handoff.handedAt)).toBeGreaterThanOrEqual(Date.parse(before));
+    expect(Date.parse(handoff.handedAt)).toBeLessThanOrEqual(Date.parse(await databaseTime()));
+    expect(await call(postReceipt, rep, submission)).toMatchObject({ status: 201, data: handoff });
+    expect((await call(postReceipt, rep, { ...submission, key: "invalid-replacement", body: {
+      ...submission.body, handedAt: "2000-01-01T00:00:00.000Z",
+    } })).status).toBe(422);
+    expect((await orderFor(orderId, seller)).receipt).toEqual(handoff);
     const approve = (actor: string) => call(postApprove, actor, { id: handoff.receiptId, method: "POST", body: { version: handoff.version } });
     expect(receipt.parse((await approve(seller)).data).approvals).toHaveLength(1);
     expect((await orderFor(orderId, seller)).state).toBe("AWAIT_APPROVAL");
@@ -1083,7 +1364,12 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     await readyDraft(id, rep, seller, [[rep, 2], [second, 2], [third, 3], [spare, 1]]);
     const order = contract.parse((await finalize(id, rep, "priced")).data);
     const orderId = order.contractId;
-    const [deposit] = (await orderFor(orderId, seller)).charges;
+    expect(order).toMatchObject({ unit: "chai", myShare: { qty: 2, goodsVnd: 4_000 } });
+    const sellerView = await orderFor(orderId, seller);
+    expect(sellerView.unit).toBe("chai");
+    expect(sellerView.myShare).toBeUndefined();
+    expect(await orderFor(orderId, third)).toMatchObject({ unit: "chai", myShare: { qty: 3, goodsVnd: 6_000 } });
+    const [deposit] = sellerView.charges;
     expect((await pay(deposit.chargeId, seller)).status).toBe(200);
     const paymentResults = await Promise.all([rep, second, third, spare].map(async userId => {
       const [goods] = (await orderFor(orderId, userId)).charges;
@@ -1241,15 +1527,33 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
   });
 
   it("requires both parties for excused cancellation and refunds the deposit exactly once", async () => {
-    const { id, rep, seller, item } = await negotiationWithDraft(48, 0);
-    await readyDraft(id, rep, seller, [[rep, 2]]);
+    const { id, rep, second, seller, item } = await negotiationWithDraft(48, 0);
+    await readyDraft(id, rep, seller, [[rep, 2], [second, 2]]);
     const order = contract.parse((await finalize(id, rep, "excused-cancel")).data);
     const [deposit] = (await orderFor(order.contractId, seller)).charges;
     await pay(deposit.chargeId, seller);
     const eligible = await orderFor(order.contractId, rep);
     const proposed = terminationResult.parse((await call(postTermination, rep, {
-      id: order.contractId, method: "POST", body: { version: eligible.version, reason: "EXCUSED_CANCEL" },
+      id: order.contractId, method: "POST",
+      body: { version: eligible.version, reason: "EXCUSED_CANCEL", note: "Không muốn mua nữa" },
     })).data);
+    expect((await orderFor(order.contractId, seller)).termination).toMatchObject({ proposedBy: rep, note: "Không muốn mua nữa" });
+    const eventKey = `contract:${order.contractId}:${eligible.version}:TERMINATION_PROPOSED`;
+    await transaction(async db => {
+      const { rows: [event] } = await db.query<{ payload: { recipientUserIds: string[] } }>(
+        "select payload from public.outbox where event_key = $1", [eventKey],
+      );
+      expect(event.payload.recipientUserIds).toEqual([seller]);
+      await persistNotifications(db, "CONTRACT", order.contractId, eventKey, [rep, second, seller]);
+      const { rows } = await db.query("select user_id from public.notifications where event_key = $1", [eventKey]);
+      expect(rows).toEqual([{ user_id: seller }]);
+      await db.query("insert into public.notifications (user_id, entity_type, entity_id, event_key) values ($1, 'CONTRACT', $2, $3)",
+        [rep, order.contractId, eventKey]);
+    });
+    const visibleNotices = async (actor: string) => notificationList.parse((await call(getNotices, actor)).data).items;
+    const href = `/orders/${order.contractId}#cancellation`;
+    expect((await visibleNotices(seller)).find(item => item.href === href)?.title).toBe("Có yêu cầu hủy đơn");
+    expect((await visibleNotices(rep)).some(item => item.href === href)).toBe(false);
     const accept = { id: proposed.terminationId, method: "POST", body: {} };
     expect((await call(acceptCancellation, rep, accept)).status).toBe(403);
     expect(contract.parse((await call(acceptCancellation, seller, accept)).data)).toMatchObject({
@@ -1284,6 +1588,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       expect(provider).not.toHaveBeenCalled();
       expect(cartAiResult.parse((await call(postCartAi, rep, request)).data)).toEqual({
         draft: { householdSize: 2, lines: [{ skuId: waterSkuId, stockQty: 3, needQty: 7 }] },
+        encouragement: expect.any(String),
         unresolved: ["Thực phẩm chưa rõ"], ruleRefs: [],
       });
       expect((await call(postCartAi, rep, request)).status).toBe(503);
@@ -1296,6 +1601,40 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     } finally {
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
+    }
+  });
+
+  it("saves and includes an eligible cart in needs in one versioned write", async () => {
+    const rep = await newUser();
+    const campaignId = await newCampaign(rep, await newGroup(rep));
+    const request = { id: campaignId, method: "PUT", body: {
+      householdSize: 2, supportRequested: true, includeInNeeds: true, version: 0,
+      lines: [{ skuId: waterSkuId, stockQty: 0, needQty: 7 }],
+    } };
+    expect(cart.parse((await call(saveCart, rep, request)).data)).toMatchObject({ state: "DRAFT", version: 1 });
+    expect(needs.parse((await call(getNeeds, rep, { id: campaignId })).data).items).toEqual([]);
+
+    const address = walletOf(rep);
+    await transaction(db => db.query("insert into public.wallets (user_id, address, verification_state) values ($1, $2, 'VERIFIED')", [rep, address]));
+    const eligibility = vi.spyOn(profiles, "prepareProfileEligibility").mockResolvedValue({ address, eligible: true });
+    try {
+      const include = { ...request, body: { ...request.body, version: 1 }, key: "save-and-include" };
+      const saved = await call(saveCart, rep, include);
+      expect(cart.parse(saved.data)).toMatchObject({ state: "CONFIRMED", version: 2 });
+      expect(await call(saveCart, rep, include)).toEqual(saved);
+      expect(needs.parse((await call(getNeeds, rep, { id: campaignId })).data).items).toMatchObject([{ skuId: waterSkuId, target: 7 }]);
+
+      const cleared = await call(saveCart, rep, { ...request, body: { ...request.body, version: 2, lines: [] } });
+      expect(cart.parse(cleared.data)).toMatchObject({ state: "CONFIRMED", version: 3, lines: [] });
+      expect(needs.parse((await call(getNeeds, rep, { id: campaignId })).data).items).toEqual([]);
+
+      expect((await call(saveCart, rep, { ...request, body: { ...request.body, version: 3 } })).status).toBe(200);
+      const { items: [item] } = publishResult.parse((await publish(rep, campaignId)).data);
+      expect(await transaction(db => listOrdersForDemand(db, rep, item.demandItemId), true)).toEqual([]);
+      expect(await transaction(db => readBuyerDemand(db, rep, item.demandItemId), true)).toMatchObject({ unit: "chai", missing: 7 });
+      await expect(transaction(db => readBuyerDemand(db, randomUUID(), item.demandItemId), true)).rejects.toMatchObject({ status: 404 });
+    } finally {
+      eligibility.mockRestore();
     }
   });
 

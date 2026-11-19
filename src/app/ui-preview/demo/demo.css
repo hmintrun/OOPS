@@ -303,3 +303,13 @@
   outline: 2px solid var(--oops-jade);
   outline-offset: 2px;
 }
+
+/* Ẩn scrollbar trên tab Shopee */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+

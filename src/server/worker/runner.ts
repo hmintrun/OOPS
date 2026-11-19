@@ -137,6 +137,7 @@ export async function dispatchOutboxItem(
     }
 
     case "NEGOTIATION_VERSION_STATE_CHANGED": {
+      if (payload.state === "FINALIZED") return;
       const versionId = str(payload, "versionId");
       const recipients = strArray(payload, "recipientUserIds");
       await deps.runTx(db =>
@@ -146,6 +147,7 @@ export async function dispatchOutboxItem(
     }
 
     case "ORDER_STATE_CHANGED": {
+      if (payload.action === "FINALIZED" && payload.state === "AWAIT_COMMITMENTS") return;
       const contractId = str(payload, "contractId");
       const recipients = strArray(payload, "recipientUserIds");
       await deps.runTx(db => persistNotifications(db, "CONTRACT", contractId, item.event_key, recipients));

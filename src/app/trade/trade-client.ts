@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useErrorToast } from "@/components/ui/error-toast";
 import { ApiError, newIdempotencyKey } from "@/lib/api-client";
+import { invalidateClientCache, readClientCache, writeClientCache } from "@/lib/client-cache";
 
 export const vnd = (amount: number) => new Intl.NumberFormat("vi-VN", {
   style: "currency", currency: "VND",
@@ -16,25 +18,28 @@ export function localDateTime(date: Date) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
-export function useTrade<T>(load: () => Promise<T>) {
+export function useTrade<T>(load: () => Promise<T>, cacheKey?: string) {
   const router = useRouter();
   const pathname = usePathname();
-  const [loaded, setLoaded] = useState<{ source: () => Promise<T>; value: T }>();
+  const showError = useErrorToast();
+  const cached = cacheKey ? readClientCache<T>(cacheKey) : undefined;
+  const [loaded, setLoaded] = useState<{ source: () => Promise<T>; key?: string; value: T } | undefined>(() =>
+    cached ? { source: load, key: cacheKey, value: cached.value } : undefined,
+  );
   const [failure, setFailure] = useState<ApiError | Error>();
   const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !cached);
   const generation = useRef(0);
   const reading = useRef(false);
   const submitting = useRef(false);
   const keys = useRef(new Map<string, string>());
-  const handleError = useCallback((error: unknown) => {
-    if (error instanceof ApiError && error.status === 401) {
-      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-    }
-    setFailure(error instanceof Error ? error : new Error("Không thực hiện được thao tác."));
+  const redirectIfUnauthorized = useCallback((error: unknown) => {
+    if (!(error instanceof ApiError && error.status === 401)) return false;
+    router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+    return true;
   }, [router, pathname]);
-  const refresh = useCallback(async (options?: { background?: boolean }) => {
-    if (options?.background && (submitting.current || reading.current)) return;
+  const refresh = useCallback(async (options?: { background?: boolean; force?: boolean }) => {
+    if (options?.background && !options.force && (submitting.current || reading.current)) return;
     const current = ++generation.current;
     reading.current = true;
     if (!options?.background) {
@@ -43,10 +48,11 @@ export function useTrade<T>(load: () => Promise<T>) {
     }
     try {
       const result = await load();
-      if (generation.current === current) setLoaded({ source: load, value: result });
+      if (cacheKey) writeClientCache(cacheKey, result);
+      if (generation.current === current) setLoaded({ source: load, key: cacheKey, value: result });
     } catch (error) {
-      if (generation.current === current && (!options?.background || (error instanceof ApiError && error.status === 401))) {
-        handleError(error);
+      if (generation.current === current && !redirectIfUnauthorized(error) && !options?.background) {
+        setFailure(error instanceof Error ? error : new Error("Không tải được dữ liệu."));
       }
     } finally {
       if (generation.current === current) {
@@ -54,11 +60,23 @@ export function useTrade<T>(load: () => Promise<T>) {
         if (!options?.background) setLoading(false);
       }
     }
-  }, [load, handleError]);
+  }, [load, redirectIfUnauthorized, cacheKey]);
   useEffect(() => {
-    void refresh();
-    return () => { generation.current++; };
-  }, [refresh]);
+    const entry = cacheKey ? readClientCache<T>(cacheKey) : undefined;
+    if (entry) {
+      setLoaded({ source: load, key: cacheKey, value: entry.value });
+      setLoading(false);
+      setFailure(undefined);
+      if (!entry.isFresh) void refresh({ background: true });
+    } else {
+      void refresh();
+    }
+    return () => {
+      generation.current++;
+      reading.current = false;
+    };
+  }, [refresh, load, cacheKey]);
+  const data = loaded?.source === load || (cacheKey !== undefined && loaded?.key === cacheKey) ? loaded.value : cached?.value;
   async function run<R>(operation: string, request: (key: string) => Promise<R>, done?: (result: R) => void) {
     if (submitting.current) return;
     submitting.current = true;
@@ -70,17 +88,20 @@ export function useTrade<T>(load: () => Promise<T>) {
       const result = await request(key);
       keys.current.delete(operation);
       done?.(result);
-      await refresh();
+      invalidateClientCache();
+      await refresh({ background: Boolean(data), force: true });
     } catch (error) {
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) keys.current.delete(operation);
-      if (error instanceof ApiError && error.status === 409) await refresh();
-      handleError(error);
+      if (!redirectIfUnauthorized(error)) showError(error instanceof Error ? error.message : "Không thực hiện được thao tác.");
+      if (error instanceof ApiError && error.status === 409) {
+        invalidateClientCache();
+        await refresh({ background: Boolean(data), force: true });
+      }
     } finally {
       submitting.current = false;
       setBusy(false);
     }
   }
-  const data = loaded?.source === load ? loaded.value : undefined;
   return { data, failure, busy, loading, refresh, run };
 }
 
