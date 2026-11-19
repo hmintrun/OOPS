@@ -29,6 +29,7 @@ import "./relief.css";
 type LoadStatus = "loading" | "ready" | "error";
 
 const DEMO_VIEWER_ID = "00000000-0000-4000-8000-000000000001";
+const DEMO_VIEWER_PHONE = "0901234567";
 
 const DEMO_RELIEF_ITEMS: ReliefRequest[] = [
   {
@@ -158,6 +159,7 @@ export function SosReliefSection({ demoMode = false }: { demoMode?: boolean }) {
   const isDemo = demoMode || demoQuery;
 
   const [viewerUserId, setViewerUserId] = useState(() => (demoMode ? DEMO_VIEWER_ID : ""));
+  const [viewerPhone, setViewerPhone] = useState(() => (demoMode ? DEMO_VIEWER_PHONE : ""));
   const [items, setItems] = useState<ReliefRequest[]>(() => (demoMode ? DEMO_RELIEF_ITEMS : []));
   const [status, setStatus] = useState<LoadStatus>(() => (demoMode ? "ready" : "loading"));
   const [errorMessage, setErrorMessage] = useState("");
@@ -168,13 +170,14 @@ export function SosReliefSection({ demoMode = false }: { demoMode?: boolean }) {
 
   const [isOpen, setIsOpen] = useState(false);
   const [selectedNeeds, setSelectedNeeds] = useState<ReliefNeedTag[]>(["WATER"]);
-  const [phone, setPhone] = useState("");
+  const [phone, setPhone] = useState(() => (demoMode ? DEMO_VIEWER_PHONE : ""));
   const [location, setLocation] = useState("");
   const [note, setNote] = useState("");
   const [gpsStatus, setGpsStatus] = useState("");
   const [formError, setFormError] = useState("");
 
   const demoInitializedRef = useRef(demoMode);
+  const phoneDirtyRef = useRef(false);
   const submitRetryRef = useRef<{ body: string; key: string } | null>(null);
   const syncNowRef = useRef<(options?: { manual?: boolean; resetLoaded?: boolean }) => void>(() => {});
 
@@ -188,6 +191,10 @@ export function SosReliefSection({ demoMode = false }: { demoMode?: boolean }) {
       if (!demoInitializedRef.current) {
         demoInitializedRef.current = true;
         setViewerUserId(DEMO_VIEWER_ID);
+        setViewerPhone(DEMO_VIEWER_PHONE);
+        if (!phoneDirtyRef.current) {
+          setPhone((prev) => (prev ? prev : DEMO_VIEWER_PHONE));
+        }
         setItems(DEMO_RELIEF_ITEMS);
         setStatus("ready");
         setErrorMessage("");
@@ -231,7 +238,12 @@ export function SosReliefSection({ demoMode = false }: { demoMode?: boolean }) {
         const data = await getReliefRequests();
         if (stopped) return;
         hasLoaded = true;
+        const nextPhone = data.viewerPhone ?? "";
         setViewerUserId(data.viewerUserId);
+        setViewerPhone(nextPhone);
+        if (!phoneDirtyRef.current) {
+          setPhone((prev) => (prev ? prev : nextPhone));
+        }
         setItems(data.items);
         setStatus("ready");
         setErrorMessage("");
@@ -395,7 +407,8 @@ export function SosReliefSection({ demoMode = false }: { demoMode?: boolean }) {
       setItems((prev) => [created, ...prev]);
       setStatus("ready");
       setIsOpen(false);
-      setPhone("");
+      phoneDirtyRef.current = false;
+      setPhone(viewerPhone);
       setLocation("");
       setNote("");
       setGpsStatus("");
@@ -418,7 +431,8 @@ export function SosReliefSection({ demoMode = false }: { demoMode?: boolean }) {
       setStatus("ready");
       setActionError("");
       setIsOpen(false);
-      setPhone("");
+      phoneDirtyRef.current = false;
+      setPhone(viewerPhone);
       setLocation("");
       setNote("");
       setGpsStatus("");
@@ -493,6 +507,13 @@ export function SosReliefSection({ demoMode = false }: { demoMode?: boolean }) {
     }
   };
 
+  const openDialog = () => {
+    phoneDirtyRef.current = false;
+    setPhone((prev) => (prev.trim() ? prev : viewerPhone));
+    setFormError("");
+    setIsOpen(true);
+  };
+
   const handleManualRefresh = () => {
     if (isDemo) return;
     setActionError("");
@@ -530,7 +551,7 @@ export function SosReliefSection({ demoMode = false }: { demoMode?: boolean }) {
           <button
             type="button"
             className="relief-banner__cta"
-            onClick={() => setIsOpen(true)}
+            onClick={openDialog}
           >
             BÁO CẦN CỨU TRỢ NGAY
           </button>
@@ -805,6 +826,7 @@ export function SosReliefSection({ demoMode = false }: { demoMode?: boolean }) {
                   aria-required="true"
                   value={phone}
                   onChange={(e) => {
+                    phoneDirtyRef.current = true;
                     setPhone(e.target.value);
                     submitRetryRef.current = null;
                     setFormError("");

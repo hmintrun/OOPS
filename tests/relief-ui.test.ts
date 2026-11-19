@@ -76,6 +76,7 @@ const sampleClosedRequest: ReliefRequest = {
 
 const sampleList: ReliefList = {
   viewerUserId,
+  viewerPhone: "0912345678",
   items: [sampleOpenRequest],
 };
 

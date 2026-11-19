@@ -1,5 +1,5 @@
 type IllustratedScene = "basket" | "parcel" | "home";
-export type PageScene = IllustratedScene | "flood-relief";
+export type PageScene = IllustratedScene | "flood-relief" | "sos-relief";
 
 const scenes = {
   basket: { src: "/assets/groceries-box.webp", width: 1024, height: 1024 },
@@ -14,6 +14,14 @@ export function PageArtwork({ scene }: { scene: PageScene }) {
       <div className="ui-page-photo">
         <img src="/assets/flood-relief.webp" width={870} height={489}
           alt="Đội cứu trợ chuyển thùng nhu yếu phẩm lên xuồng ở vùng ngập" decoding="async" fetchPriority="high" />
+      </div>
+    );
+  }
+  if (scene === "sos-relief") {
+    return (
+      <div className="ui-page-photo">
+        <img src="/assets/sos-relief.jpg" width={888} height={592}
+          alt="Tình nguyện viên mặc áo phao trao thùng nhu yếu phẩm cứu trợ giữa vùng ngập lụt" decoding="async" fetchPriority="high" />
       </div>
     );
   }

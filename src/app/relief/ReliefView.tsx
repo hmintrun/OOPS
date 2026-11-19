@@ -8,7 +8,7 @@ export default function ReliefView() {
     <AppShell
       title="Cứu trợ khẩn cấp"
       subtitle="Gửi yêu cầu tiếp tế khẩn cấp hoặc nhận hỗ trợ các hộ quanh bạn."
-      illustration="flood-relief"
+      illustration="sos-relief"
       bodyClassName="ui-stack"
       bare
     >
