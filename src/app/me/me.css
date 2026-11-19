@@ -294,8 +294,25 @@
 
 .me-wallet-obj__main {
   display: grid;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
+}
+.me-wallet-obj__addr-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.me-wallet-obj__addr-row .me-copy {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(0, 86, 67, 0.16);
+  color: var(--oops-jade-dark);
+}
+.me-wallet-obj__addr-row .me-copy:hover {
+  background: var(--oops-surface);
 }
 .me-wallet-obj__label {
   font-size: 0.8125rem;
