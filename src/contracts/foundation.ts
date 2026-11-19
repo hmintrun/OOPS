@@ -74,6 +74,7 @@ export const me = z.strictObject({
   }).optional(),
   confirmationEligible: z.boolean(),
   contactPrivate: z.string().optional(),
+  isOps: z.boolean().optional(),
 });
 export const walletChallenge = z.strictObject({
   nonce: uuid,

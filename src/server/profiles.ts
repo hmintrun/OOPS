@@ -34,11 +34,13 @@ export async function readMe(client: PoolClient, actor: Actor, eligibility?: Wal
     contact_private: string | null;
     address: string | null;
     verification_state: NonNullable<Me["wallet"]>["verificationState"] | null;
+    is_ops: boolean;
   }>(
-    `select m.group_id, p.contact_private, w.address, w.verification_state
+    `select m.group_id, p.contact_private, w.address, w.verification_state, (oa.user_id is not null) as is_ops
      from public.profiles p
      left join public.memberships m on m.user_id = p.id and m.left_at is null
      left join public.wallets w on w.user_id = p.id
+     left join public.ops_accounts oa on oa.user_id = p.id
      where p.id = $1`,
     [actor.userId],
   );
@@ -50,6 +52,7 @@ export async function readMe(client: PoolClient, actor: Actor, eligibility?: Wal
     }),
     confirmationEligible: row.verification_state === "VERIFIED" && eligibility?.address === row.address && eligibility.eligible,
     ...(row.contact_private !== null && { contactPrivate: row.contact_private }),
+    ...(row.is_ops && { isOps: true }),
   };
 }
 

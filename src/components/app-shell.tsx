@@ -9,7 +9,7 @@ import type { PageScene } from "@/components/ui/PageArtwork";
 export const SHELL_NAV_ITEMS: NavItem[] = [
   { key: "groups", label: "Nhóm của tôi", icon: "groups", href: "/groups", relatedPaths: ["/", "/campaigns"], prefetch: false },
   { key: "feed", label: "Nhu cầu", icon: "newspaper", href: "/feed", relatedPaths: ["/trade/needs"] },
-  { key: "orders", label: "Đơn hàng", icon: "inventory_2", href: "/orders", relatedPaths: ["/trade/drafts", "/trade/rounds", "/notifications", "/ops"] },
+  { key: "orders", label: "Đơn hàng", icon: "inventory_2", href: "/orders", relatedPaths: ["/trade/drafts", "/trade/rounds", "/notifications", "/ops", "/admin"] },
   { key: "me", label: "Tài khoản", icon: "person", href: "/me" },
 ];
 

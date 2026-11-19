@@ -66,7 +66,7 @@ export default function OrdersPage() {
 
       <Card className="ui-actions ui-toolbar" padding="flush">
         <Link href="/notifications" className="ui-btn ui-btn--secondary">Thông báo</Link>
-        <Link href="/ops" className="ui-btn ui-btn--secondary">Đối soát SIM</Link>
+        <Link href="/ops" className="ui-btn ui-btn--secondary">Quản trị &amp; Đối soát SIM</Link>
         <Link href="/feed" className="ui-btn ui-btn--secondary">Xem nhu cầu</Link>
       </Card>
       <Card className="ui-actions">

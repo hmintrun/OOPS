@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import type { Me } from "@/contracts/foundation";
 import { CopyButton } from "./CopyButton";
@@ -47,6 +48,24 @@ export function AccountSection({ data }: { data: Me }) {
             )}
           </div>
         </div>
+
+        {data.isOps && (
+          <div className="me-item">
+            <div className="me-item__body">
+              <p className="me-item__label">Vai trò hệ thống</p>
+              <div className="me-item__value flex-wrap">
+                <span className="me-chip me-chip--verified">
+                  <span className="me-chip__dot" aria-hidden />
+                  Quản trị viên · Đối soát SIM
+                </span>
+                <Link className="me-chip me-chip--link" href="/ops">
+                  Mở bảng quản trị &amp; đối soát SIM
+                  <MaterialSymbol name="chevron_right" size={18} />
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Card>
   );
