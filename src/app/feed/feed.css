@@ -348,16 +348,6 @@
   gap: 8px;
   justify-self: start;
 }
-.feed-card__action.feed-card__gift {
-  grid-template-columns: auto minmax(0, 1fr);
-  background: var(--oops-jade);
-  border-color: var(--oops-jade);
-  color: var(--oops-surface);
-}
-.feed-card__action.feed-card__gift:is(:hover, :active) {
-  background: var(--oops-jade-dark);
-}
-
 .feed-card__action {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

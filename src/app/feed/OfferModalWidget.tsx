@@ -55,8 +55,9 @@ export function OfferModalWidget({
   const maxQty = item.offerable;
   const [quantity, setQuantity] = useState(Math.min(maxQty, 10));
 
-  const [isGift, setIsGift] = useState(true);
-  const [unitPrice, setUnitPrice] = useState(0);
+  const defaultUnitPrice = suggestedUnitPrice > 0 ? suggestedUnitPrice : 50_000;
+  const [isGift, setIsGift] = useState(item.supportRequested);
+  const [unitPrice, setUnitPrice] = useState(item.supportRequested ? 0 : defaultUnitPrice);
 
   const now = Date.now();
   const minDeliveryDate = new Date(now + 20.5 * 3600 * 1000);
@@ -91,7 +92,7 @@ export function OfferModalWidget({
     if (gift) {
       setUnitPrice(0);
     } else if (unitPrice === 0) {
-      setUnitPrice(suggestedUnitPrice > 0 ? suggestedUnitPrice : 50_000);
+      setUnitPrice(defaultUnitPrice);
     }
   };
 

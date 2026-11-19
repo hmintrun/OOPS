@@ -108,7 +108,6 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
 
   // Modal Widget Chào hàng
   const [selectedItemForOffer, setSelectedItemForOffer] = useState<DemandItem | null>(null);
-  const [giftOffer, setGiftOffer] = useState(false);
 
   useEffect(() => {
     writeClientCache<FeedViewCache>(FEED_VIEW_KEY, { category, ward, appliedWard });
@@ -293,12 +292,6 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
     setAppliedWard("");
   }
 
-  const handleOpenOfferModal = (item: DemandItem, gift = false) => {
-    setGiftOffer(gift);
-    setSelectedItemForOffer(item);
-  };
-
-
   // Tính toán phân trang
   const totalPages = Math.max(1, Math.ceil(items.length / FEED_PAGE_SIZE));
   const startIndex = (currentPage - 1) * FEED_PAGE_SIZE;
@@ -413,7 +406,7 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
                 key={item.demandItemId}
                 item={item}
                 category={categories.get(item.skuId)}
-                onOfferClick={handleOpenOfferModal}
+                onOfferClick={setSelectedItemForOffer}
               />
             ))}
           </div>
@@ -445,7 +438,8 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
 
       {selectedItemForOffer && (
         <WidgetDialog title={selectedItemForOffer.name} icon="storefront" onClose={() => setSelectedItemForOffer(null)}>
-          <OffersPanel id={selectedItemForOffer.demandItemId} demand={selectedItemForOffer} initialGift={giftOffer}
+          <OffersPanel id={selectedItemForOffer.demandItemId} demand={selectedItemForOffer}
+            initialGift={selectedItemForOffer.supportRequested}
             leadHours={offerLeadHours}
             onCreated={() => setSelectedItemForOffer(null)} />
         </WidgetDialog>

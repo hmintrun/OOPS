@@ -27,7 +27,7 @@ export function DemandCard({
 }: {
   item: DemandItem;
   category?: Category;
-  onOfferClick?: (item: DemandItem, gift?: boolean) => void;
+  onOfferClick?: (item: DemandItem) => void;
 }) {
   const name = item.name.toLowerCase();
   const fallbackCategory = name.includes("nước") ? "WATER" : /gạo|mì/.test(name) ? "FOOD" : "ESSENTIALS";
@@ -37,8 +37,8 @@ export function DemandCard({
   const pct = Math.min(100, Math.round((fulfilled / item.target) * 100));
   const action = (
     <>
-      <MaterialSymbol name="storefront" size={18} />
-      <span>Chào hàng hoặc xem đề nghị</span>
+      <MaterialSymbol name="volunteer_activism" size={18} />
+      <span>Chào hàng hoặc tặng hàng miễn phí</span>
       <MaterialSymbol name="arrow_forward" size={18} />
     </>
   );
@@ -98,19 +98,18 @@ export function DemandCard({
         </div>
 
         <div className="feed-card__footer">
-          {item.supportRequested && item.offerable > 0 && Date.parse(item.needBy) > Date.now() && (
-            onOfferClick ? <button type="button" onClick={() => onOfferClick(item, true)} className="feed-card__action feed-card__gift">
-              <MaterialSymbol name="volunteer_activism" size={18} /> Tặng hàng miễn phí
-            </button> : <Link href={`/trade/needs/${item.demandItemId}?intent=gift`} className="feed-card__action feed-card__gift">
-              <MaterialSymbol name="volunteer_activism" size={18} /> Tặng hàng miễn phí
-            </Link>
-          )}
           {onOfferClick ? (
             <button type="button" onClick={() => onOfferClick(item)} className="feed-card__action">
               {action}
             </button>
           ) : (
-            <Link href={`/trade/needs/${item.demandItemId}`} className="feed-card__action">
+            <Link
+              href={{
+                pathname: `/trade/needs/${item.demandItemId}`,
+                query: item.supportRequested ? { intent: "gift" } : undefined,
+              }}
+              className="feed-card__action"
+            >
               {action}
             </Link>
           )}
