@@ -42,6 +42,12 @@ describe("notification content", () => {
       .toMatchObject({ title, href: `/orders/${contractId}` });
   });
 
+  it("opens the cancellation card from a cancellation request notice", () => {
+    expect(describeNotification({
+      entityType: "CONTRACT", entityId: contractId, eventKey: `contract:${contractId}:4:TERMINATION_PROPOSED`,
+    })).toMatchObject({ title: "Có yêu cầu hủy đơn", href: `/orders/${contractId}#cancellation` });
+  });
+
   it("keeps legacy notices readable without claiming an event or exposing an arbitrary link", () => {
     const legacy = { notificationId: versionId, entityType: "CONTRACT", entityId: contractId };
     const content = describeNotification({ ...legacy, eventKey: "old-notice" });

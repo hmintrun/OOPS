@@ -210,7 +210,7 @@ export async function cancelBySeller(db: PoolClient, actorId: string, id: string
 
 export async function proposeTermination(db: PoolClient, actorId: string, id: string, input: z.output<typeof terminationInput>) {
   const { order, allocations } = await lockOrderStock(db, id);
-  requireHandoffParty(order, actorId);
+  const role = requireHandoffParty(order, actorId);
   if (await expireCollectionUnderLock(db, order, allocations)) {
     return conflict("Đã hết hạn thu tiền. Hợp đồng đã được hủy theo điều khoản.");
   }
@@ -227,7 +227,9 @@ export async function proposeTermination(db: PoolClient, actorId: string, id: st
     [id, actorId, input.version, input.note ?? null],
   );
   if (!saved) throw conflict("Đơn đã có yêu cầu hủy đang chờ.");
-  await recordOrderEvent(db, id, "TERMINATION_PROPOSED", order.version, actorId);
+  await recordOrderEvent(db, id, "TERMINATION_PROPOSED", order.version, actorId, {
+    recipientUserId: role === "SELLER" ? order.rep_id : order.seller_id,
+  });
   return { terminationId: saved.id, state: "PENDING" as const };
 }
 

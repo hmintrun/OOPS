@@ -10,13 +10,14 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
-import { chargeResult, contract, evidenceResult, issueInput, receipt, receiptInput, signedEvidence, terminationResult } from "@/contracts/orders";
+import { chargeResult, contract, evidenceResult, issueInput, receipt, receiptInput, signedEvidence } from "@/contracts/orders";
 import { apiFetch, getMe } from "@/lib/api-client";
 import { Chip, INPUT_CLASS } from "@/app/campaigns/_shared/ui";
 import { isPast } from "@/app/campaigns/_shared/dates";
 import { TradeStatus } from "@/app/trade/TradeStatus";
 import { dateTime, useRoundRefresh, useTrade, vnd } from "@/app/trade/trade-client";
 import { orderStates, orderStateTones, paymentKinds } from "../order-labels";
+import { OrderCancellation } from "./OrderCancellation";
 import "../orders.css";
 
 const chargeLabels = { PENDING: "Chờ ghi nhận", RECEIVED: "Đã nhận", EXPIRED: "Hết hạn", REVIEW: "Cần đối soát" };
@@ -270,36 +271,8 @@ export default function OrderPage() {
             </form>
           </details>}
         </Card>}
-        {party && (canCancel || order.termination) && <Card className="grid gap-3">
-          <CardTitle as="h2">Hủy đơn</CardTitle>
-          {order.termination ? <>
-            <p>Đang chờ bên còn lại đồng ý hủy.</p>
-            {order.termination.note && <p>{order.termination.note}</p>}
-            {order.termination.proposedBy !== userId && <Button variant="danger" disabled={trade.busy || trade.loading} onClick={() => {
-              const terminationId = order.termination?.terminationId;
-              void trade.run(`accept:${terminationId}`, key => apiFetch(`/api/v1/terminations/${terminationId}/accept`, {
-                method: "POST", body: {}, schema: contract, idempotencyKey: key,
-              }));
-            }}>Đồng ý hủy đơn</Button>}
-          </> : <details>
-            <summary className="cursor-pointer font-bold">Xem lựa chọn hủy</summary>
-            <form className="mt-3 grid gap-3" onSubmit={event => {
-              event.preventDefault();
-              const fields = new FormData(event.currentTarget);
-              const note = String(fields.get("note")).trim();
-              const direct = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "direct";
-              if (direct && !note) { showError("Nhập lý do hủy đơn."); return; }
-              const body = direct ? { reason: note } : { version: order.version, reason: "EXCUSED_CANCEL", note: note || undefined };
-              void trade.run<unknown>(`cancel:${direct}:${JSON.stringify(body)}`, key => direct
-                ? apiFetch(`${path}/cancel`, { method: "POST", body, schema: contract, idempotencyKey: key })
-                : apiFetch(`${path}/terminations`, { method: "POST", body, schema: terminationResult, idempotencyKey: key }));
-            }}>
-              <label className="grid gap-1">Lý do<input name="note" maxLength={80} className={INPUT_CLASS} /></label>
-              <Button type="submit" variant="secondary" disabled={trade.busy || trade.loading}>Đề nghị hai bên hủy</Button>
-              {seller && !evidenceIds.length && !currentReceipt && <Button type="submit" value="direct" variant="danger" disabled={trade.busy || trade.loading}>Cửa hàng hủy đơn</Button>}
-            </form>
-          </details>}
-        </Card>}
+        {party && (canCancel || order.termination) && <OrderCancellation
+          order={order} seller={seller} disabled={trade.busy || trade.loading} run={trade.run} />}
       </div>}
     </div>
   </AppShell>;

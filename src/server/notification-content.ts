@@ -60,7 +60,7 @@ const orderCases: Record<string, NoticeText> = {
   },
   TERMINATION_PROPOSED: {
     title: "Có yêu cầu hủy đơn",
-    detail: "Một bên đề nghị hủy đơn. Mở chi tiết để xem lý do và phản hồi.",
+    detail: "Mở yêu cầu để xem lý do hủy và phản hồi.",
     icon: "cancel",
   },
   SELLER_CANCEL: {
@@ -202,7 +202,10 @@ export function describeNotification({
       break;
     case "CONTRACT":
       href = `/orders/${entityId}`;
-      if (source === "contract" && reference === entityId) content = readCase(orderCases, action);
+      if (source === "contract" && reference === entityId) {
+        content = readCase(orderCases, action);
+        if (action === "TERMINATION_PROPOSED") href += "#cancellation";
+      }
       if (source === "contract-signing") content = {
         title: "Đơn hàng đang chờ bạn ký",
         detail: "Đề nghị đã chốt và vòng ký đã mở. Mở đơn hàng để ký xác nhận trước hạn.",

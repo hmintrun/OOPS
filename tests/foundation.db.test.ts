@@ -1504,15 +1504,33 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
   });
 
   it("requires both parties for excused cancellation and refunds the deposit exactly once", async () => {
-    const { id, rep, seller, item } = await negotiationWithDraft(48, 0);
-    await readyDraft(id, rep, seller, [[rep, 2]]);
+    const { id, rep, second, seller, item } = await negotiationWithDraft(48, 0);
+    await readyDraft(id, rep, seller, [[rep, 2], [second, 2]]);
     const order = contract.parse((await finalize(id, rep, "excused-cancel")).data);
     const [deposit] = (await orderFor(order.contractId, seller)).charges;
     await pay(deposit.chargeId, seller);
     const eligible = await orderFor(order.contractId, rep);
     const proposed = terminationResult.parse((await call(postTermination, rep, {
-      id: order.contractId, method: "POST", body: { version: eligible.version, reason: "EXCUSED_CANCEL" },
+      id: order.contractId, method: "POST",
+      body: { version: eligible.version, reason: "EXCUSED_CANCEL", note: "Không muốn mua nữa" },
     })).data);
+    expect((await orderFor(order.contractId, seller)).termination).toMatchObject({ proposedBy: rep, note: "Không muốn mua nữa" });
+    const eventKey = `contract:${order.contractId}:${eligible.version}:TERMINATION_PROPOSED`;
+    await transaction(async db => {
+      const { rows: [event] } = await db.query<{ payload: { recipientUserIds: string[] } }>(
+        "select payload from public.outbox where event_key = $1", [eventKey],
+      );
+      expect(event.payload.recipientUserIds).toEqual([seller]);
+      await persistNotifications(db, "CONTRACT", order.contractId, eventKey, [rep, second, seller]);
+      const { rows } = await db.query("select user_id from public.notifications where event_key = $1", [eventKey]);
+      expect(rows).toEqual([{ user_id: seller }]);
+      await db.query("insert into public.notifications (user_id, entity_type, entity_id, event_key) values ($1, 'CONTRACT', $2, $3)",
+        [rep, order.contractId, eventKey]);
+    });
+    const visibleNotices = async (actor: string) => notificationList.parse((await call(getNotices, actor)).data).items;
+    const href = `/orders/${order.contractId}#cancellation`;
+    expect((await visibleNotices(seller)).find(item => item.href === href)?.title).toBe("Có yêu cầu hủy đơn");
+    expect((await visibleNotices(rep)).some(item => item.href === href)).toBe(false);
     const accept = { id: proposed.terminationId, method: "POST", body: {} };
     expect((await call(acceptCancellation, rep, accept)).status).toBe(403);
     expect(contract.parse((await call(acceptCancellation, seller, accept)).data)).toMatchObject({

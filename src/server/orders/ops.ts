@@ -66,7 +66,7 @@ export async function postDisbursement(db: PoolClient, actorId: string, id: stri
      ) returning version`, [order.id],
   );
   await recordOrderEvent(db, order.id, "DISBURSEMENT_POSTED", completed?.version ?? order.version, actorId, {
-    id: payment.id, payeeId: payment.payee_id,
+    disbursementId: payment.id, recipientUserId: payment.payee_id,
   });
   if (completed) await recordOrderEvent(db, order.id, "COMPLETED", completed.version, actorId);
   return { disbursementId: id, state: "POSTED" as const, contractState: completed ? "COMPLETED" as const : order.state };

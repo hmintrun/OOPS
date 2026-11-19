@@ -22,6 +22,16 @@ type NoticeDetails = Notice & {
 
 type NoticePageRow = (NoticeDetails | { id: null }) & { unread_count: number };
 
+// Older cancellation events may have named the whole order as recipients.
+const cancellationNoticeRecipient = `(split_part(n.event_key, ':', 4) <> 'TERMINATION_PROPOSED' or not exists (
+  select 1 from public.terminations t
+  join public.contracts c on c.id = t.contract_id
+  join public.proposals p on p.id = c.proposal_id
+  where t.contract_id = n.entity_id
+    and n.event_key = concat('contract:', t.contract_id, ':', t.base_version, ':TERMINATION_PROPOSED')
+    and n.user_id <> case when t.proposed_by = p.seller_id then c.rep_id else p.seller_id end
+))`;
+
 function noticeDto(row: Notice) {
   return {
     notificationId: row.id,
@@ -37,7 +47,7 @@ export async function listNotifications(db: PoolClient, userId: string, filters:
   // For a finalized version, prefer the round-opening notice, then the order creation notice.
   const { rows } = await db.query<NoticePageRow>(
     `with own as (
-       select n.id, upper(n.entity_type) as entity_type, n.entity_id, n.event_key, n.read_at,
+       select n.id, n.user_id, upper(n.entity_type) as entity_type, n.entity_id, n.event_key, n.read_at,
          coalesce((to_jsonb(n)->>'created_at')::timestamptz, o.processed_at) as occurred_at,
          o.payload->>'state' as event_state,
          case when upper(n.entity_type) = 'NEGOTIATION_VERSION'
@@ -51,7 +61,8 @@ export async function listNotifications(db: PoolClient, userId: string, filters:
        where n.user_id = $1
      ), visible as (
        select distinct on (finalized_version_id, case when finalized_version_id is null then id end) *
-       from own
+       from own n
+       where ${cancellationNoticeRecipient}
        order by finalized_version_id, case when finalized_version_id is null then id end,
          case when entity_type = 'NEGOTIATION_VERSION' then 2
            when split_part(event_key, ':', 1) = 'contract' then 1 else 0 end,
@@ -112,7 +123,10 @@ export async function persistNotifications(
   if (!recipientUserIds.length) return;
   await db.query(
     `insert into public.notifications (user_id, entity_type, entity_id, event_key)
-     select u, $2, $3, $4 from unnest($1::uuid[]) u on conflict (user_id, event_key) do nothing`,
+     select n.user_id, $2, n.entity_id, n.event_key
+     from (select unnest($1::uuid[]) as user_id, $3::uuid as entity_id, $4::text as event_key) n
+     where ${cancellationNoticeRecipient}
+     on conflict (user_id, event_key) do nothing`,
     [recipientUserIds, entityType, entityId, eventKey],
   );
 }
