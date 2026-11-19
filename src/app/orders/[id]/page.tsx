@@ -3,6 +3,7 @@
 import { ReceivingContactDetails } from "@/components/ReceivingContactDetails";
 import { QuantityInput } from "@/components/ui/QuantityInput";
 import { ProgressCapsule } from "@/components/ui/ProgressCapsule";
+import { useErrorToast } from "@/components/ui/error-toast";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
@@ -35,7 +36,7 @@ export default function OrderPage() {
     return { order, userId: me.userId };
   }, [path]);
   const trade = useTrade(load, `order:${id}`);
-  const [formError, setFormError] = useState("");
+  const showError = useErrorToast();
   const [proof, setProof] = useState<{ id: string; url: string; expiresAt: string }>();
   const [proofPending, setProofPending] = useState(false);
   const [proofFile, setProofFile] = useState<File>();
@@ -65,21 +66,19 @@ export default function OrderPage() {
 
   async function viewProof(evidenceId: string) {
     setProofPending(true);
-    setFormError("");
     setProof(undefined);
     try {
       const result = await apiFetch(`/api/v1/evidence/${evidenceId}`, { schema: signedEvidence });
       if (!["https:", "http:"].includes(new URL(result.url).protocol)) throw new Error("Liên kết ảnh không hợp lệ.");
       setProof({ id: evidenceId, ...result });
     } catch (error) {
-      setFormError(error instanceof Error ? error.message : "Không mở được ảnh.");
+      showError(error instanceof Error ? error.message : "Không mở được ảnh.");
     } finally { setProofPending(false); }
   }
 
   return <AppShell title="Chi tiết đơn hàng" illustration="parcel" backHref="/orders" bare>
     <div className="grid gap-4">
       <TradeStatus {...trade} retry={() => void trade.refresh()} />
-      {formError && <p role="alert">{formError}</p>}
       {order && <div className="ui-card-grid">
         <Card id="commitments" tabIndex={-1} className="order-stage grid gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -144,8 +143,6 @@ export default function OrderPage() {
                 </Link>}
               </div>}
               {payable && <Button disabled={trade.busy || trade.loading} onClick={() => {
-                setFormError("");
-                // trade.run reloads Contract on 409 before setting trade.failure.
                 void trade.run(`charge:${charge.chargeId}`, key =>
                   apiFetch(`/api/v1/demo/charges/${charge.chargeId}/receive`, {
                     method: "POST", body: {}, schema: chargeResult, idempotencyKey: key,
@@ -162,7 +159,6 @@ export default function OrderPage() {
           <CardTitle as="h2">Bàn giao và biên nhận</CardTitle>
           {seller && order.state === "AWAIT_HANDOFF" && !order.readyAt && <Button disabled={trade.busy || trade.loading}
             onClick={() => {
-              setFormError("");
               void trade.run("ready", key => apiFetch(`${path}/ready`, {
                 method: "POST", body: {}, schema: contract, idempotencyKey: key,
               }));
@@ -170,8 +166,7 @@ export default function OrderPage() {
           {seller && canHandoff && <form className="grid min-w-0 gap-2" onSubmit={event => {
             event.preventDefault();
             if (!proofFile) return;
-            setFormError("");
-            if (proofFile.size > 5 * 1024 * 1024) { setFormError("Ảnh vượt giới hạn 5 MiB."); return; }
+            if (proofFile.size > 5 * 1024 * 1024) { showError("Ảnh vượt giới hạn 5 MiB."); return; }
             const body = new FormData();
             body.set("file", proofFile);
             void trade.run(`proof:${fileRevision}`, key => apiFetch(`${path}/evidence`, {
@@ -215,7 +210,6 @@ export default function OrderPage() {
             {party && canHandoff && currentReceipt.state === "DRAFT" &&
               !currentReceipt.approvals.some(entry => entry.role === (seller ? "SELLER" : "REP")) &&
               <Button loading={trade.busy} disabled={trade.loading} onClick={() => {
-                setFormError("");
                 void trade.run(`approve:${currentReceipt.receiptId}:${currentReceipt.version}`, key =>
                   apiFetch(`/api/v1/receipts/${currentReceipt.receiptId}/approve`, {
                     method: "POST", body: { version: currentReceipt.version }, schema: receipt, idempotencyKey: key,
@@ -226,22 +220,21 @@ export default function OrderPage() {
             <summary className="cursor-pointer font-bold">{currentReceipt ? "Lập biên nhận thay thế" : "Lập biên nhận"}</summary>
             <form className="mt-3 grid gap-3" key={currentReceipt?.receiptId} onSubmit={event => {
               event.preventDefault();
-              setFormError("");
               const form = event.currentTarget;
               const fields = new FormData(form);
               const time = String(fields.get("handedAt") ?? "");
               const date = time ? new Date(time) : undefined;
-              if (date && !Number.isFinite(date.getTime())) { setFormError("Chọn thời điểm bàn giao hợp lệ."); return; }
+              if (date && !Number.isFinite(date.getTime())) { showError("Chọn thời điểm bàn giao hợp lệ."); return; }
               const body = {
                 handedAt: date?.toISOString() ?? currentReceipt?.handedAt,
                 lines: order.allocations.map(part => ({ allocationId: part.allocationId, receivedQty: Number(fields.get(part.allocationId)) })),
                 evidenceIds: fields.getAll("proof").map(String),
               };
               if (body.lines.some(line => line.receivedQty > 0) && !body.evidenceIds.length) {
-                setFormError("Chọn ít nhất một ảnh của cửa hàng nếu có hàng thực nhận.");
+                showError("Chọn ít nhất một ảnh của cửa hàng nếu có hàng thực nhận.");
                 return;
               }
-              if (!receiptInput.safeParse(body).success) { setFormError("Kiểm tra lượng thực nhận của từng hộ."); return; }
+              if (!receiptInput.safeParse(body).success) { showError("Kiểm tra lượng thực nhận của từng hộ."); return; }
               void trade.run(`receipt:${currentReceipt?.receiptId ?? "new"}:${JSON.stringify(body)}`, key => apiFetch(`${path}/receipts`, {
                 method: "POST", body, schema: receipt, idempotencyKey: key,
               }), () => {
@@ -265,7 +258,6 @@ export default function OrderPage() {
             <summary className="cursor-pointer font-bold">Báo sự cố</summary>
             <form className="mt-3 grid gap-3" onSubmit={event => {
               event.preventDefault();
-              setFormError("");
               const fields = new FormData(event.currentTarget);
               const body = issueInput.parse({ reasonCode: fields.get("reason"), note: String(fields.get("note")).trim() || undefined });
               void trade.run(`issue:${order.version}:${JSON.stringify(body)}`, key => apiFetch(`${path}/issues`, {
@@ -284,9 +276,7 @@ export default function OrderPage() {
             <p>Đang chờ bên còn lại đồng ý hủy.</p>
             {order.termination.note && <p>{order.termination.note}</p>}
             {order.termination.proposedBy !== userId && <Button variant="danger" disabled={trade.busy || trade.loading} onClick={() => {
-              setFormError("");
               const terminationId = order.termination?.terminationId;
-              // trade.run reloads Contract on 409 before surfacing failure via TradeStatus.
               void trade.run(`accept:${terminationId}`, key => apiFetch(`/api/v1/terminations/${terminationId}/accept`, {
                 method: "POST", body: {}, schema: contract, idempotencyKey: key,
               }));
@@ -295,13 +285,11 @@ export default function OrderPage() {
             <summary className="cursor-pointer font-bold">Xem lựa chọn hủy</summary>
             <form className="mt-3 grid gap-3" onSubmit={event => {
               event.preventDefault();
-              setFormError("");
               const fields = new FormData(event.currentTarget);
               const note = String(fields.get("note")).trim();
               const direct = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "direct";
-              if (direct && !note) { setFormError("Nhập lý do hủy đơn."); return; }
+              if (direct && !note) { showError("Nhập lý do hủy đơn."); return; }
               const body = direct ? { reason: note } : { version: order.version, reason: "EXCUSED_CANCEL", note: note || undefined };
-              // trade.run reloads Contract on 409 before surfacing failure via TradeStatus.
               void trade.run<unknown>(`cancel:${direct}:${JSON.stringify(body)}`, key => direct
                 ? apiFetch(`${path}/cancel`, { method: "POST", body, schema: contract, idempotencyKey: key })
                 : apiFetch(`${path}/terminations`, { method: "POST", body, schema: terminationResult, idempotencyKey: key }));

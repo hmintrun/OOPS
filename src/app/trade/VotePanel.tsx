@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { z } from "zod";
 import { Button } from "@/components/ui";
+import { useErrorToast } from "@/components/ui/error-toast";
 import { type Offer, type OfferVoting, offerVoting, sellerDraftView, voteInput } from "@/contracts/negotiation";
 import { ApiError, apiFetch, newIdempotencyKey } from "@/lib/api-client";
 import { dateTime, vnd } from "./trade-client";
@@ -38,9 +39,9 @@ export function VotePanel({
 }: VotePanelProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const showError = useErrorToast();
   const [voting, setVoting] = useState<OfferVoting | null | undefined>(undefined);
   const [loadError, setLoadError] = useState("");
-  const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
   const [editingVote, setEditingVote] = useState<string>();
   const [pendingAction, setPendingAction] = useState<"YES" | "NO" | "CLOSE" | null>(null);
@@ -62,10 +63,9 @@ export function VotePanel({
   }, [onUpdated]);
 
   const fetchVoting = useCallback(
-    async (options?: { preserveActionError?: boolean; suppressOnUpdated?: boolean }): Promise<FetchResult> => {
+    async (options?: { suppressOnUpdated?: boolean }): Promise<FetchResult> => {
       const current = ++generation.current;
       setLoadError("");
-      if (!options?.preserveActionError) setActionError("");
       try {
         const next = await apiFetch(`/api/v1/offers/${encodeURIComponent(proposalId)}/vote`, {
           schema: offerVoting,
@@ -103,7 +103,6 @@ export function VotePanel({
     keys.current.clear();
     setVoting(undefined);
     setLoadError("");
-    setActionError("");
     setNotice("");
     setEditingVote(undefined);
     setClosedRound(undefined);
@@ -111,7 +110,7 @@ export function VotePanel({
   }, [proposalId]);
 
   useEffect(() => {
-    void fetchVoting({ preserveActionError: true });
+    void fetchVoting();
     return () => {
       generation.current++;
     };
@@ -142,7 +141,7 @@ export function VotePanel({
   useEffect(() => {
     if (!voting?.open) return;
     const timer = window.setInterval(() => {
-      if (!document.hidden && !submitting.current) void fetchVoting({ preserveActionError: true });
+      if (!document.hidden && !submitting.current) void fetchVoting();
     }, 15_000);
     return () => window.clearInterval(timer);
   }, [voting?.open, fetchVoting]);
@@ -200,7 +199,6 @@ export function VotePanel({
     submitting.current = true;
     generation.current++;
     setPendingAction(choice);
-    setActionError("");
     setNotice("");
     try {
       const next = await apiFetch(`/api/v1/offers/${encodeURIComponent(proposalId)}/vote`, {
@@ -225,9 +223,9 @@ export function VotePanel({
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
         keys.current.delete(op);
       }
-      setActionError(error instanceof Error ? error.message : "Không gửi được phiếu bỏ.");
+      showError(error instanceof Error ? error.message : "Không gửi được phiếu.");
       if (error instanceof ApiError && error.status === 409) {
-        const refreshed = await fetchVoting({ preserveActionError: true, suppressOnUpdated: true });
+        const refreshed = await fetchVoting({ suppressOnUpdated: true });
         if (refreshed.justClosed || (refreshed.data && !refreshed.data.open)) {
           onUpdatedRef.current?.();
         }
@@ -247,7 +245,6 @@ export function VotePanel({
 
     submitting.current = true;
     setPendingAction("CLOSE");
-    setActionError("");
     setNotice("");
     try {
       const result = await apiFetch(`/api/v1/drafts/${encodeURIComponent(voting.draftId)}/vote-close`, {
@@ -257,7 +254,7 @@ export function VotePanel({
         idempotencyKey: key,
       });
       keys.current.delete(op);
-      const refreshed = await fetchVoting({ preserveActionError: true, suppressOnUpdated: true });
+      const refreshed = await fetchVoting({ suppressOnUpdated: true });
       if (result.closed) {
         setClosedRound(round);
         setNotice(
@@ -281,7 +278,7 @@ export function VotePanel({
       if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
         keys.current.delete(op);
       }
-      setActionError(error instanceof Error ? error.message : "Không đóng được vòng bỏ phiếu.");
+      showError(error instanceof Error ? error.message : "Không đóng được vòng bỏ phiếu.");
     } finally {
       submitting.current = false;
       setPendingAction(null);
@@ -424,7 +421,6 @@ export function VotePanel({
         </Button>
       )}
       {notice && <p role="status" className="text-small text-green-700">{notice}</p>}
-      {actionError && <p role="alert" className="text-small text-danger">{actionError}</p>}
     </section>
   );
 }

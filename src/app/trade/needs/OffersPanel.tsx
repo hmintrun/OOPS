@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
+import { useErrorToast } from "@/components/ui/error-toast";
 import { createOfferInput, draft as draftSchema, offer, offers } from "@/contracts/negotiation";
 import type { DemandItem } from "@/contracts/foundation";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -47,6 +48,7 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
   leadHours?: number | null;
 }) {
   const router = useRouter();
+  const showError = useErrorToast();
   const path = `/api/v1/needs/${encodeURIComponent(id)}/offers`;
   const load = useCallback(async () => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1") {
@@ -99,7 +101,6 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
   }, [path, id, buyerOnly, demand?.missing]);
   const isDemo = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
   const trade = useTrade(load, isDemo ? `offers:demo:${id}` : `offers:${id}:${buyerOnly ? "buyer" : "all"}`);
-  const [formError, setFormError] = useState("");
   const [isGift, setIsGift] = useState(initialGift);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -151,7 +152,6 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
       setStartTime(latestDelivery);
       setEndTime(latestDelivery);
     }
-    setFormError("");
   };
 
   return <div className="grid min-w-0 gap-4">
@@ -243,20 +243,19 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
 
         <form className="grid gap-4 sm:grid-cols-2" onSubmit={event => {
           event.preventDefault();
-          setFormError("");
           const fields = new FormData(event.currentTarget);
           const start = new Date(String(fields.get("start")));
           const end = new Date(String(fields.get("end")));
           if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end < start) {
-            setFormError("Vui lòng chọn giờ giao hợp lệ. Giờ kết thúc phải từ giờ bắt đầu trở đi.");
+            showError("Vui lòng chọn giờ giao hợp lệ. Giờ kết thúc phải từ giờ bắt đầu trở đi.");
             return;
           }
           if (!earliestStart || start < new Date(earliestStart) || start <= new Date()) {
-            setFormError(`Lịch giao cần cách hiện tại ít nhất ${effectiveLeadHours} giờ để các hộ xác nhận.`);
+            showError(`Lịch giao cần cách hiện tại ít nhất ${effectiveLeadHours} giờ để các hộ xác nhận.`);
             return;
           }
           if (demand && end > new Date(demand.needBy)) {
-            setFormError("Vui lòng chọn giờ giao trước hạn cần hàng của nhóm.");
+            showError("Vui lòng chọn giờ giao trước hạn cần hàng của nhóm.");
             return;
           }
           const unitPriceVnd = isGift ? 0 : Number(fields.get("price"));
@@ -265,7 +264,7 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
             supportOffer: unitPriceVnd === 0, handoffStart: start.toISOString(),
             handoffBy: end.toISOString(), handoffPrivate: String(fields.get("place")).trim(),
           });
-          if (!parsed.success) { setFormError("Vui lòng kiểm tra lại số lượng, đơn giá và địa điểm giao."); return; }
+          if (!parsed.success) { showError("Vui lòng kiểm tra lại số lượng, đơn giá và địa điểm giao."); return; }
           void trade.run(JSON.stringify(parsed.data), key => apiFetch(path, {
             method: "POST", body: parsed.data, schema: offer, idempotencyKey: key,
           }), created => {
@@ -491,7 +490,6 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
                         setStartTime(value);
                         setTimePreset("custom");
                         if (value && (!endTime || endTime < value)) setEndTime(value);
-                        setFormError("");
                       }} />
                   </label>
                   <label className="grid content-start gap-1.5 font-semibold">
@@ -502,7 +500,6 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
                       onChange={event => {
                         setEndTime(event.target.value);
                         setTimePreset("custom");
-                        setFormError("");
                       }} />
                   </label>
                 </div>
@@ -516,13 +513,6 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
             <input className={INPUT_CLASS} name="place" required
               defaultValue="Sảnh chung cư / Điểm tập kết khu phố" />
           </label>
-
-          {/* Lỗi form */}
-          {formError && (
-            <p role="alert" className="sm:col-span-2 rounded-input bg-rose-tint p-3.5 text-body font-extrabold text-danger">
-              {formError}
-            </p>
-          )}
 
           {/* Nút gửi */}
           <div className="ui-sticky-actions sm:col-span-2">

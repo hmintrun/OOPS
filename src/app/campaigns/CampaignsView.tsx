@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Card, CardTitle } from "@/components/ui";
+import { useErrorToast } from "@/components/ui/error-toast";
 import type { Campaign, Group } from "@/contracts/foundation";
 import { ApiError, createCampaign, getGroup, getMe } from "@/lib/api-client";
 import { invalidateClientCache, readClientCache, writeClientCache } from "@/lib/client-cache";
@@ -69,15 +70,14 @@ function CampaignCard({ campaign }: { campaign: Campaign }) {
 
 function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated: () => void }) {
   const router = useRouter();
+  const showError = useErrorToast();
   const [collectUntil, setCollectUntil] = useState(() => toLocalInputValue(defaultCollectUntil()));
   const [needBy, setNeedBy] = useState(() => toLocalInputValue(defaultNeedBy()));
   const [supportRequested, setSupportRequested] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ collectUntil?: string; needBy?: string }>({});
-  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   async function submit() {
-    setError(null);
     const collectIso = localInputToIso(collectUntil);
     const needByIso = localInputToIso(needBy);
     const nextErrors: { collectUntil?: string; needBy?: string } = {};
@@ -103,7 +103,7 @@ function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated
       onCreated();
       router.push(`/campaigns/${created.campaignId}`);
     } catch (submitError) {
-      setError(submitError instanceof ApiError ? submitError.message : "Không tạo được đợt gom. Vui lòng thử lại.");
+      showError(submitError instanceof ApiError ? submitError.message : "Không tạo được đợt gom. Vui lòng thử lại.");
     } finally {
       setSaving(false);
     }
@@ -154,7 +154,6 @@ function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated
           disabled={saving}
           onChange={setSupportRequested}
         />
-        {error && <Banner tone="error">{error}</Banner>}
         <div className="ui-sticky-actions"><Button type="submit" loading={saving}>
           <span className="ui-btn__icon material-symbols-rounded">add</span>
           Tạo đợt gom
