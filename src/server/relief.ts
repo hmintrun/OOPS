@@ -2,6 +2,7 @@ import "server-only";
 import type { PoolClient } from "pg";
 import type { z } from "zod";
 import type { createReliefInput, ReliefList, ReliefNeedTag, ReliefRequest, ReliefStatus } from "@/contracts/relief";
+import { receivingContactPhone } from "@/lib/receiving-contact";
 import { conflict, forbidden, notFound } from "./errors";
 
 type ReliefRow = {
@@ -76,6 +77,20 @@ async function hasOpsAccess(db: PoolClient, actorUserId: string): Promise<boolea
   return Boolean(result.rowCount ?? result.rows.length);
 }
 
+async function readViewerPhone(
+  db: PoolClient,
+  actorUserId: string,
+  actorPhone?: string,
+): Promise<string | undefined> {
+  const { rows: [profile] } = await db.query<{ contact_private: string | null }>(
+    "select contact_private from public.profiles where id = $1",
+    [actorUserId],
+  );
+  const profilePhone = receivingContactPhone(profile?.contact_private ?? "").trim();
+  const resolved = profilePhone || actorPhone?.trim() || "";
+  return resolved || undefined;
+}
+
 async function findJoinedReliefRequest(db: PoolClient, reliefId: string): Promise<ReliefRow> {
   const { rows: [row] } = await db.query<ReliefRow>(
     `${RELIEF_JOIN_SELECT}
@@ -87,8 +102,13 @@ async function findJoinedReliefRequest(db: PoolClient, reliefId: string): Promis
 }
 
 /** Lists active (OPEN and CLAIMED) emergency relief requests visible to all authenticated users. */
-export async function listReliefRequests(db: PoolClient, actorUserId: string): Promise<ReliefList> {
+export async function listReliefRequests(
+  db: PoolClient,
+  actorUserId: string,
+  actorPhone?: string,
+): Promise<ReliefList> {
   const isOps = await hasOpsAccess(db, actorUserId);
+  const viewerPhone = await readViewerPhone(db, actorUserId, actorPhone);
   const { rows } = await db.query<ReliefRow>(
     `${RELIEF_JOIN_SELECT}
      where r.status in ('OPEN', 'CLAIMED')
@@ -97,6 +117,7 @@ export async function listReliefRequests(db: PoolClient, actorUserId: string): P
   );
   return {
     viewerUserId: actorUserId,
+    ...(viewerPhone ? { viewerPhone } : {}),
     items: rows.map(row => reliefDto(row, actorUserId, isOps)),
   };
 }
