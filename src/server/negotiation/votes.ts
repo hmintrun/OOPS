@@ -97,7 +97,7 @@ async function voting(db: PoolClient, proposal: Proposal, draftId: string, membe
     draftId, round: status.round, dueAt: proposal.vote_due_at.toISOString(), open: status.open, closed: status.closed,
     seller: membershipId === undefined,
     readyToClose: !status.closed && status.voters.every(voter => voter.hasVoted),
-    totalQty: status.total, unitPriceVnd: Number(proposal.unit_price_vnd),
+    totalQty: status.total, offerQty: proposal.qty, unitPriceVnd: Number(proposal.unit_price_vnd),
     ...(status.own !== null && { myQty: status.own }),
     ...(membershipId && { eligible: status.available !== null, voters: status.voters }),
     ...(membershipId && status.open && status.available !== null && { availableQty: status.available }),

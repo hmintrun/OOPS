@@ -254,9 +254,9 @@ Backend tạo `versionId` và lưu `versionHash = keccak256(abi.encode(...))` kh
 
 ## 8. Thời hạn
 
-Vòng phiếu có 3 giờ và đóng sớm nếu đủ lượng chào. Khi chụp bản gửi người bán, server lấy `submittedAt` từ PostgreSQL và đặt `sellerResponseDueAt = submittedAt + 3 giờ` theo cấu hình MVP. Tại hoặc sau hạn phản hồi, API trả `409` kể cả khi worker chưa ghi `EXPIRED`.
+Vòng phiếu có tối đa 2 giờ và đóng sớm nếu đủ lượng chào. Khi chụp bản gửi người bán, server lấy `submittedAt` từ PostgreSQL và đặt `sellerResponseDueAt = submittedAt + 2 giờ` theo cấu hình MVP. Tại hoặc sau hạn phản hồi, API trả `409` kể cả khi worker chưa ghi `EXPIRED`.
 
-Ngay khi người bán chốt, backend đưa yêu cầu mở vòng Fuji vào outbox để worker gửi giao dịch. Từ thời điểm mở ghi trong block Fuji, người bán có 6 giờ để nộp cọc. Hộ có chung 12 giờ để ký và, với đơn có giá, nộp tiền sau khi chữ ký của chính hộ được đồng bộ. Hạn chung phải cách giờ giao ít nhất 2 giờ. Nếu đã qua mốc muộn nhất để mở vòng mà vẫn chưa có giao dịch mở hợp lệ, worker xử lý hủy sau khi đã đồng bộ chain qua mốc đó. Hạn duyệt biên nhận là `handoffBy` + 24 giờ.
+Ngay khi người bán chốt, backend đưa yêu cầu mở vòng Fuji vào outbox để worker gửi giao dịch. Từ thời điểm mở ghi trong block Fuji, người bán có 6 giờ để nộp cọc. Hộ có chung 6 giờ để ký và, với đơn có giá, nộp tiền sau khi chữ ký của chính hộ được đồng bộ. Hạn chung phải cách giờ giao ít nhất 2 giờ. Với cấu hình mẫu, đề nghị cần 12 giờ trước giờ giao, gồm 2 giờ bỏ phiếu, 2 giờ phản hồi, 6 giờ ký và thu, cùng 2 giờ chuẩn bị giao. Nếu đã qua mốc muộn nhất để mở vòng mà vẫn chưa có giao dịch mở hợp lệ, worker xử lý hủy sau khi đã đồng bộ chain qua mốc đó. Hạn duyệt biên nhận là `handoffBy` + 24 giờ.
 
 | Mốc | Ý nghĩa | Ai kiểm |
 | --- | --- | --- |

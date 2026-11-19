@@ -5,6 +5,7 @@ import { useId, useState } from "react";
 import type { DemandItem } from "@/contracts/foundation";
 import { Button } from "@/components/ui";
 import { formatDateTime, toLocalInputValue } from "@/app/campaigns/_shared/dates";
+import { DEFAULT_OFFER_LEAD_HOURS, offerDeliveryWindow } from "@/lib/offer-schedule";
 
 export type OfferSubmitData = {
   name: string;
@@ -60,18 +61,11 @@ export function OfferModalWidget({
   const [unitPrice, setUnitPrice] = useState(item.supportRequested ? 0 : defaultUnitPrice);
 
   const now = Date.now();
-  const minDeliveryDate = new Date(now + 20.5 * 3600 * 1000);
-  const rawNeedByDate = new Date(item.needBy);
-  const needBy = Number.isFinite(rawNeedByDate.getTime()) ? rawNeedByDate : new Date(now + 48 * 3600 * 1000);
-  const maxDeliveryDate = new Date(Math.max(needBy.getTime(), minDeliveryDate.getTime() + 4 * 3600 * 1000));
-
-  const minDeliveryStr = toLocalInputValue(minDeliveryDate);
-  const maxDeliveryStr = toLocalInputValue(maxDeliveryDate);
-
-  const [deliveryTime, setDeliveryTime] = useState(() => {
-    const defaultTime = Math.min(maxDeliveryDate.getTime() - 3600 * 1000, Math.max(minDeliveryDate.getTime() + 3600 * 1000, now + 24 * 3600 * 1000));
-    return toLocalInputValue(new Date(defaultTime));
-  });
+  const schedule = offerDeliveryWindow(DEFAULT_OFFER_LEAD_HOURS, item.needBy, now)
+    ?? offerDeliveryWindow(DEFAULT_OFFER_LEAD_HOURS, new Date(now + 48 * 3_600_000).toISOString(), now)!;
+  const minDeliveryStr = schedule.min;
+  const maxDeliveryStr = schedule.max ?? schedule.defaultEnd;
+  const [deliveryTime, setDeliveryTime] = useState(schedule.defaultStart);
 
   const [formError, setFormError] = useState("");
   const [showCustomTime, setShowCustomTime] = useState(false);
@@ -104,8 +98,8 @@ export function OfferModalWidget({
       setFormError("Vui lòng chọn giờ giao trong tương lai.");
       return;
     }
-    if (delivery < minDeliveryDate) {
-      setFormError("Lịch giao cần cách hiện tại ít nhất 20 giờ để các hộ xác nhận.");
+    if (delivery < new Date(minDeliveryStr) || delivery > new Date(maxDeliveryStr)) {
+      setFormError(`Chọn giờ giao cách hiện tại ít nhất ${DEFAULT_OFFER_LEAD_HOURS} giờ và trong hạn cần hàng.`);
       return;
     }
 
@@ -126,6 +120,8 @@ export function OfferModalWidget({
     <WidgetDialog title="Đề nghị cấp phát & Chào hàng" icon="storefront" onClose={onClose}>
       {maxQty === 0 ? (
         <p role="status" className="text-body font-bold">Nhu cầu này hiện chưa thể chốt thêm hàng.</p>
+      ) : !schedule.available ? (
+        <p role="status" className="text-body font-bold">Lịch giao còn quá gần để mở đề nghị mới.</p>
       ) : (
         <form onSubmit={handleSubmit} className="min-w-0 grid gap-4 pb-2">
           {/* Tóm tắt mặt hàng chữ to rõ */}
@@ -378,7 +374,9 @@ export function OfferModalWidget({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDeliveryTime(toLocalInputValue(new Date(maxDeliveryDate.getTime() - 2 * 3600 * 1000)))}
+                  onClick={() => setDeliveryTime(toLocalInputValue(new Date(Math.max(
+                    new Date(minDeliveryStr).getTime(), new Date(maxDeliveryStr).getTime() - 2 * 3_600_000,
+                  ))))}
                   style={{
                     minHeight: "48px",
                     padding: "10px 14px",

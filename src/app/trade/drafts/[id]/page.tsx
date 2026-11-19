@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { z } from "zod";
@@ -21,6 +21,7 @@ import { VersionSummary } from "./VersionSummary";
 export default function DraftPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const [editingOfferVersion, setEditingOfferVersion] = useState<string>();
   const query = useSearchParams();
   const requestedProposal = query.get("proposal");
   const sourceNeed = uuid.safeParse(query.get("need"));
@@ -63,8 +64,11 @@ export default function DraftPage() {
   const voting = trade.data?.voting;
   const voteForbidden = trade.data?.voteForbidden ?? false;
   const isVotingOffer = Boolean(voting) || voteForbidden || Boolean(buyer?.draftOpen && buyer?.permissions?.editLine === false);
+  const editingOffer = Boolean(version && editingOfferVersion === version.versionId);
   const closedOfferState = buyer && !buyer.draftOpen && !version ? "EXPIRED" : undefined;
-  useRoundRefresh((version?.state === "AWAIT_CONFIRMATIONS" || Boolean(!view && voting?.open)) && !trade.loading && !trade.busy, trade.refresh);
+  const awaitingSeller = Boolean(buyer && voting && version?.state === "SUBMITTED");
+  useRoundRefresh((awaitingSeller || version?.state === "AWAIT_CONFIRMATIONS" || Boolean(!view && voting?.open)) &&
+    !trade.loading && !trade.busy, trade.refresh);
   const versionPath = `${path}/versions/${version?.version}`;
   const showVoteHistory = Boolean(version && voting && !voting.open);
   const votePanel = voting && view && <VotePanel
@@ -146,32 +150,52 @@ export default function DraftPage() {
         )}>Gửi bản chung</Button>}
       </Card>}
       {version && <Card aria-label={`Phiên bản ${version.version}`} className="grid min-w-0 gap-4">
-        <VersionSummary version={version} seller={!buyer} />
+        <VersionSummary version={version} seller={!buyer} votingOffer={isVotingOffer} />
         {!buyer && version.state === "SUBMITTED" && <form className="grid min-w-0 gap-3 border-t border-line pt-4" onSubmit={event => {
           event.preventDefault();
           const submitter = (event.nativeEvent as SubmitEvent).submitter;
           if (!(submitter instanceof HTMLButtonElement)) return;
           const action = submitter.value;
-          const note = String(new FormData(event.currentTarget).get("note")).trim() || undefined;
-          void trade.run(`seller:${version.version}:${action}:${note}`, key => apiFetch(`${versionPath}/seller-response`, {
-            method: "POST", body: { action, note }, schema: draftVersion, idempotencyKey: key,
+          const fields = new FormData(event.currentTarget);
+          const note = String(fields.get("note")).trim() || undefined;
+          const body = action === "REVISE_OFFER"
+            ? { action, note, qty: Number(fields.get("qty")), unitPriceVnd: Number(fields.get("unitPriceVnd")) }
+            : { action, note };
+          void trade.run(`seller:${version.version}:${JSON.stringify(body)}`, key => apiFetch(`${versionPath}/seller-response`, {
+            method: "POST", body, schema: draftVersion, idempotencyKey: key,
           }), result => {
+            setEditingOfferVersion(undefined);
             if (result.contractId) router.push(`/orders/${result.contractId}`);
           });
         }}>
+          {editingOffer && <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1.5 text-sm font-semibold">Số lượng có thể cung cấp
+              <input className={INPUT_CLASS} name="qty" type="number" min={1} max={2_147_483_647} step={1}
+                required defaultValue={voting?.offerQty ?? version.qty} />
+            </label>
+            <label className="grid gap-1.5 text-sm font-semibold">Đơn giá (đồng)
+              <input className={INPUT_CLASS} name="unitPriceVnd" type="number" min={0} max={Number.MAX_SAFE_INTEGER} step={1}
+                required defaultValue={version.unitPriceVnd} />
+            </label>
+          </div>}
           <label className="grid gap-1.5 text-sm font-semibold">
             <span>Ghi chú phản hồi <span className="font-normal text-navy-600">(không bắt buộc)</span></span>
             <textarea className={`${INPUT_CLASS} min-h-18 resize-y py-2.5`} name="note" rows={2} placeholder="Nhập ghi chú" />
           </label>
-          <div className="grid gap-2">
+          {editingOffer ? <div className="grid gap-2">
+            <Button type="submit" value="REVISE_OFFER" loading={trade.busy}>Mở vòng bỏ phiếu mới</Button>
+            <Button type="button" variant="ghost" disabled={trade.busy} onClick={() => setEditingOfferVersion(undefined)}>Hủy sửa</Button>
+          </div> : <div className="grid gap-2">
             <Button type="submit" value="APPROVE" disabled={trade.busy}>
               <MaterialSymbol name="check" size={20} /> Chấp thuận
             </Button>
             <div className="grid grid-cols-2 gap-2">
-              <Button className="px-2 text-sm" type="submit" value="REQUEST_CHANGES" variant="secondary" disabled={trade.busy}>Yêu cầu sửa</Button>
+              {isVotingOffer ? <Button className="px-2 text-sm" type="button" variant="secondary" disabled={trade.busy}
+                onClick={() => setEditingOfferVersion(version.versionId)}>Sửa giá và số lượng</Button> :
+                <Button className="px-2 text-sm" type="submit" value="REQUEST_CHANGES" variant="secondary" disabled={trade.busy}>Yêu cầu sửa</Button>}
               <Button className="px-2 text-sm" type="submit" value="REJECT" variant="ghost" disabled={trade.busy}>Từ chối</Button>
             </div>
-          </div>
+          </div>}
         </form>}
         {!isVotingOffer && buyer?.permissions?.manageDraft && !buyer.draftOpen && ["CHANGES_REQUESTED", "EXPIRED", "STOCK_CONFLICT"].includes(version.state) &&
           <Button disabled={trade.busy} onClick={() => void trade.run(`revise:${version.version}`, key => apiFetch(`${path}/revise`, {

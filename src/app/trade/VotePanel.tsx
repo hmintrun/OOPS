@@ -345,6 +345,7 @@ export function VotePanel({
   const voterStatus = new Map(voting.voters?.map(voter => [voter.membershipId, voter.hasVoted]));
   const eligibleMembers = details?.members?.filter(member => voterStatus.has(member.membershipId)) ?? [];
   const unit = details?.unit ?? "đơn vị";
+  const offerQty = voting.offerQty ?? details?.offer.terms.qty;
   const personalQty = voting.open && voting.eligible === false
     ? undefined
     : showVoteChoices ? voting.availableQty : voting.myQty ?? voting.availableQty;
@@ -421,9 +422,9 @@ export function VotePanel({
         <strong>Vòng bỏ phiếu {voting.round} · {statusLabel}</strong>
         <span className="text-small text-navy-600">Hạn {dateTime(voting.dueAt)}</span>
       </div>
-      {details ? <>
-        <ProgressCapsule value={voting.totalQty} total={details.offer.terms.qty} label={`Đã đăng ký nhận (${unit})`} />
-        <p className="text-small text-navy-600">Còn {Math.max(0, details.offer.terms.qty - voting.totalQty)} {unit} trong đề nghị.</p>
+      {offerQty !== undefined ? <>
+        <ProgressCapsule value={voting.totalQty} total={offerQty} label={`Đã đăng ký nhận (${unit})`} />
+        <p className="text-small text-navy-600">Còn {Math.max(0, offerQty - voting.totalQty)} {unit} trong đề nghị · {vnd(voting.unitPriceVnd)} / {unit}</p>
       </> : <p className="text-small">Tổng đã chọn Có · <strong>{voting.totalQty} {unit}</strong> · Đơn giá {vnd(voting.unitPriceVnd)} / {unit}</p>}
       {voting.open && eligibleMembers.length > 0 && <section className="grid gap-2" aria-label="Các hộ có phần">
         <h3 className="font-bold">Các hộ có phần</h3>
