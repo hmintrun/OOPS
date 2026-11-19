@@ -79,7 +79,7 @@ export default function OrderPage() {
 
   return <AppShell title="Chi tiết đơn hàng" illustration="parcel" backHref="/orders" bare>
     <div className="grid gap-4">
-      <TradeStatus {...trade} retry={() => void trade.refresh()} />
+      <TradeStatus {...trade} hasData={Boolean(trade.data)} retry={() => void trade.refresh()} />
       {order && <div className="ui-card-grid">
         <Card id="commitments" tabIndex={-1} className="order-stage grid gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">

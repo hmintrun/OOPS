@@ -116,7 +116,7 @@ function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated
         <Field
           label="Gom nhu cầu đến"
           error={fieldErrors.collectUntil}
-          hint="Thời điểm hộ gia đình ngừng sửa và xác nhận giỏ."
+          hint="Hạn cuối để các hộ chốt giỏ."
         >
           <input
             type="datetime-local"
@@ -136,7 +136,7 @@ function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated
         <Field
           label="Cần hàng trước"
           error={fieldErrors.needBy}
-          hint="Phải sau hạn gom. Đây là hạn cần hàng hiển thị với người bán."
+          hint="Hiển thị cho người bán, phải sau hạn gom."
         >
           <input
             type="datetime-local"
@@ -149,7 +149,7 @@ function CreateCampaignForm({ groupId, onCreated }: { groupId: string; onCreated
         </Field>
         <CheckboxField
           label="Đợt gom cần hỗ trợ"
-          hint="Kêu gọi tặng hàng hoặc trợ giá. Đại diện cập nhật liên hệ nhận hàng ở trang Nhóm."
+          hint="Ưu tiên kêu gọi tặng hàng hoặc trợ giá."
           checked={supportRequested}
           disabled={saving}
           onChange={setSupportRequested}

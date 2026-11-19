@@ -6,11 +6,11 @@ export function LoginHero() {
       <div className="login-hero__copy">
         <span className="login-hero__brand"><MaterialSymbol name="home" size={20} /> OOPS</span>
         <h1>Chào mừng đến với OOPS</h1>
-        <p>Cùng hàng xóm gom chung nước uống, lương thực — chốt đơn có cọc cam kết và theo dõi bàn giao minh bạch.</p>
+        <p>Gom chung nhu yếu phẩm cùng hàng xóm, chốt đơn có cọc và giao nhận minh bạch.</p>
         <ul className="login-hero__highlights" aria-label="Điểm nổi bật của OOPS">
-          <li><MaterialSymbol name="groups" size={18} /><span>Gom đơn theo cụm hộ</span></li>
-          <li><MaterialSymbol name="auto_awesome" size={18} /><span>AI gợi ý giỏ hàng nhanh</span></li>
-          <li><MaterialSymbol name="verified_user" size={18} /><span>Chốt đơn minh bạch, có cọc</span></li>
+          <li><MaterialSymbol name="groups" size={18} /><span>Gom đơn theo nhóm hộ</span></li>
+          <li><MaterialSymbol name="auto_awesome" size={18} /><span>AI gợi ý giỏ hàng</span></li>
+          <li><MaterialSymbol name="verified_user" size={18} /><span>Chốt đơn minh bạch</span></li>
         </ul>
       </div>
       <div className="login-scene" aria-hidden="true">

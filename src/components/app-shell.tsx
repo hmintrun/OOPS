@@ -44,16 +44,19 @@ export function AppShell({ title, subtitle, icon, aside, children, bare = false,
 
   return (
     <main className={familyBackground ? "ui-app-page ui-family-page" : "ui-app-page"}>
+      <a href="#oops-main-content" className="ui-skip-link">
+        Chuyển tới nội dung chính
+      </a>
       <BottomNav items={SHELL_NAV_ITEMS} />
       {title && <ScreenHeader title={title} subtitle={subtitle} icon={icon} aside={aside} familyBackground={familyBackground} illustration={illustration} />}
-      <div className="ui-screen-body">
+      <div id="oops-main-content" className="ui-screen-body">
         {pathname !== "/" && pathname !== "/groups" && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <PageBack href={backHref} />
             {pageActions}
           </div>
         )}
-        <div className={bodyClassName}>
+        <div key={pathname} className={`ui-page-enter ${bodyClassName ?? ""}`.trim()}>
           {bare ? children : <Card>{children}</Card>}
         </div>
       </div>

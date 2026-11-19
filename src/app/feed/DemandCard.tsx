@@ -6,10 +6,10 @@ import { Card, MaterialSymbol } from "@/components/ui";
 type Category = CatalogItem["category"];
 
 export const demandCategoryVisual = {
-  WATER: { label: "Nước uống", icon: "water_drop", tone: "sky", image: "/assets/water-bottles.jpg" },
-  FOOD: { label: "Thực phẩm", icon: "restaurant", tone: "amber", image: "/assets/groceries-box.webp" },
-  ESSENTIALS: { label: "Nhu yếu phẩm", icon: "inventory_2", tone: "rose", image: "/assets/groceries-box.webp" },
-} satisfies Record<Category, { label: string; icon: string; tone: string; image: string }>;
+  WATER: { label: "Nước uống", icon: "water_drop", tone: "sky", image: "/assets/water-bottles.webp", size: 512 },
+  FOOD: { label: "Thực phẩm", icon: "restaurant", tone: "amber", image: "/assets/groceries-box.webp", size: 1024 },
+  ESSENTIALS: { label: "Nhu yếu phẩm", icon: "inventory_2", tone: "rose", image: "/assets/groceries-box.webp", size: 1024 },
+} satisfies Record<Category, { label: string; icon: string; tone: string; image: string; size: number }>;
 
 const stateLabel: Record<DemandItem["state"], string> = {
   DRAFT: "Nháp",
@@ -37,8 +37,8 @@ export function DemandCard({
   const pct = Math.min(100, Math.round((fulfilled / item.target) * 100));
   const action = (
     <>
-      <MaterialSymbol name="volunteer_activism" size={18} />
-      <span>Chào hàng hoặc tặng hàng miễn phí</span>
+      <MaterialSymbol name={item.supportRequested ? "volunteer_activism" : "storefront"} size={18} />
+      <span>{item.supportRequested ? "Tặng hàng hoặc chào giá" : "Chào hàng ngay"}</span>
       <MaterialSymbol name="arrow_forward" size={18} />
     </>
   );
@@ -50,7 +50,7 @@ export function DemandCard({
           <MaterialSymbol name={visual.icon} size={18} />
           {category ? visual.label : "Mặt hàng"}
         </span>
-        <img src={visual.image} alt="" width={1024} height={1024} loading="lazy" decoding="async" />
+        <img src={visual.image} alt="" width={visual.size} height={visual.size} loading="lazy" decoding="async" />
       </div>
 
       <div className="feed-card__body">

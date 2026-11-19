@@ -53,6 +53,7 @@
 }
 .ui-app-page > .ui-illustrated-header {
   width: min(calc(100% - 2 * var(--oops-space-screen)), calc(var(--oops-content-max) - 2 * var(--oops-space-screen)));
+  margin-inline: auto;
   margin-block: var(--oops-space-page-top) var(--oops-space-section);
 }
 @media (width >= 64rem) {

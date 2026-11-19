@@ -23,11 +23,65 @@ export default function DraftPage() {
   const router = useRouter();
   const [editingOfferVersion, setEditingOfferVersion] = useState<string>();
   const query = useSearchParams();
+  const isDemo = query.get("demo") === "1";
   const requestedProposal = query.get("proposal");
   const sourceNeed = uuid.safeParse(query.get("need"));
   const needHref = sourceNeed.success ? `/trade/needs/${sourceNeed.data}` : "/feed";
   const path = `/api/v1/drafts/${encodeURIComponent(id)}`;
   const load = useCallback(async () => {
+    if (isDemo) {
+      const now = Date.now();
+      const iso = (h: number) => new Date(now + h * 3600_000).toISOString();
+      const versionHash = "0x" + "a1b2c3d4".repeat(8);
+      const demoRound = confirmationRound.parse({
+        roundId: "22222222-2222-4222-8222-222222222222",
+        versionId: "33333333-3333-4333-8333-333333333333",
+        versionHash,
+        roundKey: "0x" + "1f2e3d4c".repeat(8),
+        chainId: 43113,
+        contractAddress: "0x7F2c4b9A81D3E05f12a4B6C7D8E9F01234567890",
+        state: "OPEN",
+        confirmBy: iso(2),
+        requiredCount: 3,
+        confirmedCount: 2,
+        myConfirmation: {
+          walletAddress: "0x91A4B2c3D4e5F60718293a4B5c6D7e8F90123456",
+          state: "CONFIRMED",
+        },
+      });
+      const demoView = draft.parse({
+        draftId: id,
+        proposalId: "44444444-4444-4444-8444-444444444444",
+        editRevision: 2,
+        draftOpen: false,
+        qty: 7,
+        totalVnd: 84_000,
+        myLine: { qty: 3, goodsVnd: 36_000, note: "Ưu tiên giao buổi chiều" },
+        latestVersion: {
+          versionId: "33333333-3333-4333-8333-333333333333",
+          version: 1,
+          versionHash,
+          state: "AWAIT_CONFIRMATIONS",
+          qty: 7,
+          unitPriceVnd: 12_000,
+          totalVnd: 84_000,
+          handoffStart: iso(4),
+          handoffBy: iso(8),
+          sellerNote: "Cửa hàng đã giữ đủ 7 thùng nước đóng chai, có thể giao đúng khung giờ.",
+          sellerResponseDueAt: iso(1),
+          confirmBy: iso(2),
+          roundId: demoRound.roundId,
+          myLine: { qty: 3, goodsVnd: 36_000 },
+          lines: [
+            { qty: 2, goodsVnd: 24_000 },
+            { qty: 2, goodsVnd: 24_000 },
+            { qty: 3, goodsVnd: 36_000 },
+          ],
+        },
+        permissions: { editLine: false, manageDraft: false, finalize: false },
+      });
+      return { view: demoView, round: demoRound, voting: undefined, voteForbidden: false };
+    }
     let view;
     try {
       view = await apiFetch(path, { schema: z.union([draft, sellerDraftView]) });
@@ -55,8 +109,8 @@ export default function DraftPage() {
       }),
     ]);
     return { view, round, voting, voteForbidden };
-  }, [path, requestedProposal, id]);
-  const trade = useTrade(load, `draft:${id}:${requestedProposal ?? ""}`);
+  }, [path, requestedProposal, id, isDemo]);
+  const trade = useTrade(load, `draft:${id}:${requestedProposal ?? ""}${isDemo ? ":demo" : ""}`);
   const view = trade.data?.view;
   const version = view?.latestVersion;
   const buyer = view && "draftOpen" in view ? view : undefined;
@@ -67,7 +121,7 @@ export default function DraftPage() {
   const editingOffer = Boolean(version && editingOfferVersion === version.versionId);
   const closedOfferState = buyer && !buyer.draftOpen && !version ? "EXPIRED" : undefined;
   const awaitingSeller = Boolean(buyer && voting && version?.state === "SUBMITTED");
-  useRoundRefresh((awaitingSeller || version?.state === "AWAIT_CONFIRMATIONS" || Boolean(!view && voting?.open)) &&
+  useRoundRefresh(!isDemo && (awaitingSeller || version?.state === "AWAIT_CONFIRMATIONS" || Boolean(!view && voting?.open)) &&
     !trade.loading && !trade.busy, trade.refresh);
   const versionPath = `${path}/versions/${version?.version}`;
   const showVoteHistory = Boolean(version && voting && !voting.open);
@@ -80,7 +134,7 @@ export default function DraftPage() {
   />;
   return <AppShell title="Thương lượng" illustration="basket" backHref={needHref} bare>
     <div className="grid gap-4">
-      <TradeStatus {...trade} retry={() => void trade.refresh()} />
+      <TradeStatus {...trade} hasData={Boolean(trade.data)} retry={() => void trade.refresh()} />
       {trade.data && query.get("created") === "1" && <p role="status" className="rounded-input bg-green-100 p-3 font-semibold text-green-700">
         Đã gửi đề nghị. Bạn có thể theo dõi phản hồi tại đây.
       </p>}
@@ -201,7 +255,7 @@ export default function DraftPage() {
           <Button disabled={trade.busy} onClick={() => void trade.run(`revise:${version.version}`, key => apiFetch(`${path}/revise`, {
             method: "POST", body: { version: version.version }, schema: draft, idempotencyKey: key,
           }))}>Mở lại bản nháp</Button>}
-        {round && <RoundInfo round={round} disabled={trade.loading || trade.busy} refresh={() => void trade.refresh()} />}
+        {round && <RoundInfo round={round} disabled={trade.loading || trade.busy} refreshing={trade.loading} refresh={() => void trade.refresh()} />}
         {!isVotingOffer && buyer?.permissions?.finalize && version.state === "AWAIT_REP_APPROVAL" && <Button disabled={
           trade.busy || trade.loading || Boolean(version.repApproveBy && Date.parse(version.repApproveBy) <= Date.now())
         } onClick={() => void trade.run(

@@ -34,11 +34,11 @@ export function SignOutSection() {
     <Card>
       <div className="me-card-head">
         <IconTile icon="logout" tone="rose" />
-        <CardTitle>Phiên</CardTitle>
+        <CardTitle>Đăng xuất</CardTitle>
       </div>
       {confirming ? (
         <div className="me-confirm" role="alertdialog" aria-label="Xác nhận đăng xuất">
-          <p className="me-body-text">Bạn muốn đăng xuất khỏi OOPS trên thiết bị này?</p>
+          <p className="me-body-text">Đăng xuất khỏi OOPS trên thiết bị này?</p>
           {message && <p className="me-error">{message}</p>}
           <div className="me-confirm__actions">
             <Button variant="ghost" onClick={() => setConfirming(false)} disabled={signingOut}>

@@ -316,7 +316,7 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
   return (
     <AppShell
       title="Nhu cầu quanh bạn"
-      subtitle="Chào hàng cho các nhóm quanh bạn. Nhu cầu của nhóm mình nằm trong Đơn hàng."
+      subtitle="Chào hàng hoặc tặng nhu yếu phẩm cho các hộ quanh bạn."
       illustration="flood-relief"
       bodyClassName="ui-stack"
       bare
@@ -368,10 +368,10 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
         <EmptyState
           icon="storefront"
           tone="sky"
-          title="Chưa có nhu cầu nào phù hợp"
+          title="Chưa có nhu cầu phù hợp"
           description={category || appliedWard
-            ? "Thử xóa bộ lọc để xem các nhu cầu đang mở quanh khu vực nhé."
-            : "Khi có nhóm đăng nhu cầu gom chung, bạn sẽ thấy ngay tại đây."}
+            ? "Thử bỏ bộ lọc để xem thêm."
+            : "Nhu cầu mới từ các nhóm sẽ hiện tại đây."}
           action={category || appliedWard ? (
             <Button variant="secondary" full={false} onClick={clearFilters}>Xóa bộ lọc</Button>
           ) : undefined}

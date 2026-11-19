@@ -212,10 +212,7 @@ export function LoginForm() {
     <Card className="login-form-card" padding="flush">
       <div className="login-form-heading">
         <IconTile icon={register ? "person_add" : "lock_open"} tone="green" />
-        <div>
-          <CardTitle as="h2" className="ui-card__title--flush">{register ? "Tạo tài khoản" : "Đăng nhập"}</CardTitle>
-          <p>{register ? "Nhập thông tin để tạo tài khoản OOPS." : "Nhập email và mật khẩu để tiếp tục."}</p>
-        </div>
+        <CardTitle as="h2" className="ui-card__title--flush">{register ? "Tạo tài khoản" : "Đăng nhập"}</CardTitle>
       </div>
 
       <form

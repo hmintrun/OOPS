@@ -1,13 +1,25 @@
 /**
- * OOPS Zero-Lag Motion & Interaction Discipline (ui-ux-pro-max-skill)
- * - Chỉ dùng thuộc tính compositor (transform, opacity) với thời gian ngắn (100-160ms).
- * - Không animate layout/paint (không animate width, height, grid-template-rows,
- *   background-position hay box-shadow lặp vô hạn) để máy cấu hình thấp không bao giờ lag.
- * - Bật touch-action: manipulation giúp chạm phản hồi tức thì (0ms delay) trên điện thoại.
+ * OOPS Zero-Lag Motion & Interaction Choreography
+ * (design-taste-frontend v2.5.1 — references/motion.md & references/perf.md)
+ * - 100% GPU compositor (transform, opacity); không dùng thư viện JS ngoài.
+ * - Không animate width/height/top/left/filter/box-shadow lặp để máy bình dân luôn đạt 60fps.
+ * - Tách lớp hover chuột thật qua `@media (hover: hover) and (pointer: fine)` và tôn trọng
+ *   đầy đủ `prefers-reduced-motion: reduce`.
  */
 
 :root {
-  --oops-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --m-in: 150ms;
+  --m-out: 120ms;
+  --m-press: 90ms;
+  --m-panel: 200ms;
+  --m-close: 120ms;
+  --m-slide: 240ms;
+  --m-image: 600ms;
+  --m-image-out: 400ms;
+  --m-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --m-ease-io: cubic-bezier(0.65, 0, 0.35, 1);
+  --m-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --oops-ease-out: var(--m-ease-enter);
 }
 
 :is(
@@ -31,7 +43,88 @@
   border: 1px solid color-mix(in srgb, var(--oops-line), transparent 40%);
 }
 
+/* Bỏ qua render layout/paint cho các thẻ dài nằm ngoài viewport khi cuộn danh sách dài */
+.ui-card.feed-card,
+.ui-card.order-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 340px;
+}
+
+/* ---------- Sliding indicator pill chuẩn GPU cho Tab & Thanh điều hướng ---------- */
+.m-tab-track {
+  position: relative;
+  isolation: isolate;
+}
+.m-tab-track > :not(.m-tab-ind) {
+  position: relative;
+  z-index: 1;
+}
+.m-tab-ind {
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: 0;
+  z-index: 0;
+  width: var(--ind-w, 0px);
+  height: var(--ind-h, 0px);
+  border-radius: var(--oops-radius-pill);
+  background: var(--oops-green-100);
+  pointer-events: none;
+  transform: translate3d(var(--ind-x, 0px), var(--ind-y, 0px), 0);
+}
+.m-tab-ind--animate {
+  transition:
+    transform var(--m-slide) var(--m-ease-io),
+    width var(--m-slide) var(--m-ease-io);
+}
+.m-tab-track[data-has-ind="true"] .orders-role-pill--active {
+  background: transparent;
+}
+
+/* Thanh trượt điều hướng chính (BottomNav / Desktop TopNav) */
+.ui-nav {
+  isolation: isolate;
+}
+.ui-nav > .ui-nav__item {
+  position: relative;
+  z-index: 1;
+}
+.ui-nav__indicator {
+  --ind-bg: var(--oops-mint);
+  --ind-ink: var(--oops-jade-dark);
+  position: absolute;
+  inset-inline-start: 0;
+  inset-block-start: 0;
+  z-index: 0;
+  width: var(--ind-w, 0px);
+  height: var(--ind-h, 0px);
+  border-radius: var(--oops-radius-pill);
+  background: var(--ind-bg);
+  box-shadow: inset 0 -2px color-mix(in srgb, var(--ind-ink) 20%, transparent);
+  pointer-events: none;
+  transform: translate3d(var(--ind-x, 0px), var(--ind-y, 0px), 0);
+}
+.ui-nav[data-active-section="feed"] .ui-nav__indicator { --ind-bg: var(--oops-sky-tint); --ind-ink: var(--oops-sky-ink); }
+.ui-nav[data-active-section="relief"] .ui-nav__indicator { --ind-bg: var(--oops-rose-tint); --ind-ink: var(--oops-danger); }
+.ui-nav[data-active-section="orders"] .ui-nav__indicator { --ind-bg: var(--oops-sun-tint); --ind-ink: var(--oops-amber-ink); }
+.ui-nav[data-active-section="me"] .ui-nav__indicator { --ind-bg: var(--oops-violet-tint); --ind-ink: var(--oops-violet-ink); }
+.ui-nav__indicator--animate {
+  transition:
+    transform var(--m-slide) var(--m-ease-io),
+    width var(--m-slide) var(--m-ease-io),
+    background-color var(--m-slide) var(--m-ease);
+}
+.ui-nav[data-has-ind="true"] .ui-nav__item--active {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* Focus ring: xuất hiện tức thì ở đúng frame nhận focus (transition: none theo motion.md) */
 :is(
+  a,
+  button,
+  input,
+  select,
+  summary,
   .orders-notif-bar__trigger,
   .orders-notif-bar__action-link,
   .orders-notif-bar__action-read,
@@ -42,6 +135,7 @@
 ):focus-visible {
   outline: 2px solid var(--oops-green-700);
   outline-offset: 2px;
+  transition: none;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -55,11 +149,167 @@
     animation: oops-skeleton-pulse 1.4s ease-in-out infinite;
   }
 
-  /* Dialog & Popover mở nhanh 140ms thuần transform + opacity */
+  /* Route body settle: trượt nhẹ 6px khi chuyển trang, không chặn tương tác */
+  @keyframes oops-page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .ui-page-enter {
+    animation: oops-page-enter 240ms var(--m-ease-enter) backwards;
+  }
+
+  /* Staggered card cascade nhẹ khi tải màn (tối đa 200ms trễ, 0 JS, 0 scroll lag) */
+  @keyframes oops-card-rise {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .ui-card-grid > .ui-card,
+  .feed-grid-3 > .ui-card,
+  .ui-stack > .ui-card,
+  .group-metric-card {
+    animation: oops-card-rise 320ms var(--m-ease-enter) backwards;
+  }
+
+  .ui-card-grid > .ui-card:nth-child(2),
+  .feed-grid-3 > .ui-card:nth-child(2),
+  .ui-stack > .ui-card:nth-child(2),
+  .group-metric-card:nth-child(2) { animation-delay: 40ms; }
+
+  .ui-card-grid > .ui-card:nth-child(3),
+  .feed-grid-3 > .ui-card:nth-child(3),
+  .ui-stack > .ui-card:nth-child(3),
+  .group-metric-card:nth-child(3) { animation-delay: 80ms; }
+
+  .ui-card-grid > .ui-card:nth-child(4),
+  .feed-grid-3 > .ui-card:nth-child(4),
+  .ui-stack > .ui-card:nth-child(4) { animation-delay: 120ms; }
+
+  .ui-card-grid > .ui-card:nth-child(5),
+  .feed-grid-3 > .ui-card:nth-child(5),
+  .ui-stack > .ui-card:nth-child(5) { animation-delay: 160ms; }
+
+  .ui-card-grid > .ui-card:nth-child(n+6),
+  .feed-grid-3 > .ui-card:nth-child(n+6),
+  .ui-stack > .ui-card:nth-child(n+6) { animation-delay: 200ms; }
+
+  /* Hero entrance (chạy đúng 1 lần khi mở trang — motion.md) */
+  @keyframes oops-hero-rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* Ảnh hero luôn hiển thị ngay (opacity 1) để LCP tức thì, chỉ lắng nhẹ từ scale(1.04) về 1 */
+  @keyframes oops-media-settle {
+    from { transform: scale(1.04); }
+    to { transform: scale(1); }
+  }
+
+  @keyframes oops-sun-settle {
+    from { opacity: 0.7; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .ui-illustrated-header .ui-screen-header__heading,
+  .ui-family-header__content .ui-screen-header__heading,
+  .login-hero__copy h1 {
+    animation: oops-hero-rise 340ms var(--m-ease-enter) backwards;
+  }
+
+  .ui-illustrated-header .ui-screen-header__subtitle,
+  .ui-family-header__content .ui-screen-header__subtitle,
+  .login-hero__copy p {
+    animation: oops-hero-rise 360ms var(--m-ease-enter) 55ms backwards;
+  }
+
+  .login-hero__highlights li {
+    animation: oops-hero-rise 320ms var(--m-ease-enter) backwards;
+  }
+  .login-hero__highlights li:nth-child(1) { animation-delay: 80ms; }
+  .login-hero__highlights li:nth-child(2) { animation-delay: 130ms; }
+  .login-hero__highlights li:nth-child(3) { animation-delay: 180ms; }
+
+  .login-scene__sun {
+    animation: oops-sun-settle 620ms var(--m-ease-enter) backwards;
+  }
+
+  .ui-page-photo img,
+  .login-scene__family,
+  .ui-hero__family {
+    animation: oops-media-settle 650ms var(--m-ease-enter) backwards;
+  }
+
+  /* Thanh tiến độ & 4 bước đơn hàng vẽ mượt trên GPU (scaleX, 0 tốn Layout width) */
+  @keyframes oops-bar-grow {
+    from { transform: scaleX(0.06); }
+    to { transform: scaleX(1); }
+  }
+
+  .feed-card__progress,
+  .ui-progress-capsule__track > span {
+    transform-origin: left center;
+    animation: oops-bar-grow 480ms var(--m-ease-enter) backwards;
+  }
+
+  .order-card__step[data-done="true"] .order-card__step-bar {
+    transform-origin: left center;
+    animation: oops-bar-grow 380ms var(--m-ease-enter) backwards;
+  }
+  .order-card__step:nth-child(2)[data-done="true"] .order-card__step-bar { animation-delay: 50ms; }
+  .order-card__step:nth-child(3)[data-done="true"] .order-card__step-bar { animation-delay: 100ms; }
+  .order-card__step:nth-child(4)[data-done="true"] .order-card__step-bar { animation-delay: 150ms; }
+
+  /* Icon bật nhẹ khi chọn tab điều hướng hoặc danh mục */
+  @keyframes oops-icon-pop {
+    from { transform: scale(0.84); }
+    to { transform: scale(1); }
+  }
+
+  .ui-nav__item--active .material-symbols-rounded,
+  .feed-category[aria-pressed="true"] .feed-category__icon {
+    animation: oops-icon-pop 220ms var(--m-ease-enter);
+  }
+
+  /* Dialog, Popover, Drawer, Details & Error Toast mở nhanh thuần transform + opacity */
   @keyframes oops-fast-pop {
     from {
       opacity: 0;
-      transform: translateY(-3px) scale(0.99);
+      transform: translateY(-4px) scale(0.985);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes oops-backdrop-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes oops-toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(-10px) scale(0.98);
     }
     to {
       opacity: 1;
@@ -70,21 +320,197 @@
   .ui-widget-dialog[open],
   .oops-combobox-popover,
   .orders-notif-bar__drawer {
-    animation: oops-fast-pop 140ms var(--oops-ease-out) backwards;
+    animation: oops-fast-pop var(--m-panel) var(--m-ease-enter) backwards;
   }
 
-  /* Phản hồi chạm tức thì (tactile press) nhẹ & không gây giật */
+  .ui-widget-dialog[open]::backdrop {
+    animation: oops-backdrop-in 180ms var(--m-ease) backwards;
+  }
+
+  .ui-toast {
+    animation: oops-toast-in 180ms var(--m-ease-enter) backwards;
+  }
+
+  details[open] > :not(summary) {
+    animation: oops-fast-pop 180ms var(--m-ease-enter) backwards;
+  }
+
+  /* Chevron xoay mượt khi mở/đóng <details> */
+  .feed-location__chevron,
+  details summary .material-symbols-rounded {
+    transition: transform 180ms var(--m-ease);
+  }
+
+  /* Copy button: check icon bật nhẹ khi sao chép thành công (motion.md: 150ms) */
+  @keyframes oops-check-pop {
+    from {
+      opacity: 0.4;
+      transform: scale(0.72);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .me-copy[data-state="copied"] .material-symbols-rounded {
+    animation: oops-check-pop 150ms var(--m-ease-enter);
+  }
+
+  /* Phản hồi chạm tức thì (tactile press: +1px, scale 0.985 trong 90ms theo motion.md) */
   .ui-btn,
   .feed-category,
   .orders-role-pill,
-  .campaign-cart-stepper__btn {
-    transition: transform 100ms var(--oops-ease-out), background-color 120ms ease, border-color 120ms ease;
+  .campaign-cart-stepper__btn,
+  .ui-quantity button,
+  .me-copy,
+  .ui-group-campaign,
+  .ui-campaign-status,
+  .feed-card__action,
+  .feed-pagination button {
+    transition:
+      transform var(--m-out) var(--m-ease),
+      background-color var(--m-out) var(--m-ease),
+      border-color var(--m-out) var(--m-ease),
+      color var(--m-out) var(--m-ease);
   }
 
   .ui-btn:not(:disabled):active,
   .feed-category:active,
   .orders-role-pill:active,
-  .campaign-cart-stepper__btn:not(:disabled):active {
-    transform: scale(0.97);
+  .campaign-cart-stepper__btn:not(:disabled):active,
+  .ui-quantity button:not(:disabled):active,
+  .me-copy:active,
+  .feed-card__action:active,
+  .feed-pagination button:not(:disabled):active {
+    transform: translateY(1px) scale(0.985);
+    transition-duration: var(--m-press);
+  }
+
+  /* Fine-pointer hover layer (motion.md): chỉ kích hoạt khi có chuột/trackpad thật */
+  @media (hover: hover) and (pointer: fine) {
+    .ui-btn--primary {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .ui-btn--primary::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        110deg,
+        transparent 30%,
+        rgba(255, 255, 255, 0.22) 50%,
+        transparent 70%
+      );
+      transform: translateX(-125%);
+      pointer-events: none;
+    }
+
+    .ui-btn--primary:not(:disabled):hover::after {
+      transform: translateX(125%);
+      transition: transform 520ms var(--m-ease);
+    }
+
+    .ui-btn:not(:disabled):hover,
+    .orders-role-pill:hover,
+    .feed-category:hover,
+    .me-copy:hover,
+    .feed-pagination button:not(:disabled):hover {
+      transform: translateY(-1px);
+      transition-duration: var(--m-in);
+    }
+
+    .ui-btn:not(:disabled):active,
+    .orders-role-pill:active,
+    .feed-category:active,
+    .me-copy:active,
+    .feed-pagination button:not(:disabled):active {
+      transform: translateY(1px) scale(0.985);
+      transition-duration: var(--m-press);
+    }
+
+    /* Icon mũi tên / chevron trong nút & hàng tương tác dịch nhẹ 3px sang phải khi hover */
+    .ui-btn__icon,
+    .feed-card__action .material-symbols-rounded:last-child,
+    .ui-campaign-status .material-symbols-rounded:last-child,
+    .ui-group-campaign .material-symbols-rounded:last-child {
+      transition: transform var(--m-out) var(--m-ease);
+    }
+
+    .ui-btn:not(:disabled):hover .ui-btn__icon,
+    .feed-card__action:not(:disabled):hover .material-symbols-rounded:last-child,
+    a:hover .ui-campaign-status .material-symbols-rounded:last-child,
+    .ui-group-campaign:hover .material-symbols-rounded:last-child {
+      transform: translateX(3px);
+      transition-duration: var(--m-in);
+    }
+
+    /* IconTile phóng nhẹ 1.06 khi rê chuột vào thẻ tương tác */
+    .group-metric-card .ui-icon-tile,
+    .me-card-head .ui-icon-tile,
+    .me-wallet-top .ui-icon-tile {
+      transition: transform var(--m-out) var(--m-ease);
+    }
+
+    .group-metric-card:hover .ui-icon-tile,
+    .ui-card:hover > .me-card-head .ui-icon-tile,
+    .me-wallet-card:hover .me-wallet-top .ui-icon-tile {
+      transform: scale(1.06);
+      transition-duration: var(--m-in);
+    }
+
+    /* Thẻ tương tác nhấc nhẹ -2px, đậm viền 1 nấc và hiện bóng mềm chỉ khi hover (cards.md) */
+    .ui-card.feed-card,
+    .ui-card.order-card,
+    a > .ui-card.ui-campaign-status,
+    .group-metric-card {
+      transition:
+        transform var(--m-out) var(--m-ease),
+        border-color var(--m-out) var(--m-ease);
+    }
+
+    .ui-card.feed-card:hover,
+    .ui-card.order-card:hover,
+    a:hover > .ui-card.ui-campaign-status,
+    .group-metric-card:hover {
+      transform: translateY(-2px);
+      border-color: color-mix(in srgb, var(--oops-navy-900) 18%, var(--oops-line));
+      box-shadow: var(--oops-shadow-hover);
+      transition-duration: 180ms;
+    }
+
+    .ui-group-campaign:hover {
+      transform: translateY(-1px);
+      transition-duration: var(--m-in);
+    }
+
+    .notifications-row {
+      transition: background-color var(--m-out) var(--m-ease);
+    }
+
+    .notifications-row:hover {
+      background: color-mix(in srgb, var(--oops-haze) 70%, var(--oops-surface));
+    }
+
+    /* Ảnh minh họa trong khung overflow:hidden zoom 1.03 mượt mà (600ms vào / 400ms ra) */
+    .feed-card__scene img,
+    .ui-page-photo img {
+      transition: transform var(--m-image-out) var(--m-ease);
+    }
+
+    .ui-card.feed-card:hover .feed-card__scene img,
+    .ui-illustrated-header:hover .ui-page-photo img {
+      transform: scale(1.03);
+      transition-duration: var(--m-image);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .m-tab-ind--animate,
+  .ui-nav__indicator--animate {
+    transition: none;
   }
 }

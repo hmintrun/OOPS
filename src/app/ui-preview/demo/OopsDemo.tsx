@@ -86,7 +86,7 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     shortName: "Nước sạch 20L",
     unit: "bình",
     icon: "water_drop",
-    imgSrc: "/assets/water-bottles.jpg",
+    imgSrc: "/assets/water-bottles.webp",
     calcSuggested: (members, days) => Math.ceil(members * days * 2 / 20),
     defaultOtherHouseholds: [2, 3],
     price: 50000,
@@ -97,7 +97,7 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     shortName: "Mì tôm thùng",
     unit: "thùng",
     icon: "restaurant",
-    imgSrc: "/assets/groceries-box.jpg",
+    imgSrc: "/assets/groceries-box.webp",
     calcSuggested: (members, days) => Math.ceil(members * days * 3 / 30),
     defaultOtherHouseholds: [1, 2],
     price: 115000,
@@ -108,7 +108,7 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     shortName: "Đồ hộp ăn liền",
     unit: "hộp",
     icon: "inventory_2",
-    imgSrc: "/assets/groceries-box.jpg",
+    imgSrc: "/assets/groceries-box.webp",
     calcSuggested: (members, days) => Math.ceil(members * days * 2 / 3),
     defaultOtherHouseholds: [4, 6],
     price: 35000,
@@ -119,7 +119,7 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     shortName: "Túi y tế sơ cứu",
     unit: "túi",
     icon: "medical_services",
-    imgSrc: "/assets/groceries-box.jpg",
+    imgSrc: "/assets/groceries-box.webp",
     calcSuggested: () => 1,
     defaultOtherHouseholds: [1, 1],
     price: 85000,
@@ -130,7 +130,7 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     shortName: "Đèn pin sạc",
     unit: "cái",
     icon: "flashlight_on",
-    imgSrc: "/assets/groceries-box.jpg",
+    imgSrc: "/assets/groceries-box.webp",
     calcSuggested: () => 1,
     defaultOtherHouseholds: [1, 1],
     price: 65000,
@@ -266,7 +266,7 @@ const INITIAL_DEMO_ORDERS: DemoOrderItem[] = [
     stage: "fuji",
     statusText: "Chờ các hộ ký Fuji & nộp tiền",
     badgeClass: "bg-sky-100 text-sky-900 border-sky-300",
-    image: "/assets/water-bottles.jpg",
+    image: "/assets/water-bottles.webp",
     deliveryTime: "Trước 12:00, 16/11/2026",
     note: "Bình có vòi, giao tại hầm B1",
     initialStep: "confirm",
@@ -447,7 +447,7 @@ export function OopsDemo() {
       stage: "negotiation",
       statusText: isGift ? "Vừa gửi tặng 0đ · Chờ nhóm biểu quyết" : "Vừa gửi chào hàng · Chờ nhóm thương lượng",
       badgeClass: isGift ? "bg-emerald-100 text-emerald-900 border-emerald-300" : "bg-amber-100 text-amber-900 border-amber-300",
-      image: isWater ? "/assets/water-bottles.jpg" : "/assets/groceries-box.webp",
+      image: isWater ? "/assets/water-bottles.webp" : "/assets/groceries-box.webp",
       deliveryTime: data.deliveryTime,
       note: data.note,
       initialStep: "draft",
@@ -878,7 +878,7 @@ export function OopsDemo() {
 
             <div className="demo-resident__proof">
               <img
-                src="/assets/fuji-shield.jpg"
+                src="/assets/fuji-shield.webp"
                 alt=""
                 width={56}
                 height={56}
