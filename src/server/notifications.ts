@@ -20,6 +20,8 @@ type NoticeDetails = Notice & {
   event_state: string | null;
 };
 
+type NoticePageRow = (NoticeDetails | { id: null }) & { unread_count: number };
+
 function noticeDto(row: Notice) {
   return {
     notificationId: row.id,
@@ -32,21 +34,37 @@ function noticeDto(row: Notice) {
 export async function listNotifications(db: PoolClient, userId: string, filters: z.output<typeof notificationQuery>) {
   const limit = filters.limit ?? 20;
   // Existing worker notifications can recover their time from the matching outbox row.
-  const { rows } = await db.query<NoticeDetails>(
+  // For a finalized version, prefer the round-opening notice, then the order creation notice.
+  const { rows } = await db.query<NoticePageRow>(
     `with own as (
        select n.id, upper(n.entity_type) as entity_type, n.entity_id, n.event_key, n.read_at,
          coalesce((to_jsonb(n)->>'created_at')::timestamptz, o.processed_at) as occurred_at,
-         o.payload->>'state' as event_state
-       from public.notifications n left join public.outbox o on o.event_key = n.event_key
+         o.payload->>'state' as event_state,
+         case when upper(n.entity_type) = 'NEGOTIATION_VERSION'
+           and n.event_key = concat('negotiation-version:', n.entity_id, ':FINALIZED') then n.entity_id
+           else c.source_version_id end as finalized_version_id
+       from public.notifications n
+       left join public.outbox o on o.event_key = n.event_key
+       left join public.contracts c on upper(n.entity_type) = 'CONTRACT' and c.id = n.entity_id
+         and (n.event_key = concat('contract:', n.entity_id, ':1:FINALIZED')
+           or split_part(n.event_key, ':', 1) in ('contract-signing', 'contract-deposit-due', 'contract-round-open'))
        where n.user_id = $1
+     ), visible as (
+       select distinct on (finalized_version_id, case when finalized_version_id is null then id end) *
+       from own
+       order by finalized_version_id, case when finalized_version_id is null then id end,
+         case when entity_type = 'NEGOTIATION_VERSION' then 2
+           when split_part(event_key, ':', 1) = 'contract' then 1 else 0 end,
+         occurred_at desc nulls last, id desc
      ), page as (
-       select n.* from own n
+       select n.* from visible n
        where $2::uuid is null or (coalesce(n.occurred_at, '-infinity'), n.id) <
          (select coalesce(c.occurred_at, '-infinity'), c.id from own c where c.id = $2)
        order by n.occurred_at desc nulls last, n.id desc limit $3
      )
-     select n.*, d.id as draft_id, item.name as item_name
-     from page n
+     select n.*, totals.unread_count, d.id as draft_id, item.name as item_name
+     from (select count(*)::int as unread_count from visible where read_at is null) totals
+     left join page n on true
      left join public.contracts c on n.entity_type = 'CONTRACT' and c.id = n.entity_id
      left join public.negotiation_versions v on n.entity_type = 'NEGOTIATION_VERSION' and v.id = n.entity_id
      left join public.negotiations d on d.id = coalesce(v.negotiation_id,
@@ -58,12 +76,10 @@ export async function listNotifications(db: PoolClient, userId: string, filters:
      order by n.occurred_at desc nulls last, n.id desc`,
     [userId, filters.cursor ?? null, limit + 1],
   );
-  const { rows: [count] } = await db.query<{ count: number }>(
-    "select count(*)::int from public.notifications where user_id = $1 and read_at is null", [userId],
-  );
+  const page = rows.filter(row => row.id !== null);
   return {
-    unreadCount: count.count,
-    items: rows.slice(0, limit).map(row => ({
+    unreadCount: rows[0].unread_count,
+    items: page.slice(0, limit).map(row => ({
       ...noticeDto(row),
       ...describeNotification({
         entityType: row.entity_type, entityId: row.entity_id, eventKey: row.event_key,
@@ -71,7 +87,7 @@ export async function listNotifications(db: PoolClient, userId: string, filters:
       }),
       ...(row.occurred_at && { createdAt: row.occurred_at.toISOString() }),
     })),
-    ...(rows.length > limit && { nextCursor: rows[limit - 1].id }),
+    ...(page.length > limit && { nextCursor: page[limit - 1].id }),
   };
 }
 
@@ -81,6 +97,13 @@ export async function markNotificationRead(db: PoolClient, userId: string, id: s
   );
   if (!row) throw notFound();
   return noticeDto(row);
+}
+
+export async function markAllNotificationsRead(db: PoolClient, userId: string) {
+  const { rowCount } = await db.query(
+    "update public.notifications set read_at = statement_timestamp() where user_id = $1 and read_at is null", [userId],
+  );
+  return { updatedCount: rowCount ?? 0 };
 }
 
 export async function persistNotifications(

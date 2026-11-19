@@ -85,6 +85,7 @@ export const notificationList = z.strictObject({
 export type NotificationItem = z.infer<typeof notificationItem>;
 export type NotificationList = z.infer<typeof notificationList>;
 export const notificationInput = z.strictObject({ read: z.literal(true) });
+export const notificationReadAllResult = z.strictObject({ updatedCount: amount });
 
 export type Contract = z.infer<typeof contract>;
 export type Receipt = z.infer<typeof receipt>;

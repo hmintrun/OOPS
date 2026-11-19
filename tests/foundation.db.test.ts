@@ -38,7 +38,7 @@ import { POST as postTermination } from "@/app/api/v1/contracts/[id]/termination
 import { POST as acceptCancellation } from "@/app/api/v1/terminations/[id]/accept/route";
 import { POST as postTransfer } from "@/app/api/v1/ops/disbursements/[id]/post/route";
 import { GET as getOps } from "@/app/api/v1/ops/disbursements/route";
-import { GET as getNotices } from "@/app/api/v1/notifications/route";
+import { GET as getNotices, PATCH as patchAllNotices } from "@/app/api/v1/notifications/route";
 import { PATCH as patchNotice } from "@/app/api/v1/notifications/[id]/route";
 import { POST as postCartAi } from "@/app/api/v1/campaigns/[id]/cart/ai/route";
 import { confirmationRound, draft, draftVersion, offer, offers, offerVoting, sellerDraftView, sentOfferList } from "@/contracts/negotiation";
@@ -550,6 +550,33 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(await recordOpening(new Date(+openedAt + 13 * 3_600_000).toISOString())).toBe(false);
     expect(await recordOpening(confirmBy)).toBe(true);
     expect(await recordOpening(confirmBy)).toBe(false);
+    if (mode === "paid") {
+      await transaction(async db => {
+        await persistNotifications(db, "NEGOTIATION_VERSION", version.versionId,
+          `negotiation-version:${version.versionId}:FINALIZED`, [rep]);
+        await persistNotifications(db, "CONTRACT", contractId, `contract:${contractId}:1:FINALIZED`, [rep]);
+      });
+      const inbox = async (actor: string, query = "") => notificationList.parse((await call(getNotices, actor, {
+        path: `/api/v1/notifications${query}`,
+      })).data);
+      const first = await inbox(rep, "?limit=1");
+      expect(first.unreadCount).toBe(2);
+      expect(first.items).toMatchObject([{ title: "Đơn hàng đang chờ bạn ký", href: `/orders/${contractId}` }]);
+      expect(first.nextCursor).toBeDefined();
+      const older = await inbox(rep, `?limit=1&cursor=${first.nextCursor}`);
+      expect(older.items).toMatchObject([{ title: "Nhu cầu của nhóm có đề nghị mới" }]);
+      expect(older.nextCursor).toBeUndefined();
+      expect((await inbox(seller)).items).toMatchObject([{ title: "Đơn hàng đang chờ bạn nộp cọc", href: `/orders/${contractId}` }]);
+
+      const markAll = () => call(patchAllNotices, rep, { method: "PATCH", body: { read: true } });
+      expect(await markAll()).toMatchObject({ status: 200, data: { updatedCount: 4 } });
+      expect(await markAll()).toMatchObject({ status: 200, data: { updatedCount: 0 } });
+      const read = await inbox(rep);
+      expect(read.unreadCount).toBe(0);
+      expect(read.items).toHaveLength(2);
+      expect(read.items.every(notice => Boolean(notice.readAt))).toBe(true);
+      expect((await inbox(seller)).unreadCount).toBe(1);
+    }
     expect(await orderFor(contractId, seller)).toMatchObject({
       confirmBy, depositDueAt: new Date(+openedAt + 6 * 3_600_000).toISOString(),
       ...(price > 0 && { paymentDueAt: confirmBy }),

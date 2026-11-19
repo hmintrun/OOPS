@@ -236,7 +236,7 @@ Backend tạo `versionId` và lưu `versionHash = keccak256(abi.encode(...))` kh
 | Đang bỏ phiếu | Tới hạn và không có phiếu Có | Kết thúc đề nghị | Người bán |
 | `SUBMITTED` | Người bán yêu cầu sửa hoặc từ chối | `CHANGES_REQUESTED` để mở vòng phiếu mới, hoặc `REJECTED` | Các hộ đã bỏ phiếu Có |
 | `SUBMITTED` | Hết hạn phản hồi | `EXPIRED` với lý do `SELLER_TIMEOUT` | Người bán và các hộ có phần |
-| `SUBMITTED` | Người bán đồng ý và kiểm lượng, ví thành công | Tạo hợp đồng chờ ký và thu, giữ lượng và yêu cầu mở vòng Fuji | Người bán và các hộ có phần khi vòng mở |
+| `SUBMITTED` | Người bán đồng ý và kiểm lượng, ví thành công | Tạo hợp đồng chờ ký và thu, giữ lượng và yêu cầu mở vòng Fuji | Khi vòng mở, mỗi bên nhận một thông báo dẫn đến đơn hàng để hộ ký xác nhận, người bán nộp cọc và đại diện theo dõi nếu không có phần hàng. |
 | `SUBMITTED` | Thiếu lượng khi người bán đồng ý | `STOCK_CONFLICT`, trả `409` | Người bán và các hộ có phần |
 | Chờ ký và thu | Đủ chữ ký, cọc và tiền hàng trước hạn tương ứng | `AWAIT_HANDOFF` | Người bán, đại diện và các hộ có phần |
 | Chờ ký và thu | Hết hạn và còn thiếu điều kiện | `CANCELED`, giải phóng lượng và lập hoàn các khoản đã thu | Các bên |
@@ -306,7 +306,7 @@ Tiền tố `/api/v1`. JSON, trừ upload bằng chứng (`multipart/form-data`)
 | Thu tiền | `POST /demo/charges/{id}/receive`; sau demo: `POST /charges/{id}/checkout`, `POST /webhooks/payos` |
 | Bàn giao | `POST /contracts/{id}/evidence`, `GET /evidence/{id}`, `POST /contracts/{id}/receipts`, `POST /receipts/{id}/approve` |
 | Sự cố và hủy | `POST /contracts/{id}/issues`, `POST /contracts/{id}/cancel`, `POST /contracts/{id}/terminations`, `POST /terminations/{id}/accept` |
-| Vận hành và thông báo | `GET /ops/disbursements`, `POST /ops/disbursements/{id}/post`, `GET /notifications`, `PATCH /notifications/{id}` |
+| Vận hành và thông báo | `GET /ops/disbursements`, `POST /ops/disbursements/{id}/post`, `GET /notifications`, `PATCH /notifications`, `PATCH /notifications/{id}` |
 
 Mã lỗi chung: `401` thiếu phiên, `403` thiếu quyền, `404` không tồn tại hoặc cần ẩn, `409` xung đột phiên bản/trạng thái/idempotency, `422` dữ liệu sai, `429` vượt giới hạn, `503` phụ thuộc lỗi tạm thời. Envelope lỗi gồm `error.code`, `error.message` và `requestId`.
 

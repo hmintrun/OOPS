@@ -9,6 +9,7 @@ import {
   OOPS_FUJI_CREDENTIAL_SIGNATURE,
 } from "@/lib/fuji/abi";
 import { ApiError, getWalletChallenge, leaveGroup, linkWallet } from "@/lib/api-client";
+import { transaction } from "@/server/db";
 
 const mocks = vi.hoisted(() => {
   const queries: Array<{ sql: string; params: unknown[] }> = [];
@@ -80,7 +81,7 @@ import {
   type FujiProofReader,
 } from "@/server/fuji/wallet";
 import { openRoundOnChain, syncFujiConfirmations, type FujiPublicAdapter } from "@/server/fuji/indexer";
-import { backoffDelaySeconds, runOutboxBatch, runWorkerCycle } from "@/server/worker/runner";
+import { backoffDelaySeconds, dispatchOutboxItem, runOutboxBatch, runWorkerCycle } from "@/server/worker/runner";
 
 const CONTRACT = "0x1111111111111111111111111111111111111111" as Address;
 const WALLET_A = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Address;
@@ -746,6 +747,21 @@ describe("Fuji Indexer (openRoundOnChain & syncFujiConfirmations)", () => {
 });
 
 describe("Background worker & outbox dispatcher", () => {
+  it("keeps finalization notices only for orders that do not wait for a round to open", async () => {
+    const deps = { openRound: vi.fn(async () => undefined), runTx: transaction };
+    const item = { id: "finalized", attempts: 0 };
+    const recipients = { recipientUserIds: [USER_A] };
+    await dispatchOutboxItem({ ...item, kind: "NEGOTIATION_VERSION_STATE_CHANGED",
+      event_key: `negotiation-version:${VERSION_ID}:FINALIZED`, payload: { ...recipients, versionId: VERSION_ID, state: "FINALIZED" },
+    }, deps);
+    const order = { ...item, kind: "ORDER_STATE_CHANGED", event_key: `contract:${CONTRACT_ID}:1:FINALIZED` };
+    const payload = { ...recipients, contractId: CONTRACT_ID, action: "FINALIZED" };
+    await dispatchOutboxItem({ ...order, payload: { ...payload, state: "AWAIT_COMMITMENTS" } }, deps);
+    expect(mocks.persistNotifications).not.toHaveBeenCalled();
+    await dispatchOutboxItem({ ...order, payload: { ...payload, state: "AWAIT_DEPOSIT" } }, deps);
+    expect(mocks.persistNotifications).toHaveBeenCalledExactlyOnceWith(expect.anything(), "CONTRACT", CONTRACT_ID, order.event_key, [USER_A]);
+  });
+
   it("xử lý đủ 9 loại outbox event và đánh dấu processed_at", async () => {
     const items = [
       { id: "o1", kind: "FUJI_ROUND_OPEN_REQUESTED", event_key: "k1", payload: { draftId: DRAFT_ID, versionId: VERSION_ID, roundId: ROUND_ID }, attempts: 0 },

@@ -31,18 +31,15 @@ describe("notification content", () => {
     })).toMatchObject({ title, href: `/trade/drafts/${draftId}` });
   });
 
-  it("distinguishes creating an order, opening signing, and moving to handoff", () => {
-    const order = { entityType: "CONTRACT", entityId: contractId };
-    const titles = [
-      `contract:${contractId}:1:FINALIZED`,
-      `contract-signing:${versionId}`,
-      `contract:${contractId}:3:HANDOFF_ELIGIBLE`,
-    ].map(eventKey => describeNotification({ ...order, eventKey }).title);
-    expect(titles).toEqual([
-      "Đơn hàng đã được lập",
-      "Đơn hàng đang chờ bạn ký",
-      "Đơn đã xác nhận và chuyển sang giao hàng",
-    ]);
+  it.each([
+    [`contract:${contractId}:1:FINALIZED`, "Đơn hàng đã được lập"],
+    [`contract-signing:${versionId}`, "Đơn hàng đang chờ bạn ký"],
+    [`contract-deposit-due:${versionId}`, "Đơn hàng đang chờ bạn nộp cọc"],
+    [`contract-round-open:${versionId}`, "Đơn hàng đã mở vòng ký"],
+    [`contract:${contractId}:3:HANDOFF_ELIGIBLE`, "Đơn đã xác nhận và chuyển sang giao hàng"],
+  ])("links the %s notice directly to the order", (eventKey, title) => {
+    expect(describeNotification({ entityType: "CONTRACT", entityId: contractId, eventKey }))
+      .toMatchObject({ title, href: `/orders/${contractId}` });
   });
 
   it("keeps legacy notices readable without claiming an event or exposing an arbitrary link", () => {

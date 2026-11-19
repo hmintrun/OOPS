@@ -268,6 +268,9 @@ Checkout QR và webhook trong mục này phục vụ tích hợp sau demo. MVP c
 | `GET /ops/disbursements`<br>Tài khoản vận hành | state=PENDING, cursor?, limit?. | 200 {items: [{disbursementId, contractId, kind, amountVnd, state}], nextCursor?}. |
 | `POST /ops/disbursements/{id}/post`<br>Tài khoản vận hành | {transferRef}. Demo dùng mã chuyển SIM duy nhất cho khoản đủ điều kiện. Kiểm và ghi dưới khóa của hợp đồng và khoản chi. | 200 {disbursementId, state: POSTED, contractState}. Gửi lại cùng mã của cùng khoản trả kết quả đã ghi. 409 nếu mã thuộc khoản khác, khoản bị khóa hoặc khoản đã POSTED bằng mã khác. |
 | `GET /notifications`<br>`PATCH /notifications/{id}`<br>Chủ thông báo | GET cursor?, limit?. PATCH {read: true}. | GET trả `items`, tổng `unreadCount` qua mọi trang và `nextCursor?`. Mục có `title`, `detail`, `icon`, cùng `itemName?`, `href?` và `createdAt?`. PATCH trả mục với `readAt`. |
+| `PATCH /notifications`<br>Chủ thông báo | {read: true}. | 200 {updatedCount}. Đánh dấu đã đọc mọi thông báo chưa đọc của tài khoản hiện tại qua tất cả các trang. |
+
+Khi vòng ký của đơn mới mở, người bán, đại diện và mỗi hộ có phần nhận một thông báo theo vai trò, dẫn thẳng đến đơn hàng. Hộp thư gộp các mục chốt đề nghị, lập đơn và mở vòng đã lưu cho cùng phiên bản, ưu tiên mục mở vòng nếu đã có.
 
 Đổi giá/lượng và đổi lịch sau khi chốt thuộc phạm vi sau demo.
 

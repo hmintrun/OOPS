@@ -203,8 +203,12 @@ export async function recordVerifiedRoundOpening(
     `select m.user_id from public.confirmation_participants p
      join public.memberships m on m.id = p.membership_id where p.round_id = $1`, [roundId],
   );
-  await persistNotifications(db, "CONTRACT", contractId, `contract-signing:${roundId}`,
-    participants.map(row => row.user_id));
+  const buyerIds = participants.map(row => row.user_id);
+  await persistNotifications(db, "CONTRACT", contractId, `contract-signing:${roundId}`, buyerIds);
+  await persistNotifications(db, "CONTRACT", contractId, `contract-deposit-due:${roundId}`, [order.seller_id]);
+  if (!buyerIds.includes(order.rep_id)) {
+    await persistNotifications(db, "CONTRACT", contractId, `contract-round-open:${roundId}`, [order.rep_id]);
+  }
   return true;
 }
 

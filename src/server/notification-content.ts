@@ -205,7 +205,17 @@ export function describeNotification({
       if (source === "contract" && reference === entityId) content = readCase(orderCases, action);
       if (source === "contract-signing") content = {
         title: "Đơn hàng đang chờ bạn ký",
-        detail: "Vòng ký đã mở. Vào chi tiết đơn để ký xác nhận trước hạn.",
+        detail: "Đề nghị đã chốt và vòng ký đã mở. Mở đơn hàng để ký xác nhận trước hạn.",
+        icon: "draw",
+      };
+      if (source === "contract-deposit-due") content = {
+        title: "Đơn hàng đang chờ bạn nộp cọc",
+        detail: "Đề nghị đã chốt và vòng ký đã mở. Mở đơn hàng để nộp cọc trước hạn.",
+        icon: "account_balance_wallet",
+      };
+      if (source === "contract-round-open") content = {
+        title: "Đơn hàng đã mở vòng ký",
+        detail: "Mở đơn hàng để theo dõi tiến độ ký và các khoản cần hoàn tất.",
         icon: "draw",
       };
       if (source === "contract" && reference === entityId && action === "RECEIPT_CREATED" && state === "NEEDS_REVIEW") content = {
