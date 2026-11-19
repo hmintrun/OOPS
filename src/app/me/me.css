@@ -19,30 +19,67 @@
 }
 
 .me-profile {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(4rem, 36%);
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  min-block-size: 6rem;
+  gap: 14px;
   margin-block-end: 16px;
-  padding: 12px 16px 0;
+  padding: 16px;
   border-radius: var(--oops-radius-input);
-  background: radial-gradient(circle at 78% 45%, var(--oops-sun-tint), transparent 44%),
-    linear-gradient(115deg, var(--oops-mint), var(--oops-sky-tint));
+  background: linear-gradient(125deg, var(--oops-mint), var(--oops-haze) 55%, var(--oops-sky-tint));
 }
-.me-profile p {
+.me-profile__avatar {
+  width: 68px;
+  height: 68px;
+  flex: none;
+  border-radius: 999px;
+  border: 3px solid var(--oops-surface);
+  background: var(--oops-sun-tint);
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(14, 39, 68, 0.08);
+}
+.me-profile__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+.me-profile__info {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+.me-profile__name {
   margin: 0;
-  padding-block-end: 12px;
   overflow-wrap: anywhere;
-  color: var(--oops-jade-dark);
+  color: var(--oops-navy-900);
   font-size: var(--oops-title-card);
   font-weight: 800;
+  line-height: 1.25;
 }
-.me-profile img {
-  align-self: end;
-  justify-self: end;
-  inline-size: min(100%, 7rem);
-  height: auto;
+.me-profile__location {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--oops-navy-600);
+}
+.me-profile__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.ui-app-page .me-profile__btn {
+  width: auto;
+  min-height: 40px;
+  padding: 0 14px;
+  font-size: 0.875rem;
 }
 
 .me-wallet__heading {

@@ -43,18 +43,18 @@ export function Select({
   return (
     <div className={className}>
       <div
-        className={`ui-select ${disabled ? "ui-select--disabled" : ""}`.trim()}
+        className={`ui-select ${disabled ? "ui-select--disabled" : ""} ${showLabel ? "ui-select--stacked" : ""}`.trim()}
       >
         {icon && <IconTile icon={icon.name} tone={icon.tone ?? "sky"} size="sm" />}
-        {showLabel && <span className="ui-select__label">{label}</span>}
-        <div className="ui-select__value-wrap">
+        <div className="ui-select__content">
+          {showLabel && <span className="ui-select__label">{label}</span>}
           <span
             className={`ui-select__value ${!selected ? "ui-select__value--placeholder" : ""}`.trim()}
           >
             {shown}
           </span>
-          <MaterialSymbol name="expand_more" className="ui-select__chevron" />
         </div>
+        <MaterialSymbol name="expand_more" className="ui-select__chevron" />
         <select
           className="ui-select__native"
           value={value}

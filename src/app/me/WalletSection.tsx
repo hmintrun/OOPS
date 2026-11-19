@@ -37,8 +37,8 @@ export function WalletSection({
         <div>
           <CardTitle>{embeddedEnabled ? "Ví xác nhận mua chung" : "Ví Avalanche Fuji"}</CardTitle>
           <p className="text-small text-navy-600">{embeddedEnabled
-            ? "Dùng ví OOPS hoặc Core Wallet trên Fuji (Chain ID: 43113)."
-            : "Xác thực on-chain (Chain ID: 43113)"}</p>
+            ? "Giúp xác nhận minh bạch phần hàng của hộ bạn, không mất phí."
+            : "Xác nhận minh bạch phần hàng mua chung của hộ bạn."}</p>
         </div>
       </div>
 
@@ -71,7 +71,7 @@ export function WalletSection({
         <div className="me-eligibility">
           <div className="me-item__body">
             <p className="me-item__label">Đủ điều kiện xác nhận</p>
-            <p className="me-hint">Theo chính sách xác minh ví trên Fuji.</p>
+            <p className="me-hint">Dùng để xác nhận phần mua chung cùng các hộ trong nhóm.</p>
           </div>
           <span className={`me-chip ${data.confirmationEligible ? "me-chip--verified" : "me-chip--pending"}`}>
             {data.confirmationEligibilityUnavailable ? "Chưa kiểm tra được" : data.confirmationEligible ? "Có" : "Chưa"}
@@ -80,6 +80,12 @@ export function WalletSection({
         <div>
           <WalletLinkModal currentAddress={wallet?.address} onData={onData} onUnauthorized={onUnauthorized} />
         </div>
+        <details className="text-small text-navy-600">
+          <summary className="cursor-pointer font-semibold text-navy-600">Chi tiết kỹ thuật (Blockchain)</summary>
+          <p className="mt-1.5 leading-relaxed">
+            Mạng xác thực: Avalanche Fuji Testnet (Chain ID: 43113). Hỗ trợ ví tích hợp OOPS (tài trợ phí gas) hoặc Core Wallet.
+          </p>
+        </details>
       </div>
     </Card>
   );

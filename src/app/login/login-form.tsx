@@ -17,7 +17,7 @@ import { signUp } from "./signup";
  * radius input, cao control). Chỉ dùng token `--oops-*`, không viết hex ở JSX.
  */
 const FIELD_ROW = [
-  "flex h-[var(--oops-control-h)] items-center gap-3 rounded-input border border-line",
+  "flex h-[var(--oops-control-h)] w-full min-w-0 items-center gap-2.5 rounded-input border border-line",
   "login-field px-3",
 ].join(" ");
 
@@ -220,38 +220,44 @@ export function LoginForm() {
 
       <form
         method="post"
-        className="grid gap-3"
+        noValidate
+        className="grid gap-2.5"
         onSubmit={event => {
           event.preventDefault();
           void handleSubmit();
         }}
       >
-        {register && <label className="grid gap-2">
-          <span className="text-label">Tên hiển thị</span>
-          <span className={FIELD_ROW}>
-            <IconTile icon="person" tone="sky" size="sm" />
-            <input className={FIELD_INPUT} name="name" autoComplete="name" maxLength={DISPLAY_NAME_MAX_LENGTH} required
-              placeholder="Tên của bạn hoặc hộ gia đình"
-              value={name} disabled={pending} onChange={event => setName(event.target.value)} />
-          </span>
-        </label>}
         {register && (
-          <fieldset className="grid min-w-0 gap-2">
-            <legend className="mb-2 text-label">Nơi sinh sống</legend>
-            <LocationFields wardCode={wardCode} onChange={setWardCode} disabled={pending} searchable={false} required />
+          <div className="grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-2">
+            <label className="grid min-w-0 gap-1">
+              <span className="text-small font-bold text-navy-900">Tên hiển thị</span>
+              <span className={FIELD_ROW}>
+                <IconTile icon="person" tone="sky" size="sm" />
+                <input className={FIELD_INPUT} name="name" autoComplete="name" maxLength={DISPLAY_NAME_MAX_LENGTH} required
+                  placeholder="Tên của bạn hoặc hộ"
+                  value={name} disabled={pending} onChange={event => setName(event.target.value)} />
+              </span>
+            </label>
+            <label className="grid min-w-0 gap-1">
+              <span className="text-small font-bold text-navy-900">Số điện thoại</span>
+              <span className={FIELD_ROW}>
+                <IconTile icon="call" tone="sky" size="sm" />
+                <input className={FIELD_INPUT} type="tel" name="phone" autoComplete="tel" inputMode="numeric"
+                  placeholder="VD: 0901 234 567"
+                  pattern={PHONE_PATTERN} title={PHONE_FORMAT_MESSAGE} required value={phone} disabled={pending}
+                  onChange={event => setPhone(event.target.value)} />
+              </span>
+            </label>
+          </div>
+        )}
+        {register && (
+          <fieldset className="grid min-w-0 gap-1">
+            <legend className="mb-1 text-small font-bold text-navy-900">Nơi sinh sống · TP. Hồ Chí Minh</legend>
+            <LocationFields wardCode={wardCode} onChange={setWardCode} disabled={pending} required compact />
           </fieldset>
         )}
-        {register && <label className="grid gap-2">
-          <span className="text-label">Số điện thoại (10 chữ số)</span>
-          <span className={FIELD_ROW}>
-            <IconTile icon="call" tone="sky" size="sm" />
-            <input className={FIELD_INPUT} type="tel" name="phone" autoComplete="tel" inputMode="numeric"
-              pattern={PHONE_PATTERN} title={PHONE_FORMAT_MESSAGE} required value={phone} disabled={pending}
-              onChange={event => setPhone(event.target.value)} />
-          </span>
-        </label>}
-        <label className="grid gap-2">
-          <span className="text-label">Email</span>
+        <label className="grid gap-1">
+          <span className="text-small font-bold text-navy-900">Email</span>
           <span className={FIELD_ROW}>
             <IconTile icon="mail" tone="sky" size="sm" />
             <input
@@ -271,34 +277,36 @@ export function LoginForm() {
           </span>
         </label>
 
-        <label className="grid gap-2">
-          <span className="text-label">Mật khẩu</span>
-          <span className={FIELD_ROW}>
-            <IconTile icon="lock" tone="rose" size="sm" />
-            <input
-              className={FIELD_INPUT}
-              type={showPassword ? "text" : "password"}
-              name="password"
-              autoComplete={register ? "new-password" : "current-password"}
-              minLength={register ? MIN_SIGNUP_PASSWORD_LENGTH : undefined}
-              required
-              placeholder={register ? `Ít nhất ${MIN_SIGNUP_PASSWORD_LENGTH} ký tự` : "Mật khẩu của bạn"}
-              value={password}
-              disabled={pending}
-              onChange={event => setPassword(event.target.value)}
-            />
-          </span>
-        </label>
+        <div className={register ? "grid min-w-0 grid-cols-1 gap-2.5 sm:grid-cols-2" : "grid min-w-0 gap-2.5"}>
+          <label className="grid min-w-0 gap-1">
+            <span className="text-small font-bold text-navy-900">Mật khẩu</span>
+            <span className={FIELD_ROW}>
+              <IconTile icon="lock" tone="rose" size="sm" />
+              <input
+                className={FIELD_INPUT}
+                type={showPassword ? "text" : "password"}
+                name="password"
+                autoComplete={register ? "new-password" : "current-password"}
+                minLength={register ? MIN_SIGNUP_PASSWORD_LENGTH : undefined}
+                required
+                placeholder={register ? `Ít nhất ${MIN_SIGNUP_PASSWORD_LENGTH} ký tự` : "Mật khẩu của bạn"}
+                value={password}
+                disabled={pending}
+                onChange={event => setPassword(event.target.value)}
+              />
+            </span>
+          </label>
 
-        {register && <label className="grid gap-2">
-          <span className="text-label">Nhập lại mật khẩu</span>
-          <span className={FIELD_ROW}>
-            <IconTile icon="lock" tone="rose" size="sm" />
-            <input className={FIELD_INPUT} name="confirmPassword" type={showPassword ? "text" : "password"}
-              autoComplete="new-password" required placeholder="Nhập lại mật khẩu vừa tạo"
-              value={confirmPassword} disabled={pending} onChange={event => setConfirmPassword(event.target.value)} />
-          </span>
-        </label>}
+          {register && <label className="grid min-w-0 gap-1">
+            <span className="text-small font-bold text-navy-900">Nhập lại mật khẩu</span>
+            <span className={FIELD_ROW}>
+              <IconTile icon="lock" tone="rose" size="sm" />
+              <input className={FIELD_INPUT} name="confirmPassword" type={showPassword ? "text" : "password"}
+                autoComplete="new-password" required placeholder="Nhập lại mật khẩu"
+                value={confirmPassword} disabled={pending} onChange={event => setConfirmPassword(event.target.value)} />
+            </span>
+          </label>}
+        </div>
         <label className="login-password-toggle text-label">
           <input type="checkbox" checked={showPassword} disabled={pending} onChange={event => setShowPassword(event.target.checked)} />
           Hiện mật khẩu
@@ -332,9 +340,16 @@ export function LoginForm() {
           </Button>
         )}
         <Button variant="ghost" disabled={pending} onClick={() => {
-          setRegister(!register);
+          const nextRegister = !register;
+          setRegister(nextRegister);
           clearPasswords();
           setState({ kind: "idle" });
+          if (typeof window !== "undefined") {
+            const url = new URL(window.location.href);
+            if (nextRegister) url.searchParams.set("mode", "signup");
+            else url.searchParams.delete("mode");
+            window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+          }
         }}>{register ? "Quay lại đăng nhập" : "Tạo tài khoản mới"}</Button>
 
       </form>

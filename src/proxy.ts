@@ -11,7 +11,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * - Nếu Supabase chưa cấu hình (môi trường chưa có secret), bỏ qua để không
  *   khoá ứng dụng; request thật sẽ bị API trả 401 như bình thường.
  */
-const PUBLIC_PREFIXES = ["/login", "/join", "/api", "/ui-preview"];
+const PUBLIC_PREFIXES = ["/login", "/signup", "/join", "/api", "/ui-preview"];
 
 function isPublic(pathname: string): boolean {
   if (pathname === "/manifest.webmanifest" || pathname === "/offline.html") return true;

@@ -29,7 +29,7 @@ export function Button({
     danger: "ui-btn--danger",
   }[variant];
 
-  const classes = ["ui-btn", full ? "ui-btn--full" : "", variantClass, className]
+  const classes = ["ui-btn", full ? "ui-btn--full" : "", variantClass, loading ? "ui-btn--loading" : "", className]
     .filter(Boolean)
     .join(" ");
 

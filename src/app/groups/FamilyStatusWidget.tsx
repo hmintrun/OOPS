@@ -53,7 +53,7 @@ export function FamilyStatusWidget({
     <>
       {/* Toast thông báo lưu thành công */}
       {showSavedToast && (
-        <div role="status" className="fixed top-4 right-4 z-50 flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-white shadow-xl animate-in fade-in slide-in-from-top-2">
+        <div role="status" className="fixed top-4 right-4 z-50 flex items-center gap-2 rounded-2xl bg-green-700 px-4 py-3 text-white shadow-xl animate-in fade-in slide-in-from-top-2">
           <MaterialSymbol name="check_circle" size={20} filled />
           <span className="text-sm font-bold">Đã lưu hiện trạng gia đình</span>
         </div>
