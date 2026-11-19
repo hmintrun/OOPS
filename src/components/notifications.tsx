@@ -22,7 +22,7 @@ type NotificationFeed = {
 
 const NotificationsContext = createContext<NotificationFeed>({ loading: true, refresh: () => {} });
 const toastDuration = 3_000;
-const reconnectCheckInterval = 5_000;
+const disconnectedRefreshInterval = 30_000;
 const reconciliationInterval = 60_000;
 
 export function readNotifications(cursor?: string) {
@@ -83,10 +83,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     let syncing = false;
     let syncAgain = false;
     let subscribed = false;
-    let lastSync = 0;
+    let scheduledSync: number | undefined;
     const seen = new Set<string>();
     const liveInserts = new Set<string>();
     let initialized = false;
+
+    function scheduleSync() {
+      window.clearTimeout(scheduledSync);
+      if (stopped || document.hidden) return;
+      scheduledSync = window.setTimeout(() => { void sync(); },
+        subscribed ? reconciliationInterval : disconnectedRefreshInterval);
+    }
 
     async function sync() {
       if (stopped) return;
@@ -94,11 +101,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         syncAgain = true;
         return;
       }
+      window.clearTimeout(scheduledSync);
       syncing = true;
       try {
         const page = await readNotifications();
         if (stopped) return;
-        lastSync = Date.now();
         setInbox({ userId, page });
         const arrivals = page.items.filter(item => !item.readAt && !seen.has(item.notificationId)
           && (initialized || liveInserts.has(item.notificationId)));
@@ -127,6 +134,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         if (syncAgain && !stopped) {
           syncAgain = false;
           void sync();
+        } else {
+          scheduleSync();
         }
       }
     }
@@ -145,21 +154,24 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         })
         .on("broadcast", { event: "UPDATE" }, () => { void sync(); })
         .subscribe(status => {
+          const wasSubscribed = subscribed;
           subscribed = status === "SUBSCRIBED";
           if (subscribed) void sync();
+          else if (wasSubscribed && !syncing) scheduleSync();
         });
     }
     void subscribe().catch(() => { subscribed = false; });
-    const check = window.setInterval(() => {
-      if (!document.hidden && (!subscribed || Date.now() - lastSync >= reconciliationInterval)) void sync();
-    }, reconnectCheckInterval);
-    function resume() { if (!document.hidden) void sync(); }
+
+    function resume() {
+      if (document.hidden) window.clearTimeout(scheduledSync);
+      else void sync();
+    }
     document.addEventListener("visibilitychange", resume);
 
     return () => {
       stopped = true;
       refreshRef.current = () => {};
-      window.clearInterval(check);
+      window.clearTimeout(scheduledSync);
       document.removeEventListener("visibilitychange", resume);
       if (channel) void client.removeChannel(channel);
     };
