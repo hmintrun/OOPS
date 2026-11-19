@@ -104,13 +104,35 @@ export function AccountSection({ data, onData, onUnauthorized }: {
       </div>
 
       <div className="me-profile">
-        <p>{data.displayName}</p>
-        <img src="/assets/hero/family.webp" alt="" width={1128} height={934} />
+        <div className="me-profile__avatar">
+          <img src="/assets/hero/family.webp" alt="" width={1128} height={934} />
+        </div>
+        <div className="me-profile__info">
+          <p className="me-profile__name">{data.displayName}</p>
+          <span className="me-profile__location">
+            <MaterialSymbol name="location_on" size={16} />
+            {data.location ? locationLabel(data.location.provinceCode, data.location.wardCode) : "Chưa cập nhật vị trí"}
+          </span>
+          {!draft && (
+            <div className="me-profile__actions">
+              <Button variant="primary" full={false} className="me-profile__btn" onClick={startEditing}>
+                <MaterialSymbol name="edit" size={16} />
+                Chỉnh sửa hồ sơ
+              </Button>
+              {data.groupId && (
+                <a className="ui-btn ui-btn--secondary me-profile__btn" href={`/groups/${data.groupId}`} title={`Mã nhóm: ${data.groupId}`}>
+                  <MaterialSymbol name="groups" size={16} />
+                  Mở nhóm của tôi
+                </a>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="me-rows me-rows--divided">
         {draft ? (
-          <form className="me-field-stack" aria-label="Chỉnh sửa hồ sơ" onSubmit={save}>
+          <form className="me-field-stack" aria-label="Chỉnh sửa hồ sơ" noValidate onSubmit={save}>
             <label className="grid min-w-0 gap-2 text-label">
               Tên hiển thị
               <input
@@ -130,6 +152,7 @@ export function AccountSection({ data, onData, onUnauthorized }: {
                 className="me-input"
                 type="tel"
                 name="phone"
+                placeholder="VD: 0901 234 567"
                 autoComplete="tel"
                 inputMode="numeric"
                 pattern={changedPhone ? PHONE_PATTERN : undefined}
@@ -145,7 +168,6 @@ export function AccountSection({ data, onData, onUnauthorized }: {
                 wardCode={draft.wardCode}
                 onChange={wardCode => setDraft({ ...draft, wardCode })}
                 disabled={saving}
-                searchable={false}
               />
             </fieldset>
             <details>
@@ -178,46 +200,38 @@ export function AccountSection({ data, onData, onUnauthorized }: {
           </form>
         ) : (
           <div className="me-field-stack">
-            <div>
-              <p className="me-item__label">Nơi đang ở</p>
-              <p className="me-body-text">{data.location ? locationLabel(data.location.provinceCode, data.location.wardCode) : "Chưa cập nhật vị trí"}</p>
-            </div>
-            <div>
-              <p className="me-item__label">Số điện thoại</p>
-              <p className="me-body-text break-words">{contact.phone || "Chưa cập nhật số điện thoại"}</p>
+            {saved && <p className="me-notice" role="status">Đã lưu thay đổi.</p>}
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <div className="flex items-start gap-2.5 rounded-input p-3" style={{ background: "var(--oops-haze)" }}>
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700">
+                  <MaterialSymbol name="call" size={16} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-small text-navy-600">Số điện thoại</p>
+                  <p className="me-body-text break-words font-bold">{contact.phone || "Chưa cập nhật"}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5 rounded-input p-3" style={{ background: "var(--oops-haze)" }}>
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-tint" style={{ color: "var(--oops-sky-ink)" }}>
+                  <MaterialSymbol name="badge" size={16} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-small text-navy-600">Mã tài khoản</p>
+                  <div className="me-item__value mt-0.5">
+                    <code className="me-code text-small" title={data.userId}>
+                      {shortenMiddle(data.userId, 6, 4)}
+                    </code>
+                    <CopyButton value={data.userId} label="mã tài khoản" />
+                  </div>
+                </div>
+              </div>
             </div>
             <p className="me-hint">Số điện thoại và thông tin nhận hàng chỉ được chia sẻ với bên giao nhận sau khi chốt đơn.</p>
-            <Button variant="secondary" onClick={startEditing}>Chỉnh sửa hồ sơ</Button>
-            {saved && <p className="me-notice" role="status">Đã lưu thay đổi.</p>}
-          </div>
-        )}
-        <div className="me-item">
-          <div className="me-item__body">
-            <p className="me-item__label">Mã tài khoản</p>
-            <div className="me-item__value">
-              <code className="me-code" title={data.userId}>
-                {shortenMiddle(data.userId, 8, 6)}
-              </code>
-              <CopyButton value={data.userId} label="mã tài khoản" />
-            </div>
-          </div>
-        </div>
-
-        <div className="me-item">
-          <div className="me-item__body">
-            <p className="me-item__label">Nhóm của tôi</p>
-            {data.groupId ? (
-              <div className="me-item__value">
-                <a className="me-chip me-chip--link" href={`/groups/${data.groupId}`} title={data.groupId}>
-                  {shortenMiddle(data.groupId, 6, 4)}
-                  <MaterialSymbol name="chevron_right" size={18} />
-                </a>
-              </div>
-            ) : (
+            {!data.groupId && (
               <p className="me-muted">Chưa tham gia nhóm nào</p>
             )}
           </div>
-        </div>
+        )}
       </div>
     </Card>
   );

@@ -1,0 +1,90 @@
+/**
+ * OOPS Zero-Lag Motion & Interaction Discipline (ui-ux-pro-max-skill)
+ * - Chỉ dùng thuộc tính compositor (transform, opacity) với thời gian ngắn (100-160ms).
+ * - Không animate layout/paint (không animate width, height, grid-template-rows,
+ *   background-position hay box-shadow lặp vô hạn) để máy cấu hình thấp không bao giờ lag.
+ * - Bật touch-action: manipulation giúp chạm phản hồi tức thì (0ms delay) trên điện thoại.
+ */
+
+:root {
+  --oops-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:is(
+  button,
+  a,
+  summary,
+  select,
+  input,
+  label,
+  [role="button"],
+  [role="combobox"],
+  [role="option"],
+  [role="tab"]
+) {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.oops-skeleton {
+  background: var(--oops-haze);
+  border: 1px solid color-mix(in srgb, var(--oops-line), transparent 40%);
+}
+
+:is(
+  .orders-notif-bar__trigger,
+  .orders-notif-bar__action-link,
+  .orders-notif-bar__action-read,
+  .orders-notif-bar__footer-link,
+  .orders-role-pill,
+  .campaign-cart-stepper__btn,
+  .feed-category
+):focus-visible {
+  outline: 2px solid var(--oops-green-700);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Skeleton chỉ dùng opacity trên compositor thread — 0 tốn Paint/Layout */
+  @keyframes oops-skeleton-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.52; }
+  }
+
+  .oops-skeleton {
+    animation: oops-skeleton-pulse 1.4s ease-in-out infinite;
+  }
+
+  /* Dialog & Popover mở nhanh 140ms thuần transform + opacity */
+  @keyframes oops-fast-pop {
+    from {
+      opacity: 0;
+      transform: translateY(-3px) scale(0.99);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .ui-widget-dialog[open],
+  .oops-combobox-popover,
+  .orders-notif-bar__drawer {
+    animation: oops-fast-pop 140ms var(--oops-ease-out) backwards;
+  }
+
+  /* Phản hồi chạm tức thì (tactile press) nhẹ & không gây giật */
+  .ui-btn,
+  .feed-category,
+  .orders-role-pill,
+  .campaign-cart-stepper__btn {
+    transition: transform 100ms var(--oops-ease-out), background-color 120ms ease, border-color 120ms ease;
+  }
+
+  .ui-btn:not(:disabled):active,
+  .feed-category:active,
+  .orders-role-pill:active,
+  .campaign-cart-stepper__btn:not(:disabled):active {
+    transform: scale(0.97);
+  }
+}

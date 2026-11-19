@@ -364,7 +364,9 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, activeO
             <div>
               <dt className="sr-only">Cách tính cọc</dt>
               <dd className="text-small text-navy-600">
-                Cọc 10% tiền hàng (tối thiểu 50.000đ) để giữ cam kết giao hàng, hoàn lại 100% sau khi bàn giao xong.
+                {isGift
+                  ? "Đơn tặng 0đ vẫn cần cọc cam kết 50.000đ để tránh hứa ảo trong đợt cứu trợ — hoàn lại 100% ngay sau khi đại diện xác nhận nhận hàng."
+                  : "Cọc 10% tiền hàng (tối thiểu 50.000đ) để giữ cam kết giao hàng, hoàn lại 100% sau khi bàn giao xong."}
               </dd>
             </div>
           </dl>

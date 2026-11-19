@@ -1,7 +1,31 @@
 .ui-card.feed-filter-card {
   display: grid;
-  gap: 16px;
-  background: linear-gradient(115deg, var(--oops-sky-tint), var(--oops-surface) 58%, var(--oops-sun-tint));
+  gap: 12px;
+  background: var(--oops-surface);
+}
+@media (width >= 64rem) {
+  .ui-card.feed-filter-card {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 14px;
+    padding: 10px 14px;
+  }
+  .ui-card.feed-filter-card .ui-card__title { display: none; }
+  .ui-card.feed-filter-card .feed-categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .ui-card.feed-filter-card .feed-location {
+    min-width: 14rem;
+    margin-left: auto;
+  }
+  .ui-card.feed-filter-card .feed-location[open] {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
 }
 
 .feed-filter-card .ui-card__title { margin: 0; }

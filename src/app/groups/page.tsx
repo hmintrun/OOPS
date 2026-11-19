@@ -26,9 +26,21 @@ function buildDemoGroup(): { group: Group; userId: string } {
       campaigns: [
         {
           campaignId: "abf6a08a-451a-497b-8afd-c633870f0a02",
-          state: "PUBLISHED",
+          state: "DRAFT",
           collectUntil: iso(12),
           needBy: iso(36),
+        },
+        {
+          campaignId: "abf6a08a-451a-497b-8afd-c633870f0a03",
+          state: "PUBLISHED",
+          collectUntil: iso(-4),
+          needBy: iso(24),
+        },
+        {
+          campaignId: "abf6a08a-451a-497b-8afd-c633870f0a04",
+          state: "DRAFT",
+          collectUntil: iso(-12),
+          needBy: iso(-2),
         },
       ],
     },

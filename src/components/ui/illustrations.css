@@ -55,6 +55,16 @@
   width: min(calc(100% - 2 * var(--oops-space-screen)), calc(var(--oops-content-max) - 2 * var(--oops-space-screen)));
   margin-block: var(--oops-space-page-top) var(--oops-space-section);
 }
+@media (width >= 64rem) {
+  .ui-app-page .ui-illustrated-header {
+    min-block-size: 5rem;
+    padding: 10px 20px;
+  }
+  .ui-app-page .ui-page-art {
+    min-block-size: 4rem;
+    flex-basis: clamp(5.5rem, 10vw, 8.5rem);
+  }
+}
 .ui-illustrated-header .ui-screen-header__text { padding: 0; min-width: 0; flex: 1 1 0%; overflow: hidden; }
 .ui-illustrated-header .ui-screen-header__heading { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; max-width: 100%; }
 .ui-illustrated-header .ui-screen-header__title { text-wrap: balance; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }

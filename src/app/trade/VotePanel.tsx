@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { z } from "zod";
-import { Button } from "@/components/ui";
+import { Button, MaterialSymbol } from "@/components/ui";
 import { useErrorToast } from "@/components/ui/error-toast";
 import { type Offer, type OfferVoting, offerVoting, sellerDraftView, voteInput } from "@/contracts/negotiation";
 import { ApiError, apiFetch, newIdempotencyKey } from "@/lib/api-client";
@@ -387,7 +387,8 @@ export function VotePanel({
               loading={pendingAction === "YES"}
               onClick={() => void castVote("YES")}
             >
-              ✓ Đồng ý nhận phần này
+              <MaterialSymbol name="check" size={20} className="ui-btn__icon" />
+              Đồng ý nhận phần này
             </Button>
             <Button
               className="min-h-14"
@@ -396,7 +397,8 @@ export function VotePanel({
               loading={pendingAction === "NO"}
               onClick={() => void castVote("NO")}
             >
-              ✕ Không tham gia đợt này
+              <MaterialSymbol name="close" size={20} className="ui-btn__icon" />
+              Không tham gia đợt này
             </Button>
             {hasVoted && (
               <Button full={false} variant="ghost" disabled={busy}

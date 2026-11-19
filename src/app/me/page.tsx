@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AppShell } from "@/components/app-shell";
-import { Button, Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
+import { Button, Card, CardSkeleton, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import type { Me } from "@/contracts/foundation";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { PwaInstallCard } from "@/components/pwa";
@@ -18,6 +18,20 @@ type State =
   | { phase: "error"; message: string }
   | { phase: "ready"; data: Me };
 
+const DEMO_ME: Me = {
+  userId: "60000000-0000-4000-8000-000000000001",
+  displayName: "Giám Khảo Unihack",
+  groupId: "abf6a08a-451a-497b-8afd-c633870f0a01",
+  location: { provinceCode: "79", wardCode: "26734" },
+  contactPrivate: JSON.stringify({
+    name: "Giám Khảo Unihack",
+    phone: "0901234567",
+    address: "Sảnh B Chung cư Skyview, Bình Thạnh",
+    notes: "Gọi trước 15 phút khi giao",
+  }),
+  confirmationEligible: false,
+};
+
 export default function MePage() {
   const router = useRouter();
   const [state, setState] = useState<State>(() => {
@@ -30,6 +44,10 @@ export default function MePage() {
   }, [router]);
 
   const load = useCallback(async (options?: { background?: boolean }) => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1") {
+      setState({ phase: "ready", data: DEMO_ME });
+      return;
+    }
     const background = options?.background ?? false;
     if (!background) setState({ phase: "loading" });
     const result = await callMe("GET");
@@ -66,17 +84,15 @@ export default function MePage() {
       title="Tài khoản"
       subtitle="Quản lý thông tin của hộ gia đình."
       illustration="home"
-      bodyClassName={state.phase === "ready" ? "ui-card-grid" : "ui-stack"}
+      bodyClassName={state.phase === "error" ? "ui-stack" : "ui-card-grid"}
       bare
     >
         {state.phase === "loading" && (
-          <Card className="ui-status-card">
-            <div className="me-card-head">
-              <IconTile icon="hourglass_top" tone="sky" />
-              <CardTitle>Đang tải</CardTitle>
-            </div>
-            <p className="me-muted" role="status">Đang đọc thông tin tài khoản…</p>
-          </Card>
+          <>
+            <span className="sr-only" role="status">Đang đọc thông tin tài khoản…</span>
+            <CardSkeleton lines={3} />
+            <CardSkeleton lines={3} />
+          </>
         )}
 
         {state.phase === "error" && (

@@ -28,7 +28,41 @@
 
 .campaign-cart-table th { text-align: start; overflow-wrap: anywhere; }
 .campaign-cart-table th:first-child { padding-inline-end: 12px; }
-.campaign-cart-table :is(th, td):last-child { width: 6rem; text-align: end; }
+.campaign-cart-table :is(th, td):last-child { width: 9.75rem; text-align: end; }
+.campaign-cart-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: flex-end;
+}
+.campaign-cart-stepper__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 40px;
+  flex: none;
+  border: 1px solid var(--oops-line);
+  border-radius: var(--oops-radius-input);
+  background: var(--oops-haze);
+  color: var(--oops-navy-900);
+  font-size: 1.15rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.campaign-cart-stepper__btn:hover:not(:disabled) {
+  background: var(--oops-green-100);
+  color: var(--oops-green-700);
+  border-color: var(--oops-green-600);
+}
+.campaign-cart-stepper__btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.campaign-cart-table .campaign-cart-stepper input {
+  width: 3.75rem;
+  min-height: 40px;
+  padding: 6px 8px;
+  text-align: center;
+}
 .campaign-cart-table thead th,
 .campaign-cart-table tbody span { color: var(--oops-navy-600); font-size: .875rem; }
 .campaign-cart-table tbody th { font-weight: 700; }

@@ -15,14 +15,13 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#cfe8d4",
+  themeColor: "#eef6f0",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="vi" style={{ backgroundColor: "#cfe8d4", colorScheme: "light" }}>
+    <html lang="vi" style={{ backgroundColor: "#eef6f0", colorScheme: "light" }}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

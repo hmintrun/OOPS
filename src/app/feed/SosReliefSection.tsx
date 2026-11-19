@@ -193,24 +193,24 @@ export function SosReliefSection() {
     <section aria-label="Báo động cần cứu trợ khẩn cấp" className="grid gap-4">
       {/* Khối SOS dùng đúng token --oops-rose-tint và --oops-danger */}
       <div
+        className="p-4 lg:px-5 lg:py-3"
         style={{
           background: "var(--oops-rose-tint)",
           border: "1px solid var(--oops-line)",
           borderRadius: "var(--oops-radius-card)",
-          padding: "20px",
           boxShadow: "var(--oops-shadow-card)",
         }}
       >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3.5 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <SosObjectArtwork kind="SIREN" />
-            <div className="min-w-0 grid gap-1">
-              <div className="inline-flex items-center gap-2">
+            <div className="min-w-0 grid gap-0.5">
+              <div className="inline-flex items-center gap-1.5">
                 <span
                   style={{
                     display: "inline-block",
-                    width: "9px",
-                    height: "9px",
+                    width: "8px",
+                    height: "8px",
                     borderRadius: "50%",
                     background: "var(--oops-danger)",
                   }}
@@ -219,17 +219,17 @@ export function SosReliefSection() {
                   style={{
                     color: "var(--oops-danger)",
                     fontWeight: 800,
-                    fontSize: "0.95rem",
+                    fontSize: "0.85rem",
                   }}
                 >
                   Cứu trợ khẩn cấp mùa bão lũ
                 </span>
               </div>
-              <h2 className="text-title font-extrabold text-navy-900" style={{ fontSize: "1.3rem", lineHeight: 1.3 }}>
+              <h2 className="text-title font-extrabold text-navy-900" style={{ fontSize: "1.12rem", lineHeight: 1.25 }}>
                 Gia đình đang thiếu nước uống, đồ ăn gấp?
               </h2>
-              <p className="text-body text-navy-900" style={{ fontSize: "1.02rem", lineHeight: 1.5 }}>
-                Bấm nút đỏ bên dưới, chạm chọn món cần gấp và để lại <strong>Số điện thoại + Địa chỉ</strong>. Đội thiện nguyện quanh khu vực sẽ gọi và mang tới ngay.
+              <p className="text-small text-navy-900" style={{ lineHeight: 1.4 }}>
+                Bấm nút đỏ để gửi yêu cầu, chạm chọn món cần gấp và để lại <strong>SĐT + Địa chỉ</strong> — đội thiện nguyện sẽ gọi mang tới ngay.
               </p>
             </div>
           </div>
@@ -242,12 +242,13 @@ export function SosReliefSection() {
               color: "var(--oops-surface)",
               border: "none",
               borderRadius: "var(--oops-radius-input)",
-              padding: "14px 22px",
-              fontSize: "1.05rem",
+              padding: "11px 18px",
+              fontSize: "0.95rem",
               fontWeight: 800,
               cursor: "pointer",
-              minHeight: "52px",
+              minHeight: "46px",
               whiteSpace: "nowrap",
+              flex: "none",
             }}
           >
             BÁO CẦN CỨU TRỢ NGAY
@@ -383,7 +384,7 @@ export function SosReliefSection() {
       {isOpen && (
         <WidgetDialog
           title="Báo cần cứu trợ khẩn cấp"
-          icon="storefront"
+          icon="sos"
           onClose={() => setIsOpen(false)}
         >
           <form onSubmit={handleSubmit} className="grid gap-3">
