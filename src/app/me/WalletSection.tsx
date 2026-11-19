@@ -15,7 +15,7 @@ const VERIFICATION: Record<VerificationState, { label: string; className: string
   FAILED: { label: "Xác minh lỗi", className: "me-chip--failed" },
 };
 
-/** Ví Fuji: thiết kế hình dáng chiếc ví số OOPS + trạng thái xác minh và điều kiện ký đơn. */
+/** Ví Fuji: gom trọn địa chỉ ví, sao chép, trạng thái & điều kiện ngay trên chiếc ví OOPS. */
 export function WalletSection({
   data,
   onData,
@@ -29,16 +29,14 @@ export function WalletSection({
   const embeddedEnabled = embeddedFujiConfigured();
   const verification = wallet ? VERIFICATION[wallet.verificationState] : undefined;
   const isVerified = wallet?.verificationState === "VERIFIED";
-  const isReady = isVerified && Boolean(data.confirmationEligible);
   const eligibilityText = data.confirmationEligibilityUnavailable
-    ? "Chưa kiểm tra được"
+    ? "Chưa kiểm tra"
     : data.confirmationEligible
-      ? "Đủ điều kiện"
+      ? "Đủ điều kiện ký"
       : "Chưa đủ điều kiện";
 
   return (
     <Card className="me-wallet-card">
-      {/* Header đồng bộ IconTile squircle cùng các thẻ khác */}
       <div className="me-wallet-top">
         <div className="me-wallet-top__id">
           <IconTile icon="account_balance_wallet" tone="green" />
@@ -52,12 +50,9 @@ export function WalletSection({
         </div>
       </div>
 
-      {/* Chiếc Ví OOPS: tông xanh mint dịu mắt, 2 lớp thẻ/phiếu ló miệng ví, đường khâu mảnh và quai khóa bấm */}
+      {/* Chiếc Ví OOPS chứa trọn thông tin ví + nút sao chép 1 chạm */}
       <div className={`me-wallet-obj ${isVerified ? "me-wallet-obj--verified" : ""}`}>
-        {/* Mặt lưng phía sau của miệng ví */}
         <div className="me-wallet-obj__back" aria-hidden="true" />
-
-        {/* Hai lớp phiếu/thẻ ló nhẹ ra từ ngăn ví (nhận diện ngay dáng chiếc ví) */}
         <div className="me-wallet-obj__slip me-wallet-obj__slip--back" aria-hidden="true" />
         <div className="me-wallet-obj__slip me-wallet-obj__slip--front" aria-hidden="true">
           <span className="me-wallet-obj__slip-brand">
@@ -69,7 +64,6 @@ export function WalletSection({
           </span>
         </div>
 
-        {/* Ngăn trước của chiếc ví với miệng cong và đường chỉ khâu dịu mắt */}
         <div className="me-wallet-obj__body">
           <svg
             className="me-wallet-obj__lip"
@@ -105,80 +99,35 @@ export function WalletSection({
 
             <div className="me-wallet-obj__main">
               <span className="me-wallet-obj__label">Địa chỉ ví</span>
-              <strong className="me-wallet-obj__addr" title={wallet?.address}>
-                {wallet ? shortenMiddle(wallet.address, 6, 5) : "Chưa liên kết ví"}
-              </strong>
+              <div className="me-wallet-obj__addr-row">
+                <strong className="me-wallet-obj__addr" title={wallet?.address}>
+                  {wallet ? shortenMiddle(wallet.address, 8, 6) : "Chưa liên kết ví"}
+                </strong>
+                {wallet && <CopyButton value={wallet.address} label="địa chỉ ví" />}
+              </div>
             </div>
 
             <div className="me-wallet-obj__foot">
               <span className="me-wallet-obj__owner">{data.displayName || "Hộ gia đình OOPS"}</span>
-              <span className="me-wallet-obj__net">Fuji · 43113</span>
+              <span className="me-wallet-obj__net">{eligibilityText}</span>
             </div>
           </div>
 
-          {/* Quai khóa gập bên phải chiếc ví với khuy bấm tròn */}
           <div className="me-wallet-obj__clasp" aria-hidden="true">
             <span className="me-wallet-obj__stud" />
           </div>
         </div>
       </div>
 
-      {/* Thông tin gọn gàng dạng Bento phía dưới chiếc ví */}
+      {/* Chỉ giữ lời nhắc khi chưa có ví + nút thao tác + chi tiết kỹ thuật thu gọn */}
       <div className="me-wallet-body">
-        {!wallet || !verification ? (
-          <div className="me-wallet-box">
-            <p className="me-wallet-box__label">Tài khoản ví</p>
-            <p className="me-body-text font-bold">Chưa liên kết ví</p>
-            <p className="me-hint">
-              {embeddedEnabled
-                ? "Thiết lập ví trong OOPS hoặc liên kết Core Wallet để xác nhận phần mua của hộ."
-                : "Kết nối Core Wallet và ký thử thách trên Fuji để tham gia xác nhận."}
-            </p>
-          </div>
-        ) : (
-          <div className="me-wallet-box">
-            <div className="me-wallet-box__head">
-              <div className="min-w-0 flex-1">
-                <p className="me-wallet-box__label">Địa chỉ ví</p>
-                <code className="me-code" title={wallet.address}>
-                  {shortenMiddle(wallet.address, 12, 8)}
-                </code>
-              </div>
-              <CopyButton value={wallet.address} label="địa chỉ ví" />
-            </div>
-          </div>
-        )}
-
-        <div className="me-wallet-grid">
-          <div className="me-wallet-stat">
-            <span className="me-wallet-box__label">Trạng thái ví</span>
-            {verification ? (
-              <span className={`me-chip ${verification.className}`}>
-                <span className="me-chip__dot" aria-hidden />
-                {verification.label}
-              </span>
-            ) : (
-              <strong className="me-wallet-stat__value">Chưa xác minh</strong>
-            )}
-          </div>
-
-          <div className="me-wallet-stat">
-            <span className="me-wallet-box__label">Quyền xác nhận</span>
-            <strong className="me-wallet-stat__value">{eligibilityText}</strong>
-          </div>
-        </div>
-
-        <div className={`me-wallet-banner ${isReady ? "me-wallet-banner--ok" : "me-wallet-banner--warn"}`}>
-          <div className="me-wallet-banner__head">
-            <strong>{isReady ? "Ví đang hoạt động" : "Cần hoàn tất xác minh ví"}</strong>
-            <span className="me-wallet-banner__tag">{isReady ? "Sẵn sàng" : "Chưa sẵn sàng"}</span>
-          </div>
-          <p>
-            {isReady
-              ? "Sẵn sàng ký xác nhận khi nhóm chốt đơn mua chung."
-              : "Liên kết và xác minh ví để ký xác nhận đơn của hộ."}
+        {(!wallet || !verification) && (
+          <p className="me-hint m-0">
+            {embeddedEnabled
+              ? "Thiết lập ví trong OOPS hoặc liên kết Core Wallet để xác nhận phần mua của hộ."
+              : "Kết nối Core Wallet và ký thử thách trên Fuji để tham gia xác nhận."}
           </p>
-        </div>
+        )}
 
         <div className="me-wallet-actions">
           <WalletLinkModal currentAddress={wallet?.address} onData={onData} onUnauthorized={onUnauthorized} />

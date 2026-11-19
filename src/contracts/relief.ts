@@ -52,6 +52,7 @@ export type ReliefRequest = z.infer<typeof reliefRequest>;
 
 export const reliefList = z.strictObject({
   viewerUserId: uuid,
+  viewerPhone: z.string().optional(),
   items: z.array(reliefRequest),
 });
 export type ReliefList = z.infer<typeof reliefList>;

@@ -569,8 +569,10 @@ export function OopsDemo() {
               : "Hồ sơ cư dân mẫu và thông tin kết nối ví Fuji."
           }
           illustration={
-            tab === "feed" || tab === "relief"
+            tab === "feed"
               ? "flood-relief"
+              : tab === "relief"
+              ? "sos-relief"
               : tab === "orders"
               ? "parcel"
               : "home"

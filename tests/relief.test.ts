@@ -12,6 +12,7 @@ import {
 
 const routeMocks = vi.hoisted(() => ({
   actorUserId: "11111111-1111-4111-8111-111111111111",
+  actorPhone: undefined as string | undefined,
   db: null as unknown as PoolClient,
 }));
 
@@ -20,6 +21,7 @@ vi.mock("@/server/auth", () => ({
   authenticatedActor: vi.fn(async () => ({
     userId: routeMocks.actorUserId,
     displayName: "Người dùng kiểm thử",
+    ...(routeMocks.actorPhone ? { phone: routeMocks.actorPhone } : {}),
   })),
 }));
 vi.mock("@/server/profiles", () => ({
@@ -57,7 +59,12 @@ type DbRow = {
   created_at: Date;
 };
 
-function makeReliefDb(options: { rows?: DbRow[]; opsIds?: string[]; profiles?: Record<string, string> } = {}) {
+function makeReliefDb(options: {
+  rows?: DbRow[];
+  opsIds?: string[];
+  profiles?: Record<string, string>;
+  contacts?: Record<string, string>;
+} = {}) {
   const rows = [...(options.rows ?? [])];
   const opsIds = new Set(options.opsIds ?? []);
   const profiles: Record<string, string> = {
@@ -67,6 +74,7 @@ function makeReliefDb(options: { rows?: DbRow[]; opsIds?: string[]; profiles?: R
     [opsUser]: "Điều phối viên",
     ...options.profiles,
   };
+  const contacts: Record<string, string> = { ...options.contacts };
   const queries: Array<{ sql: string; params?: unknown[] }> = [];
 
   const db = {
@@ -106,6 +114,15 @@ function makeReliefDb(options: { rows?: DbRow[]; opsIds?: string[]; profiles?: R
         const userId = String(params?.[0]);
         const displayName = profiles[userId];
         return { rowCount: displayName ? 1 : 0, rows: displayName ? [{ display_name: displayName }] : [] };
+      }
+
+      if (sql.includes("select contact_private from public.profiles where id = $1")) {
+        const userId = String(params?.[0]);
+        const contactPrivate = contacts[userId];
+        return {
+          rowCount: userId in contacts ? 1 : 0,
+          rows: userId in contacts ? [{ contact_private: contactPrivate ?? null }] : [],
+        };
       }
 
       if (sql.includes("where r.status in ('OPEN', 'CLAIMED')")) {
@@ -190,6 +207,7 @@ function makeBaseRow(overrides: Partial<DbRow> = {}): DbRow {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  routeMocks.actorPhone = undefined;
 });
 
 afterEach(() => {
@@ -304,6 +322,27 @@ describe("relief server operations", () => {
     expect(listQuery?.sql).toContain("where r.status in ('OPEN', 'CLAIMED')");
     expect(listQuery?.sql).not.toContain("requester_id =");
     expect(listQuery?.sql).not.toContain("group_id");
+  });
+
+  it("resolves viewerPhone from profiles.contact_private and falls back to actorPhone", async () => {
+    const { db } = makeReliefDb({
+      contacts: {
+        [userA]: "Người nhận: Hộ An\nSĐT: 0987654321\nĐiểm nhận: Chung cư Skyview",
+        [userB]: "Người nhận: Đội Bình\nSĐT: \nĐiểm nhận: ",
+      },
+    });
+
+    const fromProfile = reliefList.parse(await listReliefRequests(db, userA, "0900000000"));
+    expect(fromProfile.viewerPhone).toBe("0987654321");
+
+    const fromSignupFallback = reliefList.parse(await listReliefRequests(db, userB, "0912345678"));
+    expect(fromSignupFallback.viewerPhone).toBe("0912345678");
+
+    const noProfileRow = reliefList.parse(await listReliefRequests(db, userC, "0933333333"));
+    expect(noProfileRow.viewerPhone).toBe("0933333333");
+
+    const withoutPhone = reliefList.parse(await listReliefRequests(db, userC));
+    expect("viewerPhone" in withoutPhone).toBe(false);
   });
 
   it("creates an OPEN relief request and returns a JSON-safe DTO", async () => {
@@ -451,6 +490,7 @@ describe("relief API route handlers", () => {
     expect(createdJson.reliefId).toBe(reliefId);
 
     routeMocks.actorUserId = userB;
+    routeMocks.actorPhone = "0912345678";
     const listRes = await getReliefRoute(
       new Request("http://localhost:3000/api/v1/relief"),
       { params: Promise.resolve({}) },
@@ -458,6 +498,7 @@ describe("relief API route handlers", () => {
     expect(listRes.status).toBe(200);
     const listJson = reliefList.parse(await listRes.json());
     expect(listJson.viewerUserId).toBe(userB);
+    expect(listJson.viewerPhone).toBe("0912345678");
     expect(listJson.items[0]).toMatchObject({ canClaim: true, canClose: false });
 
     const claimRes = await postClaimRoute(
