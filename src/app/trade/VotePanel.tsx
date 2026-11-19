@@ -18,6 +18,7 @@ const voteCloseResult = z.strictObject({ closed: z.boolean() });
 type VotePanelProps = {
   proposalId: string;
   onUpdated?: () => void;
+  onVoteSaved?: () => void;
   offerState?: Offer["state"];
   latestVersionNumber?: number;
   refreshSignal?: string | number;
@@ -32,6 +33,7 @@ type FetchResult = {
 export function VotePanel({
   proposalId,
   onUpdated,
+  onVoteSaved,
   offerState,
   latestVersionNumber,
   refreshSignal,
@@ -112,7 +114,7 @@ export function VotePanel({
   }, [proposalId]);
 
   useEffect(() => {
-    void fetchVoting();
+    if (!submitting.current) void fetchVoting();
     return () => {
       generation.current++;
     };
@@ -142,10 +144,15 @@ export function VotePanel({
 
   useEffect(() => {
     if (!voting?.open) return;
-    const timer = window.setInterval(() => {
+    const refreshWhenVisible = () => {
       if (!document.hidden && !submitting.current) void fetchVoting();
-    }, 15_000);
-    return () => window.clearInterval(timer);
+    };
+    const timer = window.setInterval(refreshWhenVisible, 15_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [voting?.open, fetchVoting]);
 
   useEffect(() => {
@@ -215,6 +222,7 @@ export function VotePanel({
       setVoting(next);
       setEditingVote(undefined);
       setNow(Date.now());
+      onVoteSaved?.();
       if (!next.open) {
         onUpdatedRef.current?.();
       }

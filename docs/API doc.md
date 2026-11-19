@@ -201,6 +201,8 @@ Các route mở nháp, sửa dòng, submit, revise và đại diện finalize tr
 
 `OfferVoting` gồm `{draftId, round, dueAt, open, seller, totalQty, unitPriceVnd, myQty?, availableQty?}`. `myQty: 0` là phiếu Không, trường vắng mặt nghĩa là chưa bỏ phiếu. `availableQty` trả cho hộ có quyền khi vòng mở. Với hộ trong nhóm, `eligible` cho biết hộ còn lượng có thể chốt và `voters` gồm `membershipId` cùng `hasVoted` của các hộ đủ điều kiện. `closed` cho biết vòng đã chốt kết quả, `readyToClose` cho biết mọi hộ đủ điều kiện đã chọn nhưng vòng chưa được chốt. Hộ có thể đổi phiếu trong vòng đang mở. Backend đóng vòng khi đủ lượng chào, tất cả hộ đủ điều kiện đã chọn hoặc tới hạn. Nếu có phiếu Có hợp lệ, backend chụp phiên bản. Nếu không có, đề nghị kết thúc. Người bán đọc kết quả chốt từ `latestVersion.qty` và `latestVersion.totalVnd` của `GET /drafts/{id}`.
 
+`availableQty` trừ phần hộ đã chọn Có ở các đề nghị khác cho cùng món khi phiếu còn giữ chỗ. Khi phần còn lại bằng 0, hộ vẫn có thể chọn Không nếu `eligible` là `true`. Phiếu Có gửi đúng `availableQty` và `unitPriceVnd` mà hộ thấy. Nếu một đề nghị khác vừa giữ lượng khiến con số thay đổi, API trả `409` để hộ tải lại và xác nhận số lượng mới.
+
 Ví dụ đề nghị chào 10 chai, khi đóng phiếu có ba hộ chọn Có với phần 2+2+3. Ở giá 2.000đ/chai, bản chụp có `qty: 7`, `totalVnd: 14000`, cọc là 50.000đ. Với nhu cầu 12 chai, sau khi người bán chốt 7 chai, Feed trả `pending: 7`, `missing: 12` và `offerable: 5` nếu chưa có đơn khác. Khi đủ chữ ký và thu, Feed trả `reserved: 7` và `missing: 5`.
 
 Ví dụ cấu trúc `latestVersion` cho hộ có phần 2 chai, dùng dữ liệu từ [vector kiểm thử 10→7](OOPS-Spec.md#chuẩn-băm-phiên-bản). Mỗi bản mới lấy `versionHash` thực tế từ API.

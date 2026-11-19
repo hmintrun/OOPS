@@ -110,6 +110,7 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, activeO
   const [quantity, setQuantity] = useState(String(Math.max(1, demand?.offerable ?? 1)));
   const [price, setPrice] = useState("20000");
   const [now, setNow] = useState(() => Date.now());
+  const [voteRevision, setVoteRevision] = useState(0);
   const effectiveLeadHours = leadHours && leadHours > 0 ? leadHours : 20;
   const showOfferForm = !buyerOnly && !proposalId;
   const schedule = showOfferForm ? offerDeliveryWindow(effectiveLeadHours, demand?.needBy, now) : undefined;
@@ -629,8 +630,9 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, activeO
                 proposalId={item.proposalId}
                 context={{ offer: item, unit: demand?.unit }}
                 offerState={item.state}
-                refreshSignal={`${item.state}:${item.voteDueAt}`}
+                refreshSignal={`${item.state}:${item.voteDueAt}:${voteRevision}`}
                 onUpdated={() => void trade.refresh()}
+                onVoteSaved={() => setVoteRevision(revision => revision + 1)}
               />
             )}
 

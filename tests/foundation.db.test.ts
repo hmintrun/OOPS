@@ -635,6 +635,69 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     }
   });
 
+  it("holds each household's Yes quantity across competing offers until it is released or becomes an order", async () => {
+    const [rep, second, firstSeller, secondSeller, thirdSeller] = await Promise.all(Array.from({ length: 5 }, newUser));
+    const groupId = await newGroup(rep);
+    const { token } = await makeInvite(rep, groupId);
+    expect((await accept(second, token)).status).toBe(200);
+    const campaignId = await newCampaign(rep, groupId, { collectUntil: dateIn(1), needBy: dateIn(96) });
+    for (const [buyer, qty] of [[rep, 10], [second, 2]] as const) {
+      const saved = cart.parse((await put(buyer, campaignId, qty)).data);
+      expect((await confirm(buyer, campaignId, saved.version)).status).toBe(200);
+    }
+    const { items: [item] } = publishResult.parse((await publish(rep, campaignId)).data);
+    const price = 1_000;
+    const send = async (seller: string) => offer.parse((await call(postOffer, seller, {
+      id: item.demandItemId, method: "POST", body: {
+        qty: 6, unitPriceVnd: price, supportOffer: false,
+        handoffStart: dateIn(48), handoffBy: dateIn(49), handoffPrivate: "Sảnh A",
+      },
+    })).data);
+    const [first, ...competing] = await Promise.all([firstSeller, secondSeller, thirdSeller].map(send));
+    const vote = (id: string, actor: string, qty = 0) => call(postVote, actor, {
+      id, method: "POST", body: qty ? { round: 1, choice: "YES", qty, unitPriceVnd: price } : { round: 1, choice: "NO" },
+    });
+    const readVote = async (id: string, buyer = rep) => offerVoting.parse((await call(getVote, buyer, { id })).data);
+
+    expect((await vote(first.proposalId, second, 2)).status).toBe(200);
+    expect(await readVote(competing[0].proposalId, second)).toMatchObject({ eligible: true, availableQty: 0 });
+    expect((await readVote(competing[0].proposalId)).availableQty).toBe(6);
+    expect((await vote(first.proposalId, second)).status).toBe(200);
+    expect((await readVote(competing[0].proposalId, second)).availableQty).toBe(2);
+
+    expect(offerVoting.parse((await vote(first.proposalId, rep, 6)).data)).toMatchObject({ closed: true, totalQty: 6 });
+    for (const entry of competing) expect((await readVote(entry.proposalId)).availableQty).toBe(4);
+    const attempts = await Promise.all(competing.map(entry => vote(entry.proposalId, rep, 4)));
+    expect(attempts.map(result => result.status).sort()).toEqual([200, 409]);
+    const winnerIndex = attempts.findIndex(result => result.status === 200);
+    const winner = competing[winnerIndex];
+    const loser = competing[1 - winnerIndex];
+    expect((await readVote(loser.proposalId)).availableQty).toBe(0);
+    expect((await vote(winner.proposalId, second)).status).toBe(200);
+    expect((await readVote(loser.proposalId)).availableQty).toBe(0);
+    expect((await call(postSellerResponse, [secondSeller, thirdSeller][winnerIndex], {
+      id: winner.draftId, version: "1", method: "POST", body: { action: "REJECT" },
+    })).status).toBe(200);
+    expect((await readVote(loser.proposalId)).availableQty).toBe(4);
+
+    const { rows: [{ id: membershipId }] } = await transaction(db => db.query<{ id: string }>(
+      "select id from public.memberships where group_id = $1 and user_id = $2 and left_at is null", [groupId, rep],
+    ));
+    const approve = async (seller: string, draftId: string) => {
+      const { latestVersion } = sellerDraftView.parse((await call(getDraft, seller, { id: draftId })).data);
+      return draftVersion.parse(await transaction(db => approveWithFujiEligibility(db, seller, draftId, latestVersion.versionId, {
+        chainId: 43113, contractAddress: "0x" + "1".repeat(40), roundKey: fujiRoundKey(latestVersion.versionId),
+        eligibleWallets: [{ membershipId, wallet: walletOf(rep) }],
+      })));
+    };
+    expect(await approve(firstSeller, first.draftId!)).toMatchObject({ state: "FINALIZED", qty: 6 });
+    expect((await readVote(loser.proposalId)).availableQty).toBe(4);
+    expect((await vote(loser.proposalId, rep, 4)).status).toBe(200);
+    expect((await vote(loser.proposalId, second)).status).toBe(200);
+    expect(await approve([thirdSeller, secondSeller][winnerIndex], loser.draftId!)).toMatchObject({ state: "FINALIZED", qty: 4 });
+    expect(needs.parse((await call(getNeeds, rep, { id: campaignId })).data).items[0]).toMatchObject({ target: 12, pending: 10 });
+  });
+
   it("closes voting after every eligible household responds and keeps the representative's handoff role separate", async () => {
     const [rep, second, third, seller] = await Promise.all(Array.from({ length: 4 }, newUser));
     const groupId = await newGroup(rep);
