@@ -315,7 +315,7 @@
   grid-template-columns: repeat(var(--nav-count, 4), minmax(0, 1fr));
   align-items: stretch;
   gap: 4px;
-  height: calc(var(--oops-nav-h) + env(safe-area-inset-bottom));
+  min-height: calc(var(--oops-nav-h) + env(safe-area-inset-bottom));
   width: 100%;
   max-width: min(calc(100vw - 16px), 38rem);
   box-sizing: border-box;
@@ -344,6 +344,7 @@
   user-select: none;
 }
 .ui-nav__item[data-section="feed"] { --nav-tint: var(--oops-sky-tint); --nav-ink: var(--oops-sky-ink); }
+.ui-nav__item[data-section="relief"] { --nav-tint: var(--oops-rose-tint); --nav-ink: var(--oops-danger); }
 .ui-nav__item[data-section="orders"] { --nav-tint: var(--oops-sun-tint); --nav-ink: var(--oops-amber-ink); }
 .ui-nav__item[data-section="me"] { --nav-tint: var(--oops-violet-tint); --nav-ink: var(--oops-violet-ink); }
 .ui-nav__item:active {
@@ -369,6 +370,11 @@
   line-height: 1.2;
   text-align: center;
   text-wrap: balance;
+}
+@media (width < 30rem) {
+  .ui-nav { gap: 2px; padding-inline: 4px; }
+  .ui-nav__item { padding-inline: 2px; }
+  .ui-nav__label { font-size: 0.72rem; line-height: 1.15; }
 }
 @media (hover: hover) {
   .ui-nav__item:hover:not(.ui-nav__item--active) { background: var(--nav-tint); color: var(--nav-ink); }
