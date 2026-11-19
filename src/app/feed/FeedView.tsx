@@ -23,7 +23,6 @@ import { communityFeedPage } from "./community-feed";
 import { HCM_PROVINCE_CODE, locationLabel } from "@/lib/locations";
 import { DemandCard, demandCategoryVisual } from "./DemandCard";
 import { FEED_PAGE_SIZE, FeedPagination } from "./FeedPagination";
-import { SosReliefSection } from "./SosReliefSection";
 import { SAMPLE_DEMANDS } from "@/app/ui-preview/demo/sampleDemands";
 import { WidgetDialog } from "@/components/ui/WidgetDialog";
 import dynamic from "next/dynamic";
@@ -322,7 +321,6 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
       bodyClassName="ui-stack"
       bare
     >
-      <SosReliefSection />
       <Card padding="tight" className="feed-filter-card">
         <CardTitle as="h2">Bộ lọc nhu cầu</CardTitle>
         <div className="feed-categories" role="group" aria-label="Danh mục">

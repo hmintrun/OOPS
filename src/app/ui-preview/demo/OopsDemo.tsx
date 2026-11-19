@@ -9,6 +9,7 @@ import { WidgetDialog } from "@/components/ui/WidgetDialog";
 import { DemandCard } from "@/app/feed/DemandCard";
 import { FEED_PAGE_SIZE, FeedPagination } from "@/app/feed/FeedPagination";
 import { OfferModalWidget, type OfferSubmitData } from "@/app/feed/OfferModalWidget";
+import { SosReliefSection } from "@/app/relief/SosReliefSection";
 import { FamilyStatusWidget } from "@/app/groups/FamilyStatusWidget";
 import { defaultFamilyStatus, readFamilyStatus, type FamilyStatusData } from "@/lib/family-status";
 import { PwaInstallCard } from "@/components/pwa";
@@ -18,7 +19,7 @@ import { scenario } from "./scenario";
 import { OrderDemo, getDemoOrderStatus } from "./OrderDemo";
 import { SAMPLE_DEMANDS } from "./sampleDemands";
 
-type Tab = "groups" | "feed" | "orders" | "me";
+type Tab = "groups" | "feed" | "relief" | "orders" | "me";
 
 type CampaignDraft = { name: string; collectUntil: string; needBy: string; location: string };
 const campaignDraftKey = "oops_demo_campaign_draft";
@@ -349,7 +350,7 @@ export function OopsDemo() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get("tab") as Tab | null;
-      if (tabParam && ["groups", "feed", "orders", "me"].includes(tabParam)) {
+      if (tabParam && ["groups", "feed", "relief", "orders", "me"].includes(tabParam)) {
         setTab(tabParam);
       }
       const orderIdParam = params.get("orderId");
@@ -549,15 +550,31 @@ export function OopsDemo() {
         />
       ) : (
         <ScreenHeader
-          title={tab === "feed" ? "Nhu cầu quanh bạn" : tab === "orders" ? "Đơn hàng & Hợp đồng" : "Tài khoản cư dân"}
+          title={
+            tab === "feed"
+              ? "Nhu cầu quanh bạn"
+              : tab === "relief"
+              ? "Cứu trợ khẩn cấp"
+              : tab === "orders"
+              ? "Đơn hàng & Hợp đồng"
+              : "Tài khoản cư dân"
+          }
           subtitle={
             tab === "feed"
               ? "Xem nhóm đang cần gì và gửi đề nghị chào hàng."
+              : tab === "relief"
+              ? "Gửi yêu cầu tiếp tế gấp và theo dõi các hộ dân đang cần hỗ trợ."
               : tab === "orders"
               ? "Theo dõi hợp đồng, khóa cọc và xác nhận minh bạch trên mạng Fuji."
               : "Hồ sơ cư dân mẫu và thông tin kết nối ví Fuji."
           }
-          illustration={tab === "feed" ? "flood-relief" : tab === "orders" ? "parcel" : "home"}
+          illustration={
+            tab === "feed" || tab === "relief"
+              ? "flood-relief"
+              : tab === "orders"
+              ? "parcel"
+              : "home"
+          }
           badge="Bản thử"
         />
       )}
@@ -696,6 +713,9 @@ export function OopsDemo() {
             <FeedPagination page={currentPage} loadedPages={totalPages} onPageChange={setCurrentPage} />
           </div>
         )}
+
+        {/* ==================== TAB RELIEF: CỨU TRỢ KHẨN CẤP ==================== */}
+        {tab === "relief" && <SosReliefSection demoMode />}
 
         {/* ==================== TAB ORDERS: TRUNG TÂM ĐƠN HÀNG KIỂU SHOPEE ==================== */}
         {orders.map(order => (
