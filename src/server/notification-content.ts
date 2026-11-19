@@ -194,6 +194,11 @@ export function describeNotification({
     case "NEGOTIATION_VERSION":
       if (draftId || type !== "NEGOTIATION_VERSION") href = `/trade/drafts/${draftId ?? entityId}`;
       if (source === "negotiation-version" && reference === entityId) content = readCase(offerCases, version);
+      if (state === "VOTE_REOPENED") content = {
+        title: "Cửa hàng đã cập nhật đề nghị",
+        detail: "Mở đề nghị để xem giá, số lượng và bỏ phiếu lại.",
+        icon: "how_to_vote",
+      };
       if (source === "offer-vote-empty") content = {
         title: "Vòng bỏ phiếu đã đóng",
         detail: "Đề nghị đã kết thúc vì không có hộ chọn nhận hàng.",
@@ -233,6 +238,11 @@ export function describeNotification({
       break;
     case "CAMPAIGN":
       href = `/campaigns/${entityId}`;
+      if (source === "campaign" && reference === entityId && version === "PUBLISHED") content = {
+        title: "Đợt gom của nhóm đã được đăng",
+        detail: "Mở chi tiết đợt gom để xem các nhu cầu đã đăng.",
+        icon: "inventory_2",
+      };
       break;
   }
 

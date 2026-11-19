@@ -30,16 +30,44 @@ async function voting(db: PoolClient, proposal: Proposal, draftId: string, membe
     available: number | null;
     voters: NonNullable<OfferVoting["voters"]>;
   }>(
-    `select n.draft_open and p.state = 'SUBMITTED' and p.vote_due_at > clock_timestamp() as open,
+    `with other_offers as (
+       select other.id, other.draft_open, p.vote_due_at, latest.id as version_id,
+         latest.version, latest.state, latest.seller_response_due_at
+       from public.negotiations current_draft
+       join public.proposals current_offer on current_offer.id = current_draft.proposal_id
+       join public.proposals p on p.demand_item_id = current_offer.demand_item_id and p.id <> current_offer.id
+       join public.negotiations other on other.proposal_id = p.id
+       left join lateral (
+         select id, version, state, seller_response_due_at from public.negotiation_versions
+         where negotiation_id = other.id order by version desc limit 1
+       ) latest on true
+       where current_draft.id = $1 and $2::uuid is not null and p.vote_due_at is not null and p.state = 'SUBMITTED'
+     ), held_elsewhere as (
+       select coalesce(sum(held.qty), 0) as qty from (
+         select vote.qty from other_offers other
+         join public.offer_votes vote on vote.negotiation_id = other.id
+           and vote.round = coalesce(other.version, 0) + 1 and vote.membership_id = $2
+         -- The worker can still submit the result after the vote deadline.
+         where other.draft_open
+           and other.vote_due_at + make_interval(hours => $4) > statement_timestamp()
+         union all
+         select line.qty from other_offers other
+         join public.negotiation_version_lines line on line.version_id = other.version_id and line.membership_id = $2
+         where not other.draft_open and other.state = 'SUBMITTED'
+           and other.seller_response_due_at > statement_timestamp()
+       ) held
+     )
+     select n.draft_open and p.state = 'SUBMITTED' and p.vote_due_at > clock_timestamp() as open,
        not n.draft_open or p.state <> 'SUBMITTED' as closed,
        current_round.number as round,
        case when n.draft_open then electorate.total
          when latest.version = current_round.number then latest.qty else 0 end as total,
        own.qty as own,
        case when electorate.own_remaining is not null then greatest(0,
-         least(electorate.own_remaining, p.qty - electorate.total + coalesce(own.qty, 0)))::int end as available,
+         least(electorate.own_remaining - held_elsewhere.qty, p.qty - electorate.total + coalesce(own.qty, 0)))::int end as available,
        electorate.voters
      from public.negotiations n join public.proposals p on p.id = n.proposal_id
+     cross join held_elsewhere
      left join lateral (
        select version, qty from public.negotiation_versions where negotiation_id = n.id
        order by version desc limit 1
@@ -63,13 +91,13 @@ async function voting(db: PoolClient, proposal: Proposal, draftId: string, membe
          and v.membership_id = s.membership_id
        where s.demand_item_id = p.demand_item_id and m.group_id = $3 and m.user_id <> p.seller_id and ${eligibleShare}
      ) electorate
-     where n.id = $1`, [draftId, membershipId ?? null, proposal.group_id],
+     where n.id = $1`, [draftId, membershipId ?? null, proposal.group_id, parallelTiming().sellerResponse],
   );
   return {
     draftId, round: status.round, dueAt: proposal.vote_due_at.toISOString(), open: status.open, closed: status.closed,
     seller: membershipId === undefined,
     readyToClose: !status.closed && status.voters.every(voter => voter.hasVoted),
-    totalQty: status.total, unitPriceVnd: Number(proposal.unit_price_vnd),
+    totalQty: status.total, offerQty: proposal.qty, unitPriceVnd: Number(proposal.unit_price_vnd),
     ...(status.own !== null && { myQty: status.own }),
     ...(membershipId && { eligible: status.available !== null, voters: status.voters }),
     ...(membershipId && status.open && status.available !== null && { availableQty: status.available }),

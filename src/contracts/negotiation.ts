@@ -22,6 +22,7 @@ export const voteInput = z.discriminatedUnion("choice", [
 export const offerVoting = z.strictObject({
   draftId: uuid, round: positiveQuantity, dueAt: isoDateTime, open: z.boolean(), totalQty: quantity,
   seller: z.boolean(),
+  offerQty: positiveQuantity.optional(),
   myQty: quantity.optional(), availableQty: quantity.optional(), unitPriceVnd: uint,
   closed: z.boolean().optional(), eligible: z.boolean().optional(), readyToClose: z.boolean().optional(),
   voters: z.array(z.strictObject({ membershipId: uuid, hasVoted: z.boolean() })).optional(),
@@ -50,10 +51,15 @@ export const editDraftLineInput = z.strictObject({
 export const submitDraftInput = z.strictObject({ editRevision: quantity });
 export const reviseDraftInput = z.strictObject({ version: positiveQuantity });
 export const versionParam = z.string().regex(/^[1-9][0-9]*$/).transform(Number).pipe(positiveQuantity);
-export const sellerResponseInput = z.strictObject({
-  action: z.enum(["APPROVE", "REJECT", "REQUEST_CHANGES"]),
-  note: z.string().optional(),
-});
+const sellerNote = z.string().optional();
+export const sellerResponseInput = z.discriminatedUnion("action", [
+  z.strictObject({ action: z.literal("APPROVE"), note: sellerNote }),
+  z.strictObject({ action: z.literal("REJECT"), note: sellerNote }),
+  z.strictObject({ action: z.literal("REQUEST_CHANGES"), note: sellerNote }),
+  createOfferInput.pick({ qty: true, unitPriceVnd: true }).extend({
+    action: z.literal("REVISE_OFFER"), note: sellerNote,
+  }),
+]);
 
 const lineAmount = z.strictObject({ qty: positiveQuantity, goodsVnd: uint });
 const myLine = lineAmount.extend({ note: z.string().optional() });
@@ -112,3 +118,4 @@ export type OfferVoting = z.infer<typeof offerVoting>;
 export type Draft = z.infer<typeof draft>;
 export type DraftVersion = z.infer<typeof draftVersion>;
 export type SellerDraftView = z.infer<typeof sellerDraftView>;
+export type SellerResponse = z.infer<typeof sellerResponseInput>;
