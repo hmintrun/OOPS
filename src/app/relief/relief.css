@@ -208,6 +208,7 @@
 }
 
 .ui-card.relief-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -217,6 +218,10 @@
 
 .ui-card.relief-card--claimed {
   border: 1.5px solid var(--oops-green-700);
+}
+
+.relief-card--closable .relief-card__top {
+  padding-inline-end: 38px;
 }
 
 .relief-card__top {
@@ -267,25 +272,32 @@
 }
 
 .relief-close-btn {
+  position: absolute;
+  top: 12px;
+  inset-inline-end: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 36px;
-  padding: 6px 12px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 1px solid var(--oops-line);
-  border-radius: var(--oops-radius-input);
+  border-radius: var(--oops-radius-pill);
   background: var(--oops-haze);
   color: var(--oops-navy-600);
-  font-family: var(--oops-font-sans);
-  font-size: 0.85rem;
-  font-weight: 700;
   cursor: pointer;
-  flex: none;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
 .relief-close-btn:hover:not(:disabled) {
   background: var(--oops-rose-tint);
+  border-color: color-mix(in srgb, var(--oops-danger) 30%, transparent);
   color: var(--oops-danger);
+}
+
+.relief-close-btn:focus-visible {
+  outline: 2px solid var(--oops-danger);
+  outline-offset: 2px;
 }
 
 .relief-close-btn:disabled {

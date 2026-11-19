@@ -620,8 +620,24 @@ export function SosReliefSection({ demoMode = false }: { demoMode?: boolean }) {
             return (
               <Card
                 key={req.reliefId}
-                className={`relief-card ${isClaimed ? "relief-card--claimed" : ""}`}
+                className={`relief-card ${isClaimed ? "relief-card--claimed" : ""} ${req.canClose ? "relief-card--closable" : ""}`.trim()}
               >
+                {req.canClose && (
+                  <button
+                    type="button"
+                    aria-label="Đóng tin cứu trợ"
+                    title="Đóng tin cứu trợ"
+                    className="relief-close-btn"
+                    disabled={isBusy}
+                    onClick={() => void handleClose(req.reliefId)}
+                  >
+                    <MaterialSymbol
+                      name={isBusy ? "progress_activity" : "close"}
+                      size={18}
+                      className={isBusy ? "ui-spin" : ""}
+                    />
+                  </button>
+                )}
                 <div className="relief-card__top">
                   <div className="relief-card__badges">
                     <span
@@ -633,17 +649,6 @@ export function SosReliefSection({ demoMode = false }: { demoMode?: boolean }) {
                     </span>
                     {isOwn && <span className="relief-own-pill">Tin của bạn</span>}
                   </div>
-                  {req.canClose && (
-                    <button
-                      type="button"
-                      aria-label="Đóng tin cứu trợ"
-                      className="relief-close-btn"
-                      disabled={isBusy}
-                      onClick={() => void handleClose(req.reliefId)}
-                    >
-                      Đóng tin
-                    </button>
-                  )}
                 </div>
 
                 <div className="relief-meta-row">
