@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { OffersPanel } from "@/app/trade/needs/OffersPanel";
+import { offerProgressHref } from "@/app/trade/offer-links";
 import { Card, CardTitle, MaterialSymbol } from "@/components/ui";
 import { uuid } from "@/contracts/foundation";
 import { authenticatedActor } from "@/server/auth";
@@ -9,6 +10,7 @@ import { readBuyerDemand } from "@/server/campaigns";
 import { transaction } from "@/server/db";
 import { ApiFailure } from "@/server/errors";
 import { listOrdersForDemand } from "@/server/orders/records";
+import { readOffers } from "@/server/negotiation/offers";
 import { orderStates } from "../../order-labels";
 import { orderProgress } from "../../order-progress";
 import "../../orders.css";
@@ -17,15 +19,24 @@ const handoffDate = new Intl.DateTimeFormat("vi-VN", {
   dateStyle: "short", timeStyle: "short", timeZone: "Asia/Ho_Chi_Minh",
 });
 
-export default async function OrdersForDemandPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OrdersForDemandPage({ params, searchParams }: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<{ view?: string | string[] }>;
+}) {
   const demand = uuid.safeParse((await params).id);
   if (!demand.success) notFound();
-  const path = `/orders/by-demand/${demand.data}`;
+  const negotiations = (await searchParams)?.view === "negotiations";
+  const path = `/orders/by-demand/${demand.data}${negotiations ? "?view=negotiations" : ""}`;
 
   let result;
   try {
     const actor = await authenticatedActor({ readOnly: true });
     result = await transaction(async db => {
+      if (negotiations) {
+        const buyerDemand = await readBuyerDemand(db, actor.userId, demand.data);
+        const { items } = await readOffers(db, actor.userId, demand.data);
+        return { buyerDemand, activeOffers: items.filter(item => item.state === "SUBMITTED") };
+      }
       const orders = await listOrdersForDemand(db, actor.userId, demand.data);
       if (orders.length) return { orders };
       return { buyerDemand: await readBuyerDemand(db, actor.userId, demand.data) };
@@ -43,8 +54,10 @@ export default async function OrdersForDemandPage({ params }: { params: Promise<
   }
 
   if (result.buyerDemand) {
-    return <AppShell title="Chi tiết tiến độ" subtitle={result.buyerDemand.name} illustration="parcel" backHref="/orders" bare>
-      <OffersPanel id={demand.data} demand={result.buyerDemand} buyerOnly />
+    if (result.activeOffers?.length === 1) redirect(offerProgressHref(result.activeOffers[0]));
+    return <AppShell title={negotiations ? "Thương lượng" : "Chi tiết tiến độ"}
+      subtitle={result.buyerDemand.name} illustration="parcel" backHref="/orders" bare>
+      <OffersPanel id={demand.data} demand={result.buyerDemand} buyerOnly activeOnly={negotiations} />
     </AppShell>;
   }
 

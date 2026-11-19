@@ -37,10 +37,11 @@ function OfferModeArtwork({ gift }: { gift: boolean }) {
   );
 }
 
-export function OffersPanel({ id, standalone = false, buyerOnly = false, demand, proposalId, onCreated, initialGift = false, leadHours = null }: {
+export function OffersPanel({ id, standalone = false, buyerOnly = false, activeOnly = false, demand, proposalId, onCreated, initialGift = false, leadHours = null }: {
   id: string;
   standalone?: boolean;
   buyerOnly?: boolean;
+  activeOnly?: boolean;
   demand?: Pick<DemandItem, "missing" | "offerable" | "needBy" | "unit">;
   proposalId?: string;
   onCreated?: () => void;
@@ -132,7 +133,8 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
     }
   }, [earliestStart, defaultStart, defaultEnd, schedule?.available, startTime, endTime]);
 
-  const displayedOffers = proposalId ? trade.data?.items.filter(item => item.proposalId === proposalId) ?? [] : trade.data?.items ?? [];
+  const displayedOffers = (trade.data?.items ?? []).filter(item =>
+    (!proposalId || item.proposalId === proposalId) && (!activeOnly || item.state === "SUBMITTED"));
   const canOffer = Boolean(demand && demand.missing > 0 && Date.parse(demand.needBy) > Date.now());
   const unit = demand?.unit || "đơn vị";
 
@@ -530,7 +532,9 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
       {(buyerOnly || standalone || proposalId || trade.data.items.length > 0) && <Card className="grid gap-3">
         <CardTitle as="h2">{proposalId ? "Theo dõi đề nghị" : "Đề nghị hiện có"}</CardTitle>
         {proposalId && displayedOffers.length === 0 && <p>Không tìm thấy đề nghị này trong tài khoản của bạn.</p>}
-        {!proposalId && trade.data.items.length === 0 && <p>Chưa có đề nghị để xem.</p>}
+        {!proposalId && displayedOffers.length === 0 && <p>
+          {activeOnly ? "Hiện không có đề nghị đang thương lượng." : "Chưa có đề nghị để xem."}
+        </p>}
         {displayedOffers.map(item => {
           const isFreeGift = item.terms.unitPriceVnd === 0;
           const unitLabel = demand?.unit ?? "đơn vị";
@@ -635,7 +639,7 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, demand,
                     {item.state === "SELECTED" ? "Đề nghị đã chốt đơn." : item.state === "REJECTED" ? "Đề nghị đã từ chối." : "Đề nghị đã hết hạn."}
                   </p>
                 )}
-                <Link className="ui-btn ui-btn--secondary" href={`/trade/drafts/${item.draftId}`}>Xem thương lượng</Link>
+                <Link className="ui-btn ui-btn--secondary" href={offerProgressHref(item)}>Xem thương lượng</Link>
               </div>
             ) : item.canOpenDraft ? (
               <Button variant="secondary" disabled={trade.busy} onClick={() => void trade.run(

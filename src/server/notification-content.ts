@@ -196,7 +196,7 @@ export function describeNotification({
       if (source === "negotiation-version" && reference === entityId) content = readCase(offerCases, version);
       if (source === "offer-vote-empty") content = {
         title: "Vòng bỏ phiếu đã đóng",
-        detail: "Đề nghị đã hết hạn vì chưa có hộ chọn nhận hàng.",
+        detail: "Đề nghị đã kết thúc vì không có hộ chọn nhận hàng.",
         icon: "how_to_vote",
       };
       break;
