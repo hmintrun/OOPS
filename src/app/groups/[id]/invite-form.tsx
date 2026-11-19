@@ -57,17 +57,17 @@ export function InviteForm({
   }
   const content = (
     <>
-      <CardTitle as="h3" className="mb-3">Tạo lời mời</CardTitle>
+      <CardTitle as="h3" className="mb-3">Mời vào nhóm</CardTitle>
       <form className="grid gap-3" onSubmit={event => { event.preventDefault(); void submit(); }}>
         <label className="grid gap-1">
-          <span className="text-small font-semibold text-navy-600">Loại lời mời</span>
+          <span className="text-small font-semibold text-navy-600">Hình thức</span>
           <select value={target} disabled={pending} onChange={event => { retry.current = undefined; setTarget(event.target.value); setInvite(undefined); }}
             className="h-control rounded-input border border-line bg-surface px-3">
             <option value="">Mời hộ vào nhóm</option>
             {members.map(member => <option key={member.userId} value={member.userId}>Mời {member.displayName} làm đại diện</option>)}
           </select>
         </label>
-        <Button type="submit" loading={pending}>{target ? "Tạo lời mời làm đại diện" : "Lấy liên kết và mã nhóm"}</Button>
+        <Button type="submit" loading={pending}>{target ? "Tạo lời mời đại diện" : "Tạo liên kết & mã mời"}</Button>
         {error && <p role="alert" className="text-danger">{error}</p>}
         {invite && (
           <div className="grid gap-3 rounded-input bg-sky-tint p-3">

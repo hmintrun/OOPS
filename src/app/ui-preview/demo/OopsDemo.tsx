@@ -9,6 +9,7 @@ import { WidgetDialog } from "@/components/ui/WidgetDialog";
 import { DemandCard } from "@/app/feed/DemandCard";
 import { FEED_PAGE_SIZE, FeedPagination } from "@/app/feed/FeedPagination";
 import { OfferModalWidget, type OfferSubmitData } from "@/app/feed/OfferModalWidget";
+import { SosReliefSection } from "@/app/relief/SosReliefSection";
 import { FamilyStatusWidget } from "@/app/groups/FamilyStatusWidget";
 import { defaultFamilyStatus, readFamilyStatus, type FamilyStatusData } from "@/lib/family-status";
 import { PwaInstallCard } from "@/components/pwa";
@@ -18,7 +19,7 @@ import { scenario } from "./scenario";
 import { OrderDemo, getDemoOrderStatus } from "./OrderDemo";
 import { SAMPLE_DEMANDS } from "./sampleDemands";
 
-type Tab = "groups" | "feed" | "orders" | "me";
+type Tab = "groups" | "feed" | "relief" | "orders" | "me";
 
 type CampaignDraft = { name: string; collectUntil: string; needBy: string; location: string };
 const campaignDraftKey = "oops_demo_campaign_draft";
@@ -85,7 +86,7 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     shortName: "Nước sạch 20L",
     unit: "bình",
     icon: "water_drop",
-    imgSrc: "/assets/water-bottles.jpg",
+    imgSrc: "/assets/water-bottles.webp",
     calcSuggested: (members, days) => Math.ceil(members * days * 2 / 20),
     defaultOtherHouseholds: [2, 3],
     price: 50000,
@@ -96,7 +97,7 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     shortName: "Mì tôm thùng",
     unit: "thùng",
     icon: "restaurant",
-    imgSrc: "/assets/groceries-box.jpg",
+    imgSrc: "/assets/groceries-box.webp",
     calcSuggested: (members, days) => Math.ceil(members * days * 3 / 30),
     defaultOtherHouseholds: [1, 2],
     price: 115000,
@@ -107,7 +108,7 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     shortName: "Đồ hộp ăn liền",
     unit: "hộp",
     icon: "inventory_2",
-    imgSrc: "/assets/groceries-box.jpg",
+    imgSrc: "/assets/groceries-box.webp",
     calcSuggested: (members, days) => Math.ceil(members * days * 2 / 3),
     defaultOtherHouseholds: [4, 6],
     price: 35000,
@@ -118,7 +119,7 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     shortName: "Túi y tế sơ cứu",
     unit: "túi",
     icon: "medical_services",
-    imgSrc: "/assets/groceries-box.jpg",
+    imgSrc: "/assets/groceries-box.webp",
     calcSuggested: () => 1,
     defaultOtherHouseholds: [1, 1],
     price: 85000,
@@ -129,7 +130,7 @@ const RELIEF_ITEM_DEFS: Record<string, ReliefItemDef> = {
     shortName: "Đèn pin sạc",
     unit: "cái",
     icon: "flashlight_on",
-    imgSrc: "/assets/groceries-box.jpg",
+    imgSrc: "/assets/groceries-box.webp",
     calcSuggested: () => 1,
     defaultOtherHouseholds: [1, 1],
     price: 65000,
@@ -265,7 +266,7 @@ const INITIAL_DEMO_ORDERS: DemoOrderItem[] = [
     stage: "fuji",
     statusText: "Chờ các hộ ký Fuji & nộp tiền",
     badgeClass: "bg-sky-100 text-sky-900 border-sky-300",
-    image: "/assets/water-bottles.jpg",
+    image: "/assets/water-bottles.webp",
     deliveryTime: "Trước 12:00, 16/11/2026",
     note: "Bình có vòi, giao tại hầm B1",
     initialStep: "confirm",
@@ -349,7 +350,7 @@ export function OopsDemo() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get("tab") as Tab | null;
-      if (tabParam && ["groups", "feed", "orders", "me"].includes(tabParam)) {
+      if (tabParam && ["groups", "feed", "relief", "orders", "me"].includes(tabParam)) {
         setTab(tabParam);
       }
       const orderIdParam = params.get("orderId");
@@ -446,7 +447,7 @@ export function OopsDemo() {
       stage: "negotiation",
       statusText: isGift ? "Vừa gửi tặng 0đ · Chờ nhóm biểu quyết" : "Vừa gửi chào hàng · Chờ nhóm thương lượng",
       badgeClass: isGift ? "bg-emerald-100 text-emerald-900 border-emerald-300" : "bg-amber-100 text-amber-900 border-amber-300",
-      image: isWater ? "/assets/water-bottles.jpg" : "/assets/groceries-box.webp",
+      image: isWater ? "/assets/water-bottles.webp" : "/assets/groceries-box.webp",
       deliveryTime: data.deliveryTime,
       note: data.note,
       initialStep: "draft",
@@ -549,15 +550,31 @@ export function OopsDemo() {
         />
       ) : (
         <ScreenHeader
-          title={tab === "feed" ? "Nhu cầu quanh bạn" : tab === "orders" ? "Đơn hàng & Hợp đồng" : "Tài khoản cư dân"}
+          title={
+            tab === "feed"
+              ? "Nhu cầu quanh bạn"
+              : tab === "relief"
+              ? "Cứu trợ khẩn cấp"
+              : tab === "orders"
+              ? "Đơn hàng & Hợp đồng"
+              : "Tài khoản cư dân"
+          }
           subtitle={
             tab === "feed"
               ? "Xem nhóm đang cần gì và gửi đề nghị chào hàng."
+              : tab === "relief"
+              ? "Gửi yêu cầu tiếp tế gấp và theo dõi các hộ dân đang cần hỗ trợ."
               : tab === "orders"
               ? "Theo dõi hợp đồng, khóa cọc và xác nhận minh bạch trên mạng Fuji."
               : "Hồ sơ cư dân mẫu và thông tin kết nối ví Fuji."
           }
-          illustration={tab === "feed" ? "flood-relief" : tab === "orders" ? "parcel" : "home"}
+          illustration={
+            tab === "feed" || tab === "relief"
+              ? "flood-relief"
+              : tab === "orders"
+              ? "parcel"
+              : "home"
+          }
           badge="Bản thử"
         />
       )}
@@ -696,6 +713,9 @@ export function OopsDemo() {
             <FeedPagination page={currentPage} loadedPages={totalPages} onPageChange={setCurrentPage} />
           </div>
         )}
+
+        {/* ==================== TAB RELIEF: CỨU TRỢ KHẨN CẤP ==================== */}
+        {tab === "relief" && <SosReliefSection demoMode />}
 
         {/* ==================== TAB ORDERS: TRUNG TÂM ĐƠN HÀNG KIỂU SHOPEE ==================== */}
         {orders.map(order => (
@@ -858,7 +878,7 @@ export function OopsDemo() {
 
             <div className="demo-resident__proof">
               <img
-                src="/assets/fuji-shield.jpg"
+                src="/assets/fuji-shield.webp"
                 alt=""
                 width={56}
                 height={56}

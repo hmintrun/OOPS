@@ -1,7 +1,7 @@
 import "server-only";
 import type { PoolClient } from "pg";
 import type { Contract } from "@/contracts/orders";
-import { conflict, invalid, notFound } from "../errors";
+import { ApiFailure, conflict, invalid, notFound } from "../errors";
 import { recordOrderEvent } from "./events";
 import { addDisbursement, expireCollectionUnderLock } from "./ledger";
 import { lockOrderStock } from "./records";
@@ -28,12 +28,50 @@ export async function requireSimPayer(db: PoolClient, actorId: string, id: strin
 }
 
 type SimEvent = { reference: string; amountVnd: bigint; occurredAt?: string };
+type FundDisposition = "APPLIED" | "REVIEW" | "REFUND_DUE";
+
+export type SimFundEventOutcome = {
+  fundEventId: string;
+  chargeId: string;
+  chargeState: Charge["state"];
+  disposition: FundDisposition;
+  contractId: string;
+  contractState: Contract["state"];
+  disbursementId?: string;
+  replayed: boolean;
+};
 
 export async function applySimFundEvent(db: PoolClient, chargeId: string, event: SimEvent) {
-  return recordSimFundEvent(db, await findCharge(db, chargeId), event);
+  const result = await recordSimFundEventDetailed(db, await findCharge(db, chargeId), event);
+  if (result instanceof ApiFailure) return result;
+  return { chargeId: result.chargeId, state: result.chargeState };
 }
 
-async function recordSimFundEvent(db: PoolClient, initial: Charge, event: SimEvent, checkout = false) {
+export async function applySimFundEventAsOps(db: PoolClient, actorId: string, chargeId: string, event: SimEvent) {
+  const result = await recordSimFundEventDetailed(db, await findCharge(db, chargeId), event, {
+    checkout: false,
+    actorId,
+  });
+  if (result instanceof ApiFailure) throw result;
+  return {
+    fundEventId: result.fundEventId,
+    chargeId: result.chargeId,
+    chargeState: result.chargeState,
+    disposition: result.disposition,
+    contractId: result.contractId,
+    contractState: result.contractState,
+    ...(result.disbursementId && { disbursementId: result.disbursementId }),
+  };
+}
+
+async function recordSimFundEventDetailed(
+  db: PoolClient,
+  initial: Charge,
+  event: SimEvent,
+  options: { checkout?: boolean; actorId?: string | null } = {},
+): Promise<SimFundEventOutcome | ApiFailure> {
+  const checkout = options.checkout ?? false;
+  const actorId = options.actorId ?? null;
   if (event.amountVnd <= 0n || event.amountVnd > BigInt(Number.MAX_SAFE_INTEGER)) throw invalid("Số tiền không hợp lệ.");
   const { order, allocations } = await lockOrderStock(db, initial.contract_id);
   const charge = await findCharge(db, initial.id, true);
@@ -56,7 +94,7 @@ async function recordSimFundEvent(db: PoolClient, initial: Charge, event: SimEve
   ) : null;
   const canApply = awaitingCharge && charge.state === "PENDING" &&
     (parallel ? Boolean(eligible?.rowCount) : order.stock_state === (deposit ? "PENDING" : "RESERVED"));
-  const { rows: [saved] } = await db.query<{ id: string; disposition: "APPLIED" | "REVIEW" | "REFUND_DUE" }>(
+  const { rows: [saved] } = await db.query<{ id: string; disposition: FundDisposition }>(
     `with timing as materialized (
        select clock_timestamp() as now,
          least(c.due_at, case c.kind when 'DEPOSIT' then o.deposit_due_at else o.payment_due_at end) as due_at
@@ -75,21 +113,70 @@ async function recordSimFundEvent(db: PoolClient, initial: Charge, event: SimEve
     [charge.id, event.reference, event.amountVnd.toString(), event.occurredAt ?? null, canApply, checkout],
   );
   if (!saved) {
-    const replay = await db.query(
-      "select 1 from public.fund_events where mode = 'SIM' and external_ref = $1 and charge_id = $2 and amount_vnd = $3",
+    const { rows: [replay] } = await db.query<{ id: string; disposition: FundDisposition; disbursement_id: string | null }>(
+      `select f.id, f.disposition, d.id as disbursement_id
+       from public.fund_events f
+       left join public.disbursements d on d.fund_event_id = f.id
+       where f.mode = 'SIM' and f.external_ref = $1 and f.charge_id = $2 and f.amount_vnd = $3
+       order by d.id limit 1`,
       [event.reference, charge.id, event.amountVnd.toString()],
     );
-    if (replay.rowCount) return { chargeId: charge.id, state: charge.state };
+    if (replay) {
+      return {
+        fundEventId: replay.id,
+        chargeId: charge.id,
+        chargeState: charge.state,
+        disposition: replay.disposition,
+        contractId: order.id,
+        contractState: order.state,
+        ...(replay.disbursement_id && { disbursementId: replay.disbursement_id }),
+        replayed: true,
+      };
+    }
     if (checkout && awaitingCharge && await expireCollectionUnderLock(db, order, allocations)) {
       return conflict("Đã hết hạn thu tiền. Hợp đồng đã được hủy theo điều khoản.");
     }
     throw conflict("Khoản thu đã đóng, hết hạn hoặc mã giao dịch SIM đã thuộc khoản khác.");
   }
+  const auditReason = `${charge.kind}:${event.reference}:${event.amountVnd}`;
   if (saved.disposition === "REFUND_DUE") {
-    await addDisbursement(db, order.id, saved.id, charge.payer_id,
-      charge.kind === "DEPOSIT" ? "DEPOSIT_REFUND" : "GOODS_REFUND", event.amountVnd);
+    const refundKind = charge.kind === "DEPOSIT" ? "DEPOSIT_REFUND" : "GOODS_REFUND";
+    await addDisbursement(db, order.id, saved.id, charge.payer_id, refundKind, event.amountVnd);
+    const { rows: [disb] } = await db.query<{ id: string }>(
+      "select id from public.disbursements where dedupe_key = $1", [`${saved.id}:${refundKind}`],
+    );
+    await db.query(
+      `insert into public.audit_events (actor_id, entity_type, entity_id, action, version, reason)
+       values ($1, 'CONTRACT', $2, 'SIM_FUND_REFUND_DUE', $3, $4)`,
+      [actorId, order.id, order.version, auditReason],
+    );
+    return {
+      fundEventId: saved.id,
+      chargeId: charge.id,
+      chargeState: charge.state,
+      disposition: "REFUND_DUE",
+      contractId: order.id,
+      contractState: order.state,
+      ...(disb && { disbursementId: disb.id }),
+      replayed: false,
+    };
   }
-  if (saved.disposition !== "APPLIED") return { chargeId: charge.id, state: charge.state };
+  if (saved.disposition !== "APPLIED") {
+    await db.query(
+      `insert into public.audit_events (actor_id, entity_type, entity_id, action, version, reason)
+       values ($1, 'CONTRACT', $2, 'SIM_FUND_REVIEW', $3, $4)`,
+      [actorId, order.id, order.version, auditReason],
+    );
+    return {
+      fundEventId: saved.id,
+      chargeId: charge.id,
+      chargeState: charge.state,
+      disposition: saved.disposition,
+      contractId: order.id,
+      contractState: order.state,
+      replayed: false,
+    };
+  }
 
   await db.query(
     "update public.charges set state = 'RECEIVED', checkout_started_at = coalesce(checkout_started_at, clock_timestamp()) where id = $1",
@@ -124,7 +211,23 @@ async function recordSimFundEvent(db: PoolClient, initial: Charge, event: SimEve
       await recordOrderEvent(db, order.id, "PAYMENT_COMPLETE", order.version + 1, charge.payer_id);
     }
   }
-  return { chargeId: charge.id, state: "RECEIVED" as const };
+  const { rows: [updated] } = await db.query<{ state: Contract["state"]; version: number }>(
+    "select state, version from public.contracts where id = $1", [order.id],
+  );
+  await db.query(
+    `insert into public.audit_events (actor_id, entity_type, entity_id, action, version, reason)
+     values ($1, 'CONTRACT', $2, 'SIM_FUND_APPLIED', $3, $4)`,
+    [actorId, order.id, updated.version, auditReason],
+  );
+  return {
+    fundEventId: saved.id,
+    chargeId: charge.id,
+    chargeState: "RECEIVED",
+    disposition: "APPLIED",
+    contractId: order.id,
+    contractState: updated.state,
+    replayed: false,
+  };
 }
 
 async function markHandoffEligible(db: PoolClient, id: string) {
@@ -136,7 +239,14 @@ async function markHandoffEligible(db: PoolClient, id: string) {
 
 export async function receiveDemoCharge(db: PoolClient, actorId: string, id: string) {
   const charge = await requireSimPayer(db, actorId, id);
-  return recordSimFundEvent(db, charge, { reference: `SIM:${id}`, amountVnd: BigInt(charge.amount_vnd) }, true);
+  const result = await recordSimFundEventDetailed(
+    db,
+    charge,
+    { reference: `SIM:${id}`, amountVnd: BigInt(charge.amount_vnd) },
+    { checkout: true, actorId },
+  );
+  if (result instanceof ApiFailure) return result;
+  return { chargeId: result.chargeId, state: result.chargeState };
 }
 
 export async function expireOrderDeadline(

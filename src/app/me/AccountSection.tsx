@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { LocationFields } from "@/components/location-fields";
@@ -100,7 +101,7 @@ export function AccountSection({ data, onData, onUnauthorized }: {
     <Card className="me-account">
       <div className="me-card-head">
         <IconTile icon="badge" tone="sky" />
-        <CardTitle>Thông tin định danh</CardTitle>
+        <CardTitle>Hồ sơ hộ gia đình</CardTitle>
       </div>
 
       <div className="me-profile">
@@ -202,19 +203,15 @@ export function AccountSection({ data, onData, onUnauthorized }: {
           <div className="me-field-stack">
             {saved && <p className="me-notice" role="status">Đã lưu thay đổi.</p>}
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              <div className="flex items-start gap-2.5 rounded-input p-3" style={{ background: "var(--oops-haze)" }}>
-                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-100 text-green-700">
-                  <MaterialSymbol name="call" size={16} />
-                </span>
+              <div className="flex items-start gap-2.5 rounded-input border border-line p-3" style={{ background: "var(--oops-haze)" }}>
+                <IconTile icon="call" tone="green" size="sm" />
                 <div className="min-w-0">
                   <p className="text-small text-navy-600">Số điện thoại</p>
                   <p className="me-body-text break-words font-bold">{contact.phone || "Chưa cập nhật"}</p>
                 </div>
               </div>
-              <div className="flex items-start gap-2.5 rounded-input p-3" style={{ background: "var(--oops-haze)" }}>
-                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sky-tint" style={{ color: "var(--oops-sky-ink)" }}>
-                  <MaterialSymbol name="badge" size={16} />
-                </span>
+              <div className="flex items-start gap-2.5 rounded-input border border-line p-3" style={{ background: "var(--oops-haze)" }}>
+                <IconTile icon="fingerprint" tone="sky" size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="text-small text-navy-600">Mã tài khoản</p>
                   <div className="me-item__value mt-0.5">
@@ -226,10 +223,28 @@ export function AccountSection({ data, onData, onUnauthorized }: {
                 </div>
               </div>
             </div>
-            <p className="me-hint">Số điện thoại và thông tin nhận hàng chỉ được chia sẻ với bên giao nhận sau khi chốt đơn.</p>
+            <p className="me-hint">Liên hệ nhận hàng chỉ chia sẻ cho bên giao nhận sau khi chốt đơn.</p>
             {!data.groupId && (
               <p className="me-muted">Chưa tham gia nhóm nào</p>
             )}
+          </div>
+        )}
+
+        {data.isOps && (
+          <div className="me-item">
+            <div className="me-item__body">
+              <p className="me-item__label">Vai trò hệ thống</p>
+              <div className="me-item__value flex-wrap">
+                <span className="me-chip me-chip--verified">
+                  <span className="me-chip__dot" aria-hidden />
+                  Quản trị viên · Đối soát SIM
+                </span>
+                <Link className="me-chip me-chip--link" href="/ops">
+                  Mở bảng quản trị &amp; đối soát SIM
+                  <MaterialSymbol name="chevron_right" size={18} />
+                </Link>
+              </div>
+            </div>
           </div>
         )}
       </div>

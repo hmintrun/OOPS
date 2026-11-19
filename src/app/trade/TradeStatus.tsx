@@ -1,12 +1,13 @@
 import { Button, Card, CardSkeleton, IconTile } from "@/components/ui";
 
-export function TradeStatus({ loading, failure, retry }: {
+export function TradeStatus({ loading, hasData = false, failure, retry }: {
   loading: boolean;
+  hasData?: boolean;
   failure?: Error;
   retry: () => void;
 }) {
   return <>
-    {loading && <div role="status" aria-live="polite" className="ui-card-grid">
+    {loading && !hasData && <div role="status" aria-live="polite" className="ui-card-grid">
       <span className="sr-only">Đang tải…</span>
       <CardSkeleton lines={3} />
       <CardSkeleton lines={3} />

@@ -13,7 +13,7 @@ export function PageArtwork({ scene }: { scene: PageScene }) {
     return (
       <div className="ui-page-photo">
         <img src="/assets/flood-relief.webp" width={870} height={489}
-          alt="Đội cứu trợ chuyển thùng nhu yếu phẩm lên xuồng ở vùng ngập" decoding="async" fetchPriority="low" />
+          alt="Đội cứu trợ chuyển thùng nhu yếu phẩm lên xuồng ở vùng ngập" decoding="async" fetchPriority="high" />
       </div>
     );
   }
@@ -22,7 +22,7 @@ export function PageArtwork({ scene }: { scene: PageScene }) {
     <div className="ui-page-art" aria-hidden="true">
       <img className="ui-page-art__cloud" src="/assets/hero/cloud-a.webp" width={1622} height={459} alt="" decoding="async" fetchPriority="low" />
       <span className="ui-page-art__ground" />
-      <img className="ui-page-art__subject" {...scenes[scene]} alt="" decoding="async" fetchPriority="low" />
+      <img className="ui-page-art__subject" {...scenes[scene]} alt="" decoding="async" fetchPriority="high" />
     </div>
   );
 }

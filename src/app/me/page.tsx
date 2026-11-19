@@ -82,7 +82,7 @@ export default function MePage() {
   return (
     <AppShell
       title="Tài khoản"
-      subtitle="Quản lý thông tin của hộ gia đình."
+      subtitle="Hồ sơ hộ gia đình và ví xác nhận."
       illustration="home"
       bodyClassName={state.phase === "error" ? "ui-stack" : "ui-card-grid"}
       bare

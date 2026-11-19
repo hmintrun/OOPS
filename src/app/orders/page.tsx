@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
 import { Button, Card, CardTitle, EmptyState, MaterialSymbol } from "@/components/ui";
+import { useSlidingIndicator } from "@/components/ui/use-sliding-indicator";
 import { sentOfferList, type SentOffer } from "@/contracts/negotiation";
 import { contractList, type Contract } from "@/contracts/orders";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -85,11 +86,23 @@ function SentOfferCard({ offer }: { offer: SentOffer }) {
   </Card>;
 }
 
+const ROLE_OPTIONS = [
+  { value: "", label: "Tất cả", icon: "apps" },
+  { value: "buyer", label: "Đơn mua", icon: "shopping_bag" },
+  { value: "seller", label: "Đơn bán", icon: "storefront" },
+] as const;
+
 export default function OrdersPage() {
   const [role, setRole] = useState(() => readClientCache<string>("orders:role")?.value ?? "");
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshFn = useRef<(() => void) | null>(null);
+  const { containerRef, indicatorStyle, hasIndicator, animate } = useSlidingIndicator(
+    role || "all",
+    '[aria-pressed="true"]',
+  );
   const { page: notifications } = useNotifications();
   const unread = notifications?.unreadCount ?? 0;
-  return <AppShell title="Đơn hàng" subtitle="Theo dõi đơn, bàn giao và thanh toán." illustration="parcel" bare
+  return <AppShell title="Đơn hàng" subtitle="Theo dõi tiến độ, thanh toán và nhận hàng." illustration="parcel" bare
     pageActions={(
       <nav aria-label="Tiện ích đơn hàng" className="orders-shortcuts">
         <Link href="/notifications" aria-label={unread ? `Thông báo, ${unread} chưa đọc` : "Thông báo"}
@@ -98,23 +111,78 @@ export default function OrdersPage() {
           {unread > 0 && <span className="orders-notification-count" aria-hidden="true">{unread}</span>}
           <span className="hidden sm:inline">Thông báo</span>
         </Link>
-        <Link href="/ops" aria-label="Đối soát SIM" title="Đối soát SIM" className="ui-btn ui-btn--ghost">
+        <Link href="/ops" aria-label="Quản trị & Đối soát SIM" title="Quản trị & Đối soát SIM" className="ui-btn ui-btn--ghost">
           <MaterialSymbol name="account_balance_wallet" size={20} />
-          <span className="hidden sm:inline">Đối soát SIM</span>
+          <span className="hidden sm:inline">Quản trị &amp; Đối soát SIM</span>
         </Link>
       </nav>
     )}
   >
     <div className="ui-stack">
-      <OrderResults key={role} role={role} onRoleChange={nextRole => {
-        writeClientCache("orders:role", nextRole);
-        setRole(nextRole);
-      }} />
+      <div className="orders-toolbar">
+        <div
+          ref={containerRef}
+          role="group"
+          aria-label="Vai trò đơn hàng"
+          className="orders-role-Segmented m-tab-track"
+          data-has-ind={hasIndicator ? "true" : undefined}
+        >
+          {hasIndicator && (
+            <span
+              className={`m-tab-ind ${animate ? "m-tab-ind--animate" : ""}`}
+              style={indicatorStyle}
+              aria-hidden="true"
+            />
+          )}
+          {ROLE_OPTIONS.map(option => {
+            const active = role === option.value;
+            return (
+              <button
+                key={option.value || "all"}
+                type="button"
+                aria-pressed={active}
+                className={`orders-role-pill ${active ? "orders-role-pill--active" : ""}`}
+                onClick={() => {
+                  writeClientCache("orders:role", option.value);
+                  setRole(option.value);
+                }}
+              >
+                <MaterialSymbol name={option.icon} size={17} />
+                <span>{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        <Button
+          variant="secondary"
+          full={false}
+          className="orders-refresh-btn"
+          disabled={refreshing}
+          onClick={() => refreshFn.current?.()}
+        >
+          <MaterialSymbol name="refresh" size={18} className={refreshing ? "ui-spin" : ""} />
+          Cập nhật
+        </Button>
+      </div>
+      <OrderResults
+        key={role}
+        role={role}
+        registerRefresh={fn => { refreshFn.current = fn; }}
+        onRefreshingChange={setRefreshing}
+      />
     </div>
   </AppShell>;
 }
 
-function OrderResults({ role, onRoleChange }: { role: string; onRoleChange: (nextRole: string) => void }) {
+function OrderResults({
+  role,
+  registerRefresh,
+  onRefreshingChange,
+}: {
+  role: string;
+  registerRefresh: (fn: () => void) => void;
+  onRefreshingChange: (refreshing: boolean) => void;
+}) {
   const router = useRouter();
   const isDemo = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
   const load = useCallback(async (): Promise<FirstOrderPageData> => {
@@ -408,38 +476,19 @@ function OrderResults({ role, onRoleChange }: { role: string; onRoleChange: (nex
     }
   }
 
+  useEffect(() => {
+    registerRefresh(() => void trade.refresh());
+  }, [registerRefresh, trade.refresh]);
+
+  useEffect(() => {
+    onRefreshingChange(trade.loading || trade.busy);
+  }, [onRefreshingChange, trade.loading, trade.busy]);
+
   return <>
       <TradeStatus {...trade} loading={trade.loading && !first} retry={() => void trade.refresh()} />
       {first && <>
         {first.demandError && <p role="alert" className="rounded-input bg-amber-tint p-3 text-small">{first.demandError}</p>}
         {first.offerError && <p role="alert" className="rounded-input bg-amber-tint p-3 text-small">{first.offerError}</p>}
-        <div className="orders-toolbar">
-          <div role="group" aria-label="Vai trò đơn hàng" className="orders-role-Segmented">
-            {[
-              { value: "", label: "Tất cả", icon: "apps" },
-              { value: "buyer", label: "Đơn mua", icon: "shopping_bag" },
-              { value: "seller", label: "Đơn bán", icon: "storefront" },
-            ].map(option => {
-              const active = role === option.value;
-              return (
-                <button
-                  key={option.value || "all"}
-                  type="button"
-                  aria-pressed={active}
-                  className={`orders-role-pill ${active ? "orders-role-pill--active" : ""}`}
-                  onClick={() => onRoleChange(option.value)}
-                >
-                  <MaterialSymbol name={option.icon} size={17} />
-                  <span>{option.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          <Button variant="secondary" full={false} className="orders-refresh-btn" disabled={trade.loading || trade.busy} onClick={() => void trade.refresh()}>
-            <MaterialSymbol name="refresh" size={18} className={trade.loading ? "ui-spin" : ""} />
-            Cập nhật
-          </Button>
-        </div>
         <div role="group" aria-label="Lọc theo tiến độ" className="orders-tabs">
           {tabs.map(tab => (
             <Button key={tab.key} full={false} variant={tab.key === activeTab ? "primary" : "secondary"}
@@ -457,8 +506,8 @@ function OrderResults({ role, onRoleChange }: { role: string; onRoleChange: (nex
             icon="inventory_2"
             tone="amber"
             title="Chưa có đơn hàng ở mục này"
-            description="Ghé Nhu cầu cộng đồng để chào hàng hoặc tạo đợt gom mới cùng nhóm của bạn."
-            action={<Link href="/feed" className="ui-btn ui-btn--secondary">Xem nhu cầu khu phố</Link>}
+            description="Xem nhu cầu quanh bạn để chào hàng hoặc mở đợt gom mới."
+            action={<Link href="/feed" className="ui-btn ui-btn--secondary">Xem nhu cầu quanh bạn</Link>}
           />
         )}
         {displayedOrders.length > 0 && <div className="ui-card-grid">

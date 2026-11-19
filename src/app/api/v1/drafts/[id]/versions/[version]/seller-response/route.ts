@@ -14,7 +14,7 @@ export const POST = write(sellerResponseInput, draftVersion, 200,
       if (!prepared) throw unavailable();
       return approveWithFujiEligibility(db, call.actor.userId, id, prepared.versionId, prepared.round, body.note);
     }
-    return respondToVersion(db, call.actor.userId, id, input(versionParam, call.version), body.action, body.note);
+    return respondToVersion(db, call.actor.userId, id, input(versionParam, call.version), body);
   },
   {
     authorize: (db, call) => requireDraftSeller(db, call.actor.userId, objectId(call)),

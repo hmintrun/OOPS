@@ -20,7 +20,7 @@
   border-radius: var(--oops-radius-pill);
   background: var(--oops-danger);
   color: var(--oops-surface);
-  font-size: .64rem;
+  font-size: 0.75rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -135,7 +135,7 @@
 .order-card__step {
   display: grid;
   gap: 4px;
-  font-size: .75rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   color: var(--oops-navy-600);
   text-align: center;
@@ -186,7 +186,7 @@
   min-width: 0;
 }
 .order-card__detail-label {
-  font-size: 0.76rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   color: var(--oops-navy-600);
   line-height: 1.2;
@@ -202,15 +202,32 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 999px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid transparent;
   flex: none;
 }
-.order-card__meta-icon--time { background: var(--oops-amber-tint); color: var(--oops-amber-ink); }
-.order-card__meta-icon--fuji { background: var(--oops-sky-tint); color: var(--oops-sky-ink); }
-.order-card__meta-icon--place { background: var(--oops-rose-tint); color: var(--oops-danger); }
-.order-card__meta-icon--person { background: var(--oops-green-100); color: var(--oops-green-700); }
+.order-card__meta-icon--time {
+  background: var(--oops-amber-tint);
+  border-color: color-mix(in srgb, var(--oops-amber-ink) 18%, transparent);
+  color: var(--oops-amber-ink);
+}
+.order-card__meta-icon--fuji {
+  background: var(--oops-sky-tint);
+  border-color: color-mix(in srgb, var(--oops-sky-ink) 16%, transparent);
+  color: var(--oops-sky-ink);
+}
+.order-card__meta-icon--place {
+  background: var(--oops-rose-tint);
+  border-color: color-mix(in srgb, var(--oops-danger) 18%, transparent);
+  color: var(--oops-danger);
+}
+.order-card__meta-icon--person {
+  background: var(--oops-mint);
+  border-color: color-mix(in srgb, var(--oops-jade) 18%, transparent);
+  color: var(--oops-jade-dark);
+}
 .order-card__receiving { display: grid; gap: 8px; border-radius: var(--oops-radius-input); background: var(--oops-haze); padding: 12px; font-size: .875rem; overflow-wrap: anywhere; }
 .ui-app-page .ui-card .order-card__cta { width: 100%; max-inline-size: 100%; min-height: 48px; margin-block-start: auto; }
 .order-stage { scroll-margin-block-start: 80px; }

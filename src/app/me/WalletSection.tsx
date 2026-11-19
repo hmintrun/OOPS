@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, CardTitle } from "@/components/ui";
+import { Card, CardTitle, IconTile, MaterialSymbol } from "@/components/ui";
 import { WalletLinkModal } from "@/components/wallet/WalletLinkModal";
 import { embeddedFujiConfigured } from "@/lib/fuji/embedded";
 import type { Me } from "@/contracts/foundation";
@@ -15,7 +15,7 @@ const VERIFICATION: Record<VerificationState, { label: string; className: string
   FAILED: { label: "Xác minh lỗi", className: "me-chip--failed" },
 };
 
-/** Ví Fuji: trạng thái liên kết ví, xác minh và điều kiện xác nhận hợp đồng. */
+/** Ví Fuji: thiết kế hình dáng chiếc ví số OOPS + trạng thái xác minh và điều kiện ký đơn. */
 export function WalletSection({
   data,
   onData,
@@ -27,62 +27,166 @@ export function WalletSection({
 }) {
   const wallet = data.wallet;
   const embeddedEnabled = embeddedFujiConfigured();
-  // verificationState ngoài ba giá trị đã biết (API đổi enum) → coi như chưa xác minh.
   const verification = wallet ? VERIFICATION[wallet.verificationState] : undefined;
+  const isVerified = wallet?.verificationState === "VERIFIED";
+  const isReady = isVerified && Boolean(data.confirmationEligible);
+  const eligibilityText = data.confirmationEligibilityUnavailable
+    ? "Chưa kiểm tra được"
+    : data.confirmationEligible
+      ? "Đủ điều kiện"
+      : "Chưa đủ điều kiện";
 
   return (
-    <Card>
-      <div className="me-card-head me-wallet__heading">
-        <img src="/assets/fuji-shield.jpg" alt="" className="me-wallet__shield" />
-        <div>
-          <CardTitle>{embeddedEnabled ? "Ví xác nhận mua chung" : "Ví Avalanche Fuji"}</CardTitle>
-          <p className="text-small text-navy-600">{embeddedEnabled
-            ? "Giúp xác nhận minh bạch phần hàng của hộ bạn, không mất phí."
-            : "Xác nhận minh bạch phần hàng mua chung của hộ bạn."}</p>
+    <Card className="me-wallet-card">
+      {/* Header đồng bộ IconTile squircle cùng các thẻ khác */}
+      <div className="me-wallet-top">
+        <div className="me-wallet-top__id">
+          <IconTile icon="account_balance_wallet" tone="green" />
+          <div className="me-wallet-top__copy">
+            <CardTitle>{embeddedEnabled ? "Ví xác nhận mua chung" : "Ví Avalanche Fuji"}</CardTitle>
+            <span className="me-wallet-net-inline">
+              <span className="me-wallet-net-pill__dot" aria-hidden />
+              Avalanche Fuji · 43113
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="me-rows me-rows--divided">
+      {/* Chiếc Ví OOPS: tông xanh mint dịu mắt, 2 lớp thẻ/phiếu ló miệng ví, đường khâu mảnh và quai khóa bấm */}
+      <div className={`me-wallet-obj ${isVerified ? "me-wallet-obj--verified" : ""}`}>
+        {/* Mặt lưng phía sau của miệng ví */}
+        <div className="me-wallet-obj__back" aria-hidden="true" />
+
+        {/* Hai lớp phiếu/thẻ ló nhẹ ra từ ngăn ví (nhận diện ngay dáng chiếc ví) */}
+        <div className="me-wallet-obj__slip me-wallet-obj__slip--back" aria-hidden="true" />
+        <div className="me-wallet-obj__slip me-wallet-obj__slip--front" aria-hidden="true">
+          <span className="me-wallet-obj__slip-brand">
+            <MaterialSymbol name="verified_user" size={14} />
+            OOPS
+          </span>
+          <span className="me-wallet-obj__slip-tag">
+            {embeddedEnabled ? "Miễn phí gas" : "Core Wallet"}
+          </span>
+        </div>
+
+        {/* Ngăn trước của chiếc ví với miệng cong và đường chỉ khâu dịu mắt */}
+        <div className="me-wallet-obj__body">
+          <svg
+            className="me-wallet-obj__lip"
+            viewBox="0 0 400 26"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M0 14 Q0 1 13 1 H148 C166 1 174 16 200 16 C226 16 234 1 252 1 H387 Q400 1 400 14 V26 H0 Z"
+              fill="currentColor"
+            />
+            <path
+              d="M0.75 26 V14 Q0.75 1 13 1 H148 C166 1 174 16 200 16 C226 16 234 1 252 1 H387 Q399.25 1 399.25 14 V26"
+              fill="none"
+              stroke="var(--wallet-border, #a7d4bf)"
+              strokeWidth="1.5"
+            />
+          </svg>
+
+          <span className="me-wallet-obj__stitch" aria-hidden="true" />
+
+          <div className="me-wallet-obj__content">
+            <div className="me-wallet-obj__top">
+              <span className="me-wallet-obj__name">
+                <MaterialSymbol name="account_balance_wallet" size={18} />
+                Ví OOPS
+              </span>
+              <span className={`me-wallet-obj__pill ${isVerified ? "me-wallet-obj__pill--ok" : ""}`}>
+                <span className="me-wallet-obj__pill-dot" aria-hidden />
+                {verification ? verification.label : "Chưa liên kết"}
+              </span>
+            </div>
+
+            <div className="me-wallet-obj__main">
+              <span className="me-wallet-obj__label">Địa chỉ ví</span>
+              <strong className="me-wallet-obj__addr" title={wallet?.address}>
+                {wallet ? shortenMiddle(wallet.address, 6, 5) : "Chưa liên kết ví"}
+              </strong>
+            </div>
+
+            <div className="me-wallet-obj__foot">
+              <span className="me-wallet-obj__owner">{data.displayName || "Hộ gia đình OOPS"}</span>
+              <span className="me-wallet-obj__net">Fuji · 43113</span>
+            </div>
+          </div>
+
+          {/* Quai khóa gập bên phải chiếc ví với khuy bấm tròn */}
+          <div className="me-wallet-obj__clasp" aria-hidden="true">
+            <span className="me-wallet-obj__stud" />
+          </div>
+        </div>
+      </div>
+
+      {/* Thông tin gọn gàng dạng Bento phía dưới chiếc ví */}
+      <div className="me-wallet-body">
         {!wallet || !verification ? (
-          <div>
-            <p className="me-body-text">Chưa liên kết ví</p>
-            <p className="me-hint">{embeddedEnabled
-              ? "Thiết lập ví trong OOPS hoặc liên kết Core Wallet để xác nhận các phần mua của nhà mình."
-              : "Kết nối Core Wallet và ký thử thách trên Fuji để tham gia xác nhận hợp đồng."}</p>
+          <div className="me-wallet-box">
+            <p className="me-wallet-box__label">Tài khoản ví</p>
+            <p className="me-body-text font-bold">Chưa liên kết ví</p>
+            <p className="me-hint">
+              {embeddedEnabled
+                ? "Thiết lập ví trong OOPS hoặc liên kết Core Wallet để xác nhận phần mua của hộ."
+                : "Kết nối Core Wallet và ký thử thách trên Fuji để tham gia xác nhận."}
+            </p>
           </div>
         ) : (
-          <div className="me-item me-wallet__address">
-            <div className="me-item__body">
-              <p className="me-item__label">Địa chỉ ví</p>
-              <div className="me-item__value">
+          <div className="me-wallet-box">
+            <div className="me-wallet-box__head">
+              <div className="min-w-0 flex-1">
+                <p className="me-wallet-box__label">Địa chỉ ví</p>
                 <code className="me-code" title={wallet.address}>
-                  {shortenMiddle(wallet.address, 10, 8)}
+                  {shortenMiddle(wallet.address, 12, 8)}
                 </code>
-                <CopyButton value={wallet.address} label="địa chỉ ví" />
               </div>
+              <CopyButton value={wallet.address} label="địa chỉ ví" />
             </div>
-            <span className={`me-chip ${verification.className}`}>
-              <span className="me-chip__dot" aria-hidden />
-              {verification.label}
-            </span>
           </div>
         )}
 
-        <div className="me-eligibility">
-          <div className="me-item__body">
-            <p className="me-item__label">Đủ điều kiện xác nhận</p>
-            <p className="me-hint">Dùng để xác nhận phần mua chung cùng các hộ trong nhóm.</p>
+        <div className="me-wallet-grid">
+          <div className="me-wallet-stat">
+            <span className="me-wallet-box__label">Trạng thái ví</span>
+            {verification ? (
+              <span className={`me-chip ${verification.className}`}>
+                <span className="me-chip__dot" aria-hidden />
+                {verification.label}
+              </span>
+            ) : (
+              <strong className="me-wallet-stat__value">Chưa xác minh</strong>
+            )}
           </div>
-          <span className={`me-chip ${data.confirmationEligible ? "me-chip--verified" : "me-chip--pending"}`}>
-            {data.confirmationEligibilityUnavailable ? "Chưa kiểm tra được" : data.confirmationEligible ? "Có" : "Chưa"}
-          </span>
+
+          <div className="me-wallet-stat">
+            <span className="me-wallet-box__label">Quyền xác nhận</span>
+            <strong className="me-wallet-stat__value">{eligibilityText}</strong>
+          </div>
         </div>
-        <div>
+
+        <div className={`me-wallet-banner ${isReady ? "me-wallet-banner--ok" : "me-wallet-banner--warn"}`}>
+          <div className="me-wallet-banner__head">
+            <strong>{isReady ? "Ví đang hoạt động" : "Cần hoàn tất xác minh ví"}</strong>
+            <span className="me-wallet-banner__tag">{isReady ? "Sẵn sàng" : "Chưa sẵn sàng"}</span>
+          </div>
+          <p>
+            {isReady
+              ? "Sẵn sàng ký xác nhận khi nhóm chốt đơn mua chung."
+              : "Liên kết và xác minh ví để ký xác nhận đơn của hộ."}
+          </p>
+        </div>
+
+        <div className="me-wallet-actions">
           <WalletLinkModal currentAddress={wallet?.address} onData={onData} onUnauthorized={onUnauthorized} />
         </div>
-        <details className="text-small text-navy-600">
-          <summary className="cursor-pointer font-semibold text-navy-600">Chi tiết kỹ thuật (Blockchain)</summary>
-          <p className="mt-1.5 leading-relaxed">
+
+        <details className="me-wallet-tech">
+          <summary>Chi tiết kỹ thuật (Blockchain)</summary>
+          <p>
             Mạng xác thực: Avalanche Fuji Testnet (Chain ID: 43113). Hỗ trợ ví tích hợp OOPS (tài trợ phí gas) hoặc Core Wallet.
           </p>
         </details>

@@ -91,7 +91,13 @@ export async function createOffer(client: PoolClient, sellerId: string, demandIt
     "insert into public.negotiations (proposal_id) values ($1) returning id", [proposal.id],
   );
   await enqueueVoteDeadline(client, draft.id, 1);
-  const { rows: recipients } = await client.query<{ user_id: string }>(
+  await persistNotifications(client, "DEMAND_ITEM", demandItemId, `offer-created:${proposal.id}`,
+    await offerBuyerRecipients(client, demandItemId, sellerId));
+  return offerDto(proposal, true, draft.id);
+}
+
+export async function offerBuyerRecipients(client: PoolClient, demandItemId: string, sellerId: string) {
+  const { rows } = await client.query<{ user_id: string }>(
     `select m.user_id from public.demand_items d
      join public.campaigns c on c.id = d.campaign_id
      join public.memberships m on m.group_id = c.group_id and m.left_at is null
@@ -102,9 +108,7 @@ export async function createOffer(client: PoolClient, sellerId: string, demandIt
      )`,
     [demandItemId, sellerId],
   );
-  await persistNotifications(client, "DEMAND_ITEM", demandItemId, `offer-created:${proposal.id}`,
-    recipients.map(row => row.user_id));
-  return offerDto(proposal, true, draft.id);
+  return rows.map(row => row.user_id);
 }
 
 export async function readOffers(client: PoolClient, userId: string, demandItemId: string) {

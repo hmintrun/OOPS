@@ -39,11 +39,34 @@ import { POST as postTermination } from "@/app/api/v1/contracts/[id]/termination
 import { POST as acceptCancellation } from "@/app/api/v1/terminations/[id]/accept/route";
 import { POST as postTransfer } from "@/app/api/v1/ops/disbursements/[id]/post/route";
 import { GET as getOps } from "@/app/api/v1/ops/disbursements/route";
+import { GET as getOpsOverview } from "@/app/api/v1/ops/overview/route";
+import { GET as getOpsCharges } from "@/app/api/v1/ops/charges/route";
+import { POST as postReconcileCharge } from "@/app/api/v1/ops/charges/[id]/reconcile/route";
+import { POST as postRefundFundEvent } from "@/app/api/v1/ops/fund-events/[id]/refund/route";
+import { GET as getOpsContracts } from "@/app/api/v1/ops/contracts/route";
+import { GET as getOpsContractDetail } from "@/app/api/v1/ops/contracts/[id]/route";
+import { GET as getOpsAudit } from "@/app/api/v1/ops/audit/route";
 import { GET as getNotices, PATCH as patchAllNotices } from "@/app/api/v1/notifications/route";
 import { PATCH as patchNotice } from "@/app/api/v1/notifications/[id]/route";
 import { POST as postCartAi } from "@/app/api/v1/campaigns/[id]/cart/ai/route";
 import { confirmationRound, draft, draftVersion, offer, offers, offerVoting, sellerDraftView, sentOfferList } from "@/contracts/negotiation";
-import { contract, evidenceResult, notificationList, opsList, postTransferResult, receipt, signedEvidence, terminationResult } from "@/contracts/orders";
+import {
+  contract,
+  evidenceResult,
+  notificationList,
+  opsAuditList,
+  opsChargeList,
+  opsContractDetail,
+  opsContractList,
+  opsList,
+  opsOverview,
+  postTransferResult,
+  receipt,
+  reconcileSimChargeResult,
+  refundFundEventResult,
+  signedEvidence,
+  terminationResult,
+} from "@/contracts/orders";
 import { closeDatabase, transaction } from "@/server/db";
 import { readBuyerDemand } from "@/server/campaigns";
 import { expireSellerResponse } from "@/server/negotiation/versions";
@@ -272,6 +295,7 @@ async function databaseTime() {
 
 describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", () => {
   const previousPaymentMode = process.env.OOPS_PAYMENT_MODE;
+  // Older deployments can still have twelve hours configured for signing.
   const timing = {
     OOPS_VOTE_HOURS: "3", OOPS_SELLER_RESPONSE_HOURS: "3",
     OOPS_FUJI_SIGN_HOURS: "12", OOPS_DEPOSIT_HOURS: "6",
@@ -441,6 +465,14 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect((await publish(buyerIds[2], id)).status).toBe(403);
     const demand = publishResult.parse((await publish(rep, id)).data).items[0];
     expect(demand).toMatchObject({ target: 12, pending: 0, missing: 12, offerable: 12, state: "OPEN" });
+    expect((await publish(rep, id)).status).toBe(409);
+    for (const buyer of [rep, buyerIds[2]]) {
+      expect(notificationList.parse((await call(getNotices, buyer)).data)).toMatchObject({
+        unreadCount: 1,
+        items: [{ entityType: "CAMPAIGN", entityId: id, title: "Đợt gom của nhóm đã được đăng", href: `/campaigns/${id}` }],
+      });
+    }
+    expect(notificationList.parse((await call(getNotices, outsider)).data).items).toEqual([]);
     expect((await put(rep, id, 2, 4)).status).toBe(409);
     expect(needs.parse((await call(getNeeds, buyerIds[2], { id })).data).items[0]).toMatchObject({ myShare: { target: 3 } });
 
@@ -464,6 +496,11 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect([...page1.items, ...page2.items].find(item => item.demandItemId === demand.demandItemId)).toMatchObject({
       missing: 12, offerable: 4,
     });
+    await transaction(client => client.query("update public.demand_items set pending = target where id = $1", [demand.demandItemId]));
+    const available = feed.parse((await call(getFeed, outsider, { path: basePath })).data);
+    expect(available.items.map(item => item.campaignId)).toEqual([another]);
+    expect(available.nextCursor).toBeUndefined();
+    expect(needs.parse((await call(getNeeds, rep, { id })).data).items[0]).toMatchObject({ missing: 12, offerable: 0 });
     expect((await call(getFeed, outsider, { path: basePath + "&cursor=invalid" })).status).toBe(422);
   });
 
@@ -539,16 +576,19 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(sellerOrder.allocations).toEqual(repOrder.allocations.map(({ householdName, ...row }) => row));
     expect((await orderFor(contractId, third)).allocations).toEqual([sellerOrder.allocations[1]]);
     const deposit = sellerOrder.charges[0];
-    expect(sellerOrder).toMatchObject({ state: "AWAIT_COMMITMENTS", qty: 7, roundId, roundOpenBy: expect.any(String) });
+    expect(sellerOrder).toMatchObject({
+      state: "AWAIT_COMMITMENTS", qty: 7, roundId,
+      roundOpenBy: new Date(Date.parse(version.handoffStart) - 6 * 3_600_000).toISOString(),
+    });
     expect(sellerOrder.depositDueAt).toBeUndefined();
     expect(sellerOrder.confirmBy).toBeUndefined();
     expect(deposit.canPay).toBe(false);
     expect((await pay(deposit.chargeId, seller)).status).toBe(409);
     const openedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
-    const confirmBy = new Date(+openedAt + 12 * 3_600_000).toISOString();
+    const confirmBy = new Date(+openedAt + 6 * 3_600_000).toISOString();
     const recordOpening = (deadline: string) => transaction(db =>
       recordVerifiedRoundOpening(db, draftId, version.versionId, roundId, openedAt.toISOString(), deadline));
-    expect(await recordOpening(new Date(+openedAt + 13 * 3_600_000).toISOString())).toBe(false);
+    expect(await recordOpening(new Date(+openedAt + 12 * 3_600_000).toISOString())).toBe(false);
     expect(await recordOpening(confirmBy)).toBe(true);
     expect(await recordOpening(confirmBy)).toBe(false);
     if (mode === "paid") {
@@ -561,22 +601,25 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
         path: `/api/v1/notifications${query}`,
       })).data);
       const first = await inbox(rep, "?limit=1");
-      expect(first.unreadCount).toBe(2);
+      expect(first.unreadCount).toBe(3);
       expect(first.items).toMatchObject([{ title: "Đơn hàng đang chờ bạn ký", href: `/orders/${contractId}` }]);
       expect(first.nextCursor).toBeDefined();
       const older = await inbox(rep, `?limit=1&cursor=${first.nextCursor}`);
       expect(older.items).toMatchObject([{ title: "Nhu cầu của nhóm có đề nghị mới" }]);
-      expect(older.nextCursor).toBeUndefined();
-      expect((await inbox(seller)).items).toMatchObject([{ title: "Đơn hàng đang chờ bạn nộp cọc", href: `/orders/${contractId}` }]);
-
+      expect(older.nextCursor).toBeDefined();
+      expect((await inbox(rep, `?limit=1&cursor=${older.nextCursor}`)).items).toMatchObject([
+        { title: "Đợt gom của nhóm đã được đăng", href: `/campaigns/${campaignId}` },
+      ]);
       const markAll = () => call(patchAllNotices, rep, { method: "PATCH", body: { read: true } });
-      expect(await markAll()).toMatchObject({ status: 200, data: { updatedCount: 4 } });
+      expect(await markAll()).toMatchObject({ status: 200, data: { updatedCount: 5 } });
       expect(await markAll()).toMatchObject({ status: 200, data: { updatedCount: 0 } });
       const read = await inbox(rep);
       expect(read.unreadCount).toBe(0);
-      expect(read.items).toHaveLength(2);
+      expect(read.items).toHaveLength(3);
       expect(read.items.every(notice => Boolean(notice.readAt))).toBe(true);
-      expect((await inbox(seller)).unreadCount).toBe(1);
+      const sellerNotices = (await inbox(seller)).items.filter(notice => notice.entityId === contractId);
+      expect(sellerNotices).toMatchObject([{ title: "Đơn hàng đang chờ bạn nộp cọc", href: `/orders/${contractId}` }]);
+      expect(sellerNotices[0].readAt).toBeUndefined();
     }
     expect(await orderFor(contractId, seller)).toMatchObject({
       confirmBy, depositDueAt: new Date(+openedAt + 6 * 3_600_000).toISOString(),
@@ -611,7 +654,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     if (mode === "expired") {
       await transaction(async db => {
         await db.query(`update public.confirmation_rounds
-           set opens_at = opens_at - interval '13 hours', confirm_by = confirm_by - interval '13 hours'
+           set opens_at = opens_at - interval '7 hours', confirm_by = confirm_by - interval '7 hours'
            where id = $1`, [roundId]);
         expect(await expireFujiStage(db, draftId, version.versionId, "CONFIRMATION_TIMEOUT")).toBe(true);
         expect(await expireFujiStage(db, draftId, version.versionId, "CONFIRMATION_TIMEOUT")).toBe(false);
@@ -633,6 +676,69 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       expect(await stock()).toEqual({ pending: 0, reserved: 7 });
       expect(await demand()).toMatchObject({ offerable: 5, received: 0 });
     }
+  });
+
+  it("holds each household's Yes quantity across competing offers until it is released or becomes an order", async () => {
+    const [rep, second, firstSeller, secondSeller, thirdSeller] = await Promise.all(Array.from({ length: 5 }, newUser));
+    const groupId = await newGroup(rep);
+    const { token } = await makeInvite(rep, groupId);
+    expect((await accept(second, token)).status).toBe(200);
+    const campaignId = await newCampaign(rep, groupId, { collectUntil: dateIn(1), needBy: dateIn(96) });
+    for (const [buyer, qty] of [[rep, 10], [second, 2]] as const) {
+      const saved = cart.parse((await put(buyer, campaignId, qty)).data);
+      expect((await confirm(buyer, campaignId, saved.version)).status).toBe(200);
+    }
+    const { items: [item] } = publishResult.parse((await publish(rep, campaignId)).data);
+    const price = 1_000;
+    const send = async (seller: string) => offer.parse((await call(postOffer, seller, {
+      id: item.demandItemId, method: "POST", body: {
+        qty: 6, unitPriceVnd: price, supportOffer: false,
+        handoffStart: dateIn(48), handoffBy: dateIn(49), handoffPrivate: "Sảnh A",
+      },
+    })).data);
+    const [first, ...competing] = await Promise.all([firstSeller, secondSeller, thirdSeller].map(send));
+    const vote = (id: string, actor: string, qty = 0) => call(postVote, actor, {
+      id, method: "POST", body: qty ? { round: 1, choice: "YES", qty, unitPriceVnd: price } : { round: 1, choice: "NO" },
+    });
+    const readVote = async (id: string, buyer = rep) => offerVoting.parse((await call(getVote, buyer, { id })).data);
+
+    expect((await vote(first.proposalId, second, 2)).status).toBe(200);
+    expect(await readVote(competing[0].proposalId, second)).toMatchObject({ eligible: true, availableQty: 0 });
+    expect((await readVote(competing[0].proposalId)).availableQty).toBe(6);
+    expect((await vote(first.proposalId, second)).status).toBe(200);
+    expect((await readVote(competing[0].proposalId, second)).availableQty).toBe(2);
+
+    expect(offerVoting.parse((await vote(first.proposalId, rep, 6)).data)).toMatchObject({ closed: true, totalQty: 6 });
+    for (const entry of competing) expect((await readVote(entry.proposalId)).availableQty).toBe(4);
+    const attempts = await Promise.all(competing.map(entry => vote(entry.proposalId, rep, 4)));
+    expect(attempts.map(result => result.status).sort()).toEqual([200, 409]);
+    const winnerIndex = attempts.findIndex(result => result.status === 200);
+    const winner = competing[winnerIndex];
+    const loser = competing[1 - winnerIndex];
+    expect((await readVote(loser.proposalId)).availableQty).toBe(0);
+    expect((await vote(winner.proposalId, second)).status).toBe(200);
+    expect((await readVote(loser.proposalId)).availableQty).toBe(0);
+    expect((await call(postSellerResponse, [secondSeller, thirdSeller][winnerIndex], {
+      id: winner.draftId, version: "1", method: "POST", body: { action: "REJECT" },
+    })).status).toBe(200);
+    expect((await readVote(loser.proposalId)).availableQty).toBe(4);
+
+    const { rows: [{ id: membershipId }] } = await transaction(db => db.query<{ id: string }>(
+      "select id from public.memberships where group_id = $1 and user_id = $2 and left_at is null", [groupId, rep],
+    ));
+    const approve = async (seller: string, draftId: string) => {
+      const { latestVersion } = sellerDraftView.parse((await call(getDraft, seller, { id: draftId })).data);
+      return draftVersion.parse(await transaction(db => approveWithFujiEligibility(db, seller, draftId, latestVersion.versionId, {
+        chainId: 43113, contractAddress: "0x" + "1".repeat(40), roundKey: fujiRoundKey(latestVersion.versionId),
+        eligibleWallets: [{ membershipId, wallet: walletOf(rep) }],
+      })));
+    };
+    expect(await approve(firstSeller, first.draftId!)).toMatchObject({ state: "FINALIZED", qty: 6 });
+    expect((await readVote(loser.proposalId)).availableQty).toBe(4);
+    expect((await vote(loser.proposalId, rep, 4)).status).toBe(200);
+    expect((await vote(loser.proposalId, second)).status).toBe(200);
+    expect(await approve([thirdSeller, secondSeller][winnerIndex], loser.draftId!)).toMatchObject({ state: "FINALIZED", qty: 4 });
+    expect(needs.parse((await call(getNeeds, rep, { id: campaignId })).data).items[0]).toMatchObject({ target: 12, pending: 10 });
   });
 
   it("closes voting after every eligible household responds and keeps the representative's handoff role separate", async () => {
@@ -663,8 +769,8 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       },
     })).data);
     const proposal = await send(5);
-    const vote = (id: string, actor: string, round: number, qty = 0) => call(postVote, actor, {
-      id, method: "POST", body: qty ? { round, choice: "YES", qty, unitPriceVnd: price } : { round, choice: "NO" },
+    const vote = (id: string, actor: string, round: number, qty = 0, unitPriceVnd = price) => call(postVote, actor, {
+      id, method: "POST", body: qty ? { round, choice: "YES", qty, unitPriceVnd } : { round, choice: "NO" },
     });
     const repVote = offerVoting.parse((await call(getVote, rep, { id: proposal.proposalId })).data);
     expect(repVote).toMatchObject({ eligible: false, open: true });
@@ -678,9 +784,24 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       open: false, closed: true, myQty: 0, totalQty: 2,
     });
     expect(sellerDraftView.parse((await call(getDraft, seller, { id: proposal.draftId })).data).latestVersion.qty).toBe(2);
+    const previous = sellerDraftView.parse((await call(getDraft, seller, { id: proposal.draftId })).data).latestVersion;
+    const revision = { id: proposal.draftId, version: "1", method: "POST", key: "revise-offer",
+      body: { action: "REVISE_OFFER", qty: 1, unitPriceVnd: 1_500, note: "Đã cập nhật lượng" } };
+    expect((await call(postSellerResponse, second, revision)).status).toBe(404);
     expect((await call(postSellerResponse, seller, {
-      id: proposal.draftId, version: "1", method: "POST", body: { action: "REQUEST_CHANGES", note: "Kiểm tra lại" },
-    })).status).toBe(200);
+      ...revision, key: undefined, body: { ...revision.body, qty: 6 },
+    })).status).toBe(409);
+    const updated = await call(postSellerResponse, seller, revision);
+    expect(updated).toMatchObject({ status: 200, data: {
+      state: "CHANGES_REQUESTED", qty: previous.qty, unitPriceVnd: price, versionHash: previous.versionHash,
+    } });
+    expect(await call(postSellerResponse, seller, revision)).toEqual(updated);
+    expect((await call(postSellerResponse, seller, { ...revision, key: undefined })).status).toBe(409);
+    expect(offerVoting.parse((await call(getVote, second, { id: proposal.proposalId })).data)).toMatchObject({
+      round: 2, open: true, totalQty: 0, availableQty: 1, offerQty: 1, unitPriceVnd: 1_500,
+    });
+    expect((await vote(proposal.proposalId, second, 1, 2)).status).toBe(409);
+    expect((await vote(proposal.proposalId, second, 2, 1, price)).status).toBe(409);
     expect(offerVoting.parse((await vote(proposal.proposalId, second, 2)).data)).toMatchObject({ open: true, myQty: 0 });
     expect(offerVoting.parse((await vote(proposal.proposalId, third, 2)).data)).toMatchObject({
       round: 2, open: false, closed: true, myQty: 0, totalQty: 0,
@@ -706,7 +827,10 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     });
     expect((await call(postVoteClose, rep, close)).data).toEqual({ closed: true });
     expect((await call(postVoteClose, rep, close)).data).toEqual({ closed: false });
+    expect((await call(postSellerResponse, seller, { ...revision, id: next.draftId, key: undefined })).status).toBe(200);
+    expect((await vote(next.proposalId, second, 2, 1, 1_500)).status).toBe(200);
     const { latestVersion: version } = sellerDraftView.parse((await call(getDraft, seller, { id: next.draftId })).data);
+    expect(version).toMatchObject({ version: 2, state: "SUBMITTED", qty: 1, unitPriceVnd: 1_500, totalVnd: 1_500 });
     const approved = draftVersion.parse(await transaction(db => approveWithFujiEligibility(db, seller, next.draftId!, version.versionId, {
       chainId: 43113, contractAddress: "0x" + "1".repeat(40), roundKey: fujiRoundKey(version.versionId),
       eligibleWallets: [{ membershipId: buyerMembership, wallet: walletOf(second) }],
@@ -731,7 +855,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     const openedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
     await transaction(async db => {
       expect(await recordVerifiedRoundOpening(db, next.draftId!, version.versionId, roundId, openedAt.toISOString(),
-        new Date(+openedAt + 12 * 3_600_000).toISOString())).toBe(true);
+        new Date(+openedAt + 6 * 3_600_000).toISOString())).toBe(true);
       await db.query(`insert into public.confirmations (round_id, membership_id, chain_id, tx_hash, log_index, block_no)
         values ($1, $2, 43113, $3, 0, 1)`, [roundId, buyerMembership, version.versionHash]);
     });
@@ -862,7 +986,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     }
     const { items: [item] } = publishResult.parse((await publish(rep, campaignId)).data);
     const id = item.demandItemId;
-    // Pending stock can take all offerable units while Feed still shows missing units.
+    // A direct offer can still cover backup demand while pending stock holds all available units.
     await transaction(async client => {
       await client.query("update public.demand_items set pending = target where id = $1", [id]);
       await client.query("update public.demand_shares set pending = target where demand_item_id = $1", [id]);
@@ -898,7 +1022,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     });
     expect((await call(getOffers, outsider, { id })).status).toBe(404);
     const firstNotice = notificationList.parse((await call(getNotices, rep, { path: "/test/notices?limit=1" })).data);
-    expect(firstNotice.unreadCount).toBe(2);
+    expect(firstNotice.unreadCount).toBe(3);
     expect(firstNotice.items).toHaveLength(1);
     expect(firstNotice.items[0]).toMatchObject({
       entityId: id, title: "Nhu cầu của nhóm có đề nghị mới",
@@ -907,7 +1031,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     const nextNotice = notificationList.parse((await call(getNotices, rep, {
       path: `/test/notices?limit=1&cursor=${firstNotice.nextCursor}`,
     })).data);
-    expect(nextNotice.unreadCount).toBe(2);
+    expect(nextNotice.unreadCount).toBe(3);
     expect(nextNotice.items.map(item => item.href).concat(firstNotice.items[0].href)).toEqual(
       expect.arrayContaining([
         `/trade/needs/${id}?proposal=${proposal.proposalId}`,
@@ -1069,7 +1193,7 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     const original = offers.parse((await call(getOffers, tight.seller, { id: tight.item.demandItemId })).data).items[0];
     const options = { id: tight.item.demandItemId, method: "POST", body: original.terms };
     expect((await call(postOffer, tight.seller, { ...options, body: {
-      ...options.body, handoffStart: dateIn(19.9), handoffBy: dateIn(21),
+      ...options.body, handoffStart: dateIn(11.9), handoffBy: dateIn(12.1),
     } })).status).toBe(409);
     const spareId = await legacyOffer(tight.item.demandItemId, tight.seller, 48, 2_000);
     await transaction(db => db.query(
@@ -1084,6 +1208,11 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
     expect(draft.parse((await call(getDraft, tight.rep, { id: tight.id })).data)).toMatchObject({
       draftOpen: true, editRevision: 1,
     });
+    const handoff = dateIn(12.1);
+    await transaction(db => db.query("update public.campaigns set need_by = $2 where id = $1", [tight.campaignId, handoff]));
+    expect((await call(postOffer, tight.seller, { ...options, body: {
+      ...options.body, handoffStart: handoff, handoffBy: handoff,
+    } })).status).toBe(201);
 
     const { rep, second, seller, id, edit, submit, respond, revise } = await negotiationWithDraft(48);
     expect((await edit(second, 2, 0)).status).toBe(200);
@@ -1629,5 +1758,141 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       await client.query("set local role authenticated");
       await client.query("delete from public.groups where false");
     })).rejects.toMatchObject({ code: "42501" });
+  });
+
+  it("provides admin overview, SIM deposit/goods reconciliation, mismatched refund resolution, and audit trail", async () => {
+    const { id, rep, second, third, seller } = await negotiationWithDraft(48, 2_000);
+    await readyDraft(id, rep, seller, [[rep, 2], [second, 2], [third, 3]]);
+    const order = contract.parse((await finalize(id, rep, "admin-reconcile")).data);
+    const orderId = order.contractId;
+    const ops = await makeOps();
+
+    expect(me.parse((await call(getMe, ops)).data).isOps).toBe(true);
+    expect(me.parse((await call(getMe, seller)).data).isOps).toBeUndefined();
+
+    // Non-ops users receive 403 across all admin/ops endpoints
+    for (const denied of [
+      call(getOpsOverview, seller),
+      call(getOpsCharges, seller),
+      call(getOpsContracts, seller),
+      call(getOpsContractDetail, seller, { id: orderId }),
+      call(getOpsAudit, seller),
+    ]) {
+      expect((await denied).status).toBe(403);
+    }
+
+    const initialOverview = opsOverview.parse((await call(getOpsOverview, ops)).data);
+    expect(initialOverview.paymentMode).toBe("SIM");
+    expect(initialOverview.contracts.total).toBeGreaterThanOrEqual(1);
+
+    const charges = opsChargeList.parse((await call(getOpsCharges, ops, {
+      path: `/api/v1/ops/charges?contractId=${orderId}`,
+    })).data).items;
+    expect(charges).toHaveLength(1);
+    const depositCharge = charges[0];
+    expect(depositCharge).toMatchObject({ kind: "DEPOSIT", state: "PENDING", amountVnd: 50_000, canApplyNow: true });
+
+    // Mismatched deposit triggers REVIEW fund event
+    const mismatchRef = "ADM-MISMATCH-" + randomUUID();
+    const mismatchResult = reconcileSimChargeResult.parse((await call(postReconcileCharge, ops, {
+      id: depositCharge.chargeId,
+      method: "POST",
+      key: "mismatch-1",
+      body: { reference: mismatchRef, amountVnd: 45_000 },
+    })).data);
+    expect(mismatchResult).toMatchObject({ disposition: "REVIEW", chargeState: "PENDING", contractState: "AWAIT_DEPOSIT" });
+
+    // Admin converts REVIEW fund event to REFUND_DUE disbursement
+    const refundOutcome = refundFundEventResult.parse((await call(postRefundFundEvent, ops, {
+      id: mismatchResult.fundEventId,
+      method: "POST",
+      key: "refund-mismatch-1",
+      body: { note: "Hoàn tiền cọc thiếu" },
+    })).data);
+    expect(refundOutcome.disposition).toBe("REFUND_DUE");
+    expect((await call(postRefundFundEvent, ops, {
+      id: mismatchResult.fundEventId,
+      method: "POST",
+      key: "refund-mismatch-2",
+      body: {},
+    })).data).toEqual(refundOutcome);
+
+    // Exact deposit reconciliation advances contract to AWAIT_PAYMENT and creates GOODS charges
+    const exactRef = "ADM-EXACT-" + randomUUID();
+    const exactResult = reconcileSimChargeResult.parse((await call(postReconcileCharge, ops, {
+      id: depositCharge.chargeId,
+      method: "POST",
+      key: "exact-1",
+      body: { reference: exactRef, amountVnd: 50_000 },
+    })).data);
+    expect(exactResult).toMatchObject({ disposition: "APPLIED", chargeState: "RECEIVED", contractState: "AWAIT_PAYMENT" });
+
+    // Duplicate reference with different amount/charge conflicts (409)
+    expect((await call(postReconcileCharge, ops, {
+      id: depositCharge.chargeId,
+      method: "POST",
+      key: "conflict-1",
+      body: { reference: exactRef, amountVnd: 10_000 },
+    })).status).toBe(409);
+
+    // Extra SIM payment after RECEIVED creates REFUND_DUE disbursement
+    const extraRef = "ADM-EXTRA-" + randomUUID();
+    const extraResult = reconcileSimChargeResult.parse((await call(postReconcileCharge, ops, {
+      id: depositCharge.chargeId,
+      method: "POST",
+      key: "extra-1",
+      body: { reference: extraRef, amountVnd: 5_000 },
+    })).data);
+    expect(extraResult).toMatchObject({ disposition: "REFUND_DUE", disbursementId: expect.any(String) });
+
+    // Goods charges are visible to admin; test both admin reconcile and user demo pay audit visibility
+    const goodsCharges = opsChargeList.parse((await call(getOpsCharges, ops, {
+      path: `/api/v1/ops/charges?contractId=${orderId}&kind=GOODS`,
+    })).data).items;
+    expect(goodsCharges).toHaveLength(3);
+    expect((await pay(goodsCharges[0].chargeId, goodsCharges[0].payerId)).status).toBe(200);
+    for (const goodsCharge of goodsCharges.slice(1)) {
+      const paid = reconcileSimChargeResult.parse((await call(postReconcileCharge, ops, {
+        id: goodsCharge.chargeId,
+        method: "POST",
+        key: `goods-${goodsCharge.chargeId}`,
+        body: { reference: "ADM-GOODS-" + randomUUID(), amountVnd: goodsCharge.amountVnd },
+      })).data);
+      expect(paid.disposition).toBe("APPLIED");
+    }
+    expect((await orderFor(orderId, seller)).state).toBe("AWAIT_HANDOFF");
+
+    // Post one of the refund disbursements and inspect POSTED + contract detail + audit log
+    const pendingRefunds = opsList.parse((await call(getOps, ops, {
+      path: `/api/v1/ops/disbursements?state=PENDING&contractId=${orderId}`,
+    })).data).items;
+    expect(pendingRefunds.length).toBeGreaterThanOrEqual(2);
+    const postedRef = "ADM-OUT-" + randomUUID();
+    expect(postTransferResult.parse((await call(postTransfer, ops, {
+      id: refundOutcome.disbursementId,
+      method: "POST",
+      body: { transferRef: postedRef },
+    })).data).state).toBe("POSTED");
+
+    const postedList = opsList.parse((await call(getOps, ops, {
+      path: `/api/v1/ops/disbursements?state=POSTED&contractId=${orderId}`,
+    })).data).items;
+    expect(postedList).toEqual([expect.objectContaining({ disbursementId: refundOutcome.disbursementId, transferRef: postedRef, state: "POSTED" })]);
+
+    const contractsPage = opsContractList.parse((await call(getOpsContracts, ops, {
+      path: "/api/v1/ops/contracts?state=AWAIT_HANDOFF",
+    })).data);
+    expect(contractsPage.items.some(item => item.contractId === orderId)).toBe(true);
+
+    const detail = opsContractDetail.parse((await call(getOpsContractDetail, ops, { id: orderId })).data);
+    expect(detail.charges).toHaveLength(4);
+    expect(detail.auditEvents.some(ev => ev.action === "SIM_REVIEW_REFUND_CREATED")).toBe(true);
+    expect(detail.auditEvents.some(ev => ev.action === "SIM_FUND_APPLIED")).toBe(true);
+
+    const auditPage = opsAuditList.parse((await call(getOpsAudit, ops, {
+      path: `/api/v1/ops/audit?entityType=CONTRACT&entityId=${orderId}&limit=5`,
+    })).data);
+    expect(auditPage.items.length).toBeGreaterThan(0);
+    expect((await call(getOpsAudit, ops, { path: "/api/v1/ops/audit?cursor=bad!" })).status).toBe(422);
   });
 });

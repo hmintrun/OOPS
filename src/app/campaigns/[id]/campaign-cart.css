@@ -117,7 +117,7 @@
 }
 
 .campaign-demand-stats > div { display: flex; flex-direction: column; justify-content: space-between; }
-.campaign-demand-stats dt { color: var(--oops-navy-600); font-size: .75rem; }
+.campaign-demand-stats dt { color: var(--oops-navy-600); font-size: 0.8125rem; }
 .campaign-demand-stats dd { margin-block-start: 2px; font-size: .875rem; font-weight: 700; }
 
 @media (width >= 40rem) {

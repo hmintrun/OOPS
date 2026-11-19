@@ -26,6 +26,15 @@ import {
   walletLinkResult,
 } from "@/contracts/foundation";
 import {
+  createReliefInput,
+  reliefActionInput,
+  reliefList,
+  reliefRequest,
+  type ReliefList,
+  type ReliefNeedTag,
+  type ReliefRequest,
+} from "@/contracts/relief";
+import {
   CATALOG_FRESH_MS,
   clearClientCache,
   invalidateClientCache,
@@ -47,11 +56,13 @@ export type Catalog = z.infer<typeof catalog>;
 export type Needs = z.infer<typeof needs>;
 export type PublishResult = z.infer<typeof publishResult>;
 export type Feed = z.infer<typeof feed>;
+export type { ReliefList, ReliefNeedTag, ReliefRequest };
 
 export type LinkWalletBody = z.input<typeof walletLinkInput>;
 export type CreateInviteBody = z.input<typeof createInviteInput>;
 export type CreateCampaignBody = z.input<typeof createCampaignInput>;
 export type PutCartBody = z.input<typeof putCartInput>;
+export type CreateReliefBody = z.input<typeof createReliefInput>;
 
 /**
  * Lỗi có kiểu ném ra từ mọi lời gọi API. `status` là mã HTTP (0 khi không gửi
@@ -315,4 +326,51 @@ export function getFeed(filters: FeedFilters = {}): Promise<Feed> {
   if (filters.limit !== undefined) params.set("limit", String(filters.limit));
   const query = params.toString();
   return apiFetch(`/api/v1/feed${query ? `?${query}` : ""}`, { schema: feed });
+}
+
+/** `GET /api/v1/relief` — danh sách tin báo cứu trợ khẩn cấp đang mở hoặc đã có đội nhận. */
+export function getReliefRequests(): Promise<ReliefList> {
+  return apiFetch("/api/v1/relief", { schema: reliefList });
+}
+
+/** `POST /api/v1/relief` — gửi yêu cầu cứu trợ khẩn cấp mới. */
+export function createReliefRequest(
+  input: CreateReliefBody,
+  idempotencyKey?: string,
+): Promise<ReliefRequest> {
+  const body = createReliefInput.parse(input);
+  return apiFetch("/api/v1/relief", {
+    method: "POST",
+    body,
+    idempotencyKey,
+    schema: reliefRequest,
+  });
+}
+
+/** `POST /api/v1/relief/{id}/claim` — nhận đi giao cứu trợ cho hộ dân. */
+export function claimReliefRequest(
+  reliefId: string,
+  idempotencyKey?: string,
+): Promise<ReliefRequest> {
+  const body = reliefActionInput.parse({});
+  return apiFetch(`/api/v1/relief/${encodeURIComponent(reliefId)}/claim`, {
+    method: "POST",
+    body,
+    idempotencyKey,
+    schema: reliefRequest,
+  });
+}
+
+/** `POST /api/v1/relief/{id}/close` — đóng tin cứu trợ. */
+export function closeReliefRequest(
+  reliefId: string,
+  idempotencyKey?: string,
+): Promise<ReliefRequest> {
+  const body = reliefActionInput.parse({});
+  return apiFetch(`/api/v1/relief/${encodeURIComponent(reliefId)}/close`, {
+    method: "POST",
+    body,
+    idempotencyKey,
+    schema: reliefRequest,
+  });
 }

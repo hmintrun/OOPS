@@ -6,6 +6,7 @@ import { isoDateTime, uuid, type Campaign, type Cart, type CatalogItem, type Dem
   type putCartInput } from "@/contracts/foundation";
 import { ApiFailure, conflict, invalid, notFound } from "./errors";
 import { campaignDto, requireMember, requireRepresentative } from "./groups";
+import { persistNotifications } from "./notifications";
 import type { prepareProfileEligibility } from "./profiles";
 
 type CampaignRow = {
@@ -290,6 +291,10 @@ export async function publishCampaign(client: PoolClient, userId: string, campai
     "insert into public.audit_events (actor_id, entity_type, entity_id, action) values ($1, 'CAMPAIGN', $2, 'PUBLISHED')",
     [userId, campaignId],
   );
+  const { rows: members } = await client.query<{ user_id: string }>(
+    "select user_id from public.memberships where group_id = $1 and left_at is null", [row.group_id],
+  );
+  await persistNotifications(client, "CAMPAIGN", campaignId, `campaign:${campaignId}:PUBLISHED`, members.map(member => member.user_id));
   const { rows } = await client.query<DemandRow>(
     `select ${demandColumns} ${demandFrom} where d.campaign_id = $1 order by s.code, d.id`,
     [campaignId],
@@ -315,7 +320,7 @@ export async function readFeed(client: PoolClient, filters: z.output<typeof feed
     `select ${demandColumns},
        to_char(c.need_by at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "cursorNeedBy"
      ${demandFrom}
-     where c.status = 'PUBLISHED' and c.need_by > clock_timestamp() and d.target - d.reserved - d.received > 0
+     where c.status = 'PUBLISHED' and c.need_by > clock_timestamp() and d.target > d.pending + d.reserved + d.received
        and ($1::text is null or d.district_code = $1)
        and ($2::text is null or d.ward_code = $2)
        and ($3::public.catalog_category is null or s.category = $3)

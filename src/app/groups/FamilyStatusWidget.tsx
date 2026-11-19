@@ -49,11 +49,14 @@ export function FamilyStatusWidget({
     setTimeout(() => setShowSavedToast(false), 3000);
   };
 
+  const housing = HOUSING_LABELS[data.housingType];
+  const income = data.incomeLevel ? INCOME_LABELS[data.incomeLevel] : undefined;
+
   return (
     <>
       {/* Toast thông báo lưu thành công */}
       {showSavedToast && (
-        <div role="status" className="fixed top-4 right-4 z-50 flex items-center gap-2 rounded-2xl bg-green-700 px-4 py-3 text-white shadow-xl animate-in fade-in slide-in-from-top-2">
+        <div role="status" className="ui-toast fixed top-4 right-4 z-50 flex items-center gap-2 rounded-2xl bg-green-700 px-4 py-3 text-white shadow-xl">
           <MaterialSymbol name="check_circle" size={20} filled />
           <span className="text-sm font-bold">Đã lưu hiện trạng gia đình</span>
         </div>
@@ -64,17 +67,32 @@ export function FamilyStatusWidget({
         <div className="family-status__header">
           <div className="family-status__identity">
             <div className="family-status__portrait">
-              <img src="/assets/hero/family.webp" alt="" width={1128} height={934} />
+              <img src="/assets/hero/family.webp" alt="" width={52} height={52} decoding="async" />
             </div>
-            <div>
+            <div className="min-w-0">
               <CardTitle as="h2" className="ui-card__title--flush">Hiện trạng gia đình</CardTitle>
-              <p className="family-status__subtitle">{data.members} người</p>
+              <div className="family-status__tags">
+                <span className="family-status__tag">
+                  <MaterialSymbol name="group" size={15} />
+                  {data.members} người
+                </span>
+                <span className="family-status__tag">
+                  <MaterialSymbol name={housing.icon} size={15} />
+                  {housing.label}
+                </span>
+                {income && (
+                  <span className="family-status__tag">
+                    <MaterialSymbol name="volunteer_activism" size={15} />
+                    {income.badge}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
-          <Button full={false} onClick={() => setIsOpen(true)}>
+          <Button full={false} variant="secondary" onClick={() => setIsOpen(true)}>
             <MaterialSymbol name="edit_note" size={18} />
-            Cập nhật hiện trạng
+            Cập nhật
           </Button>
         </div>
 

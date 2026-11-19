@@ -23,7 +23,6 @@ import { communityFeedPage } from "./community-feed";
 import { HCM_PROVINCE_CODE, locationLabel } from "@/lib/locations";
 import { DemandCard, demandCategoryVisual } from "./DemandCard";
 import { FEED_PAGE_SIZE, FeedPagination } from "./FeedPagination";
-import { SosReliefSection } from "./SosReliefSection";
 import { SAMPLE_DEMANDS } from "@/app/ui-preview/demo/sampleDemands";
 import { WidgetDialog } from "@/components/ui/WidgetDialog";
 import dynamic from "next/dynamic";
@@ -317,12 +316,11 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
   return (
     <AppShell
       title="Nhu cầu quanh bạn"
-      subtitle="Chào hàng cho các nhóm quanh bạn. Nhu cầu của nhóm mình nằm trong Đơn hàng."
+      subtitle="Chào hàng hoặc tặng nhu yếu phẩm cho các hộ quanh bạn."
       illustration="flood-relief"
       bodyClassName="ui-stack"
       bare
     >
-      <SosReliefSection />
       <Card padding="tight" className="feed-filter-card">
         <CardTitle as="h2">Bộ lọc nhu cầu</CardTitle>
         <div className="feed-categories" role="group" aria-label="Danh mục">
@@ -370,10 +368,10 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
         <EmptyState
           icon="storefront"
           tone="sky"
-          title="Chưa có nhu cầu nào phù hợp"
+          title="Chưa có nhu cầu phù hợp"
           description={category || appliedWard
-            ? "Thử xóa bộ lọc để xem các nhu cầu đang mở quanh khu vực nhé."
-            : "Khi có nhóm đăng nhu cầu gom chung, bạn sẽ thấy ngay tại đây."}
+            ? "Thử bỏ bộ lọc để xem thêm."
+            : "Nhu cầu mới từ các nhóm sẽ hiện tại đây."}
           action={category || appliedWard ? (
             <Button variant="secondary" full={false} onClick={clearFilters}>Xóa bộ lọc</Button>
           ) : undefined}

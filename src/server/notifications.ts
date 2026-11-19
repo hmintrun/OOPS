@@ -49,7 +49,7 @@ export async function listNotifications(db: PoolClient, userId: string, filters:
     `with own as (
        select n.id, n.user_id, upper(n.entity_type) as entity_type, n.entity_id, n.event_key, n.read_at,
          coalesce((to_jsonb(n)->>'created_at')::timestamptz, o.processed_at) as occurred_at,
-         o.payload->>'state' as event_state,
+         case when o.payload->>'voteReopened' = 'true' then 'VOTE_REOPENED' else o.payload->>'state' end as event_state,
          case when upper(n.entity_type) = 'NEGOTIATION_VERSION'
            and n.event_key = concat('negotiation-version:', n.entity_id, ':FINALIZED') then n.entity_id
            else c.source_version_id end as finalized_version_id

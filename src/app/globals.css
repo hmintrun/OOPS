@@ -50,6 +50,12 @@
     text-rendering: optimizeLegibility;
   }
 
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
   body {
     font-family: var(--oops-font-sans);
     color: var(--oops-navy-900);

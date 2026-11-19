@@ -33,5 +33,6 @@ yarn-error.log*
 *.swp
 *.swo
 
-# Claude Code session files & worktrees (local, never commit)
+# Claude Code & Agent session files / skills (local, never commit)
 .claude/
+.agents/
