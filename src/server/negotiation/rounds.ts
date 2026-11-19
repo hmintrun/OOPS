@@ -9,6 +9,7 @@ import { requireMember } from "../groups";
 import { lockDraft } from "./drafts";
 import { latestVersion, versionDto, type VersionRow } from "./version-records";
 import { recordVersionState } from "./versions";
+import { persistNotifications } from "../notifications";
 import { demoTiming, enqueueOrderDeadlines } from "../orders/events";
 import { advanceCommittedOrder, createCommittedOrder } from "../orders/commitments";
 import { cancelUnderLock } from "../orders/ledger";
@@ -198,6 +199,12 @@ export async function recordVerifiedRoundOpening(
     [`negotiation-round:${roundId}:FUJI_CONFIRMATION_DUE`,
       JSON.stringify({ draftId, versionId, roundId, versionHash: version.version_hash }), opened.confirm_by],
   );
+  const { rows: participants } = await db.query<{ user_id: string }>(
+    `select m.user_id from public.confirmation_participants p
+     join public.memberships m on m.id = p.membership_id where p.round_id = $1`, [roundId],
+  );
+  await persistNotifications(db, "CONTRACT", contractId, `contract-signing:${roundId}`,
+    participants.map(row => row.user_id));
   return true;
 }
 

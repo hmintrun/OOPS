@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { PwaProvider } from "@/components/pwa";
 import { ErrorToastProvider } from "@/components/ui/error-toast";
+import { NotificationProvider } from "@/components/notifications";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -34,7 +35,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           rel="stylesheet"
         />
       </head>
-      <body><PwaProvider><ErrorToastProvider>{children}</ErrorToastProvider></PwaProvider></body>
+      <body><PwaProvider><ErrorToastProvider><NotificationProvider>{children}</NotificationProvider></ErrorToastProvider></PwaProvider></body>
     </html>
   );
 }

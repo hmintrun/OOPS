@@ -16,7 +16,7 @@ import { orderStates } from "./order-labels";
 import { orderProgress, orderStageDetail, orderTabs } from "./order-progress";
 import { readReceivingContact } from "@/lib/receiving-contact";
 import "./orders.css";
-import { OrdersNotificationBar } from "./OrdersNotificationBar";
+import { useNotifications } from "@/components/notifications";
 import { readGroupDemandOrders, type GroupDemandOrder } from "./group-demands";
 
 const pageSize = 12;
@@ -87,11 +87,15 @@ function SentOfferCard({ offer }: { offer: SentOffer }) {
 
 export default function OrdersPage() {
   const [role, setRole] = useState(() => readClientCache<string>("orders:role")?.value ?? "");
+  const { page: notifications } = useNotifications();
+  const unread = notifications?.unreadCount ?? 0;
   return <AppShell title="Đơn hàng" subtitle="Theo dõi đơn, bàn giao và thanh toán." illustration="parcel" bare
     pageActions={(
       <nav aria-label="Tiện ích đơn hàng" className="orders-shortcuts">
-        <Link href="/notifications" aria-label="Thông báo" title="Thông báo" className="ui-btn ui-btn--ghost">
+        <Link href="/notifications" aria-label={unread ? `Thông báo, ${unread} chưa đọc` : "Thông báo"}
+          title="Thông báo" className="ui-btn ui-btn--ghost orders-notification-link">
           <MaterialSymbol name="notifications" size={20} />
+          {unread > 0 && <span className="orders-notification-count" aria-hidden="true">{unread}</span>}
           <span className="hidden sm:inline">Thông báo</span>
         </Link>
         <Link href="/ops" aria-label="Đối soát SIM" title="Đối soát SIM" className="ui-btn ui-btn--ghost">
@@ -102,7 +106,6 @@ export default function OrdersPage() {
     )}
   >
     <div className="ui-stack">
-      <OrdersNotificationBar />
       <label className="orders-role-filter">
         <span className="text-label">Vai trò</span>
         <select

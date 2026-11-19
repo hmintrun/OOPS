@@ -267,7 +267,7 @@ Checkout QR và webhook trong mục này phục vụ tích hợp sau demo. MVP c
 | `POST /contracts/{id}/terminations`<br>`POST /terminations/{id}/accept`<br>Hai bên hợp đồng | Đề xuất {version, reason: EXCUSED_CANCEL, note?}. Bên kia duyệt {} nếu hai bên đồng ý hủy theo điều khoản. Khi đề xuất và duyệt, hợp đồng phải còn PENDING hoặc RESERVED về lượng, chưa có biên nhận được áp dụng. | 201 {terminationId, state} hoặc 200 Contract. Giải phóng lượng đúng một lần và hoàn theo điều khoản. 409 nếu phiên bản đã đổi, biên nhận đã được áp dụng hoặc hợp đồng phải xử lý theo nhánh quá hạn thu. |
 | `GET /ops/disbursements`<br>Tài khoản vận hành | state=PENDING, cursor?, limit?. | 200 {items: [{disbursementId, contractId, kind, amountVnd, state}], nextCursor?}. |
 | `POST /ops/disbursements/{id}/post`<br>Tài khoản vận hành | {transferRef}. Demo dùng mã chuyển SIM duy nhất cho khoản đủ điều kiện. Kiểm và ghi dưới khóa của hợp đồng và khoản chi. | 200 {disbursementId, state: POSTED, contractState}. Gửi lại cùng mã của cùng khoản trả kết quả đã ghi. 409 nếu mã thuộc khoản khác, khoản bị khóa hoặc khoản đã POSTED bằng mã khác. |
-| `GET /notifications`<br>`PATCH /notifications/{id}`<br>Chủ thông báo | GET cursor?, limit?. PATCH {read: true}. | 200 danh sách hoặc mục đã đọc. entityType và entityId mở đúng nhu cầu, bản thương lượng, vòng xác nhận hoặc hợp đồng. |
+| `GET /notifications`<br>`PATCH /notifications/{id}`<br>Chủ thông báo | GET cursor?, limit?. PATCH {read: true}. | GET trả `items`, tổng `unreadCount` qua mọi trang và `nextCursor?`. Mục có `title`, `detail`, `icon`, cùng `itemName?`, `href?` và `createdAt?`. PATCH trả mục với `readAt`. |
 
 Đổi giá/lượng và đổi lịch sau khi chốt thuộc phạm vi sau demo.
 

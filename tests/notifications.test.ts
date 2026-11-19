@@ -1,0 +1,58 @@
+import { describe, expect, it } from "vitest";
+import { notification, notificationList } from "@/contracts/orders";
+import { describeNotification } from "@/server/notification-content";
+
+const needId = "10000000-0000-4000-8000-000000000001";
+const proposalId = "20000000-0000-4000-8000-000000000001";
+const versionId = "30000000-0000-4000-8000-000000000001";
+const draftId = "40000000-0000-4000-8000-000000000001";
+const contractId = "50000000-0000-4000-8000-000000000001";
+
+describe("notification content", () => {
+  it("opens the exact offer when a demand gets a new proposal", () => {
+    expect(describeNotification({
+      entityType: "DEMAND_ITEM", entityId: needId, eventKey: `offer-created:${proposalId}`, itemName: "Nước uống",
+    })).toMatchObject({
+      title: "Nhu cầu của nhóm có đề nghị mới",
+      itemName: "Nước uống",
+      href: `/trade/needs/${needId}?proposal=${proposalId}`,
+    });
+  });
+
+  it.each([
+    ["SUBMITTED", "Đề nghị của bạn có cập nhật"],
+    ["CHANGES_REQUESTED", "Người bán yêu cầu sửa đề nghị"],
+    ["AWAIT_REP_APPROVAL", "Đề nghị đang chờ đại diện duyệt"],
+    ["EXPIRED", "Đề nghị đã hết hạn"],
+  ])("resolves the %s version notice to its draft", (state, title) => {
+    expect(describeNotification({
+      entityType: "NEGOTIATION_VERSION", entityId: versionId, draftId,
+      eventKey: `negotiation-version:${versionId}:${state}`,
+    })).toMatchObject({ title, href: `/trade/drafts/${draftId}` });
+  });
+
+  it("distinguishes creating an order, opening signing, and moving to handoff", () => {
+    const order = { entityType: "CONTRACT", entityId: contractId };
+    const titles = [
+      `contract:${contractId}:1:FINALIZED`,
+      `contract-signing:${versionId}`,
+      `contract:${contractId}:3:HANDOFF_ELIGIBLE`,
+    ].map(eventKey => describeNotification({ ...order, eventKey }).title);
+    expect(titles).toEqual([
+      "Đơn hàng đã được lập",
+      "Đơn hàng đang chờ bạn ký",
+      "Đơn đã xác nhận và chuyển sang giao hàng",
+    ]);
+  });
+
+  it("keeps legacy notices readable without claiming an event or exposing an arbitrary link", () => {
+    const legacy = { notificationId: versionId, entityType: "CONTRACT", entityId: contractId };
+    const content = describeNotification({ ...legacy, eventKey: "old-notice" });
+    expect(content).toMatchObject({ title: "Cập nhật đơn hàng", href: `/orders/${contractId}` });
+    expect(notification.parse(legacy)).toEqual(legacy);
+    expect(notificationList.parse({ items: [{ ...legacy, ...content }], unreadCount: 37 }).unreadCount).toBe(37);
+    expect(notificationList.safeParse({
+      items: [{ ...legacy, ...content, href: "//example.test/orders" }], unreadCount: 1,
+    }).success).toBe(false);
+  });
+});

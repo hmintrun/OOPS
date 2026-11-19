@@ -73,8 +73,17 @@ export const postTransferResult = z.strictObject({
 export const notification = z.strictObject({
   notificationId: uuid, entityType: z.string(), entityId: uuid, readAt: isoDateTime.optional(),
 });
+const notificationItem = notification.extend({
+  title: z.string(), detail: z.string(), icon: z.string(), itemName: z.string().optional(),
+  href: z.string().regex(/^\/(?:orders|trade|campaigns)(?:\/|\?|$)/).optional(),
+  createdAt: isoDateTime.optional(),
+});
 export const notificationQuery = z.strictObject(pageQuery);
-export const notificationList = z.strictObject({ items: z.array(notification), nextCursor: uuid.optional() });
+export const notificationList = z.strictObject({
+  items: z.array(notificationItem), unreadCount: amount, nextCursor: uuid.optional(),
+});
+export type NotificationItem = z.infer<typeof notificationItem>;
+export type NotificationList = z.infer<typeof notificationList>;
 export const notificationInput = z.strictObject({ read: z.literal(true) });
 
 export type Contract = z.infer<typeof contract>;

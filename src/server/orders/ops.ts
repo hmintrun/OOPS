@@ -1,7 +1,7 @@
 import "server-only";
 import type { PoolClient } from "pg";
 import type { z } from "zod";
-import type { Contract, notificationQuery, opsQuery } from "@/contracts/orders";
+import type { Contract, opsQuery } from "@/contracts/orders";
 import { conflict, forbidden, notFound } from "../errors";
 import { recordOrderEvent } from "./events";
 import { findOrder } from "./records";
@@ -72,34 +72,4 @@ export async function postDisbursement(db: PoolClient, actorId: string, id: stri
   return { disbursementId: id, state: "POSTED" as const, contractState: completed ? "COMPLETED" as const : order.state };
 }
 
-type Notice = { id: string; entity_type: string; entity_id: string; read_at: Date | null };
-function noticeDto(row: Notice) {
-  return { notificationId: row.id, entityType: row.entity_type, entityId: row.entity_id, ...(row.read_at && { readAt: row.read_at.toISOString() }) };
-}
-
-export async function listNotifications(db: PoolClient, userId: string, filters: z.output<typeof notificationQuery>) {
-  const limit = filters.limit ?? 20;
-  const { rows } = await db.query<Notice>(
-    "select * from public.notifications where user_id = $1 and ($2::uuid is null or id > $2) order by id limit $3",
-    [userId, filters.cursor ?? null, limit + 1],
-  );
-  return { items: rows.slice(0, limit).map(noticeDto), ...(rows.length > limit && { nextCursor: rows[limit - 1].id }) };
-}
-
-export async function markNotificationRead(db: PoolClient, userId: string, id: string) {
-  const { rows: [row] } = await db.query<Notice>(
-    "update public.notifications set read_at = coalesce(read_at, clock_timestamp()) where id = $1 and user_id = $2 returning *", [id, userId],
-  );
-  if (!row) throw notFound();
-  return noticeDto(row);
-}
-
-export async function persistNotifications(
-  db: PoolClient, entityType: string, entityId: string, eventKey: string, recipientUserIds: string[],
-) {
-  await db.query(
-    `insert into public.notifications (user_id, entity_type, entity_id, event_key)
-     select u, $2, $3, $4 from unnest($1::uuid[]) u on conflict (user_id, event_key) do nothing`,
-    [recipientUserIds, entityType, entityId, eventKey],
-  );
-}
+export { persistNotifications } from "../notifications";

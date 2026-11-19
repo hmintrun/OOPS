@@ -754,6 +754,25 @@ describe.runIf(process.env.OOPS_RUN_DB_TESTS === "1")("OOPS API on PostgreSQL", 
       draftId: expect.any(String), voteDueAt: expect.any(String),
     });
     expect((await call(getOffers, outsider, { id })).status).toBe(404);
+    const firstNotice = notificationList.parse((await call(getNotices, rep, { path: "/test/notices?limit=1" })).data);
+    expect(firstNotice.unreadCount).toBe(2);
+    expect(firstNotice.items).toHaveLength(1);
+    expect(firstNotice.items[0]).toMatchObject({
+      entityId: id, title: "Nhu cầu của nhóm có đề nghị mới",
+      href: expect.stringContaining(`/trade/needs/${id}?proposal=`),
+    });
+    const nextNotice = notificationList.parse((await call(getNotices, rep, {
+      path: `/test/notices?limit=1&cursor=${firstNotice.nextCursor}`,
+    })).data);
+    expect(nextNotice.unreadCount).toBe(2);
+    expect(nextNotice.items.map(item => item.href).concat(firstNotice.items[0].href)).toEqual(
+      expect.arrayContaining([
+        `/trade/needs/${id}?proposal=${proposal.proposalId}`,
+        `/trade/needs/${id}?proposal=${supported.proposalId}`,
+      ]),
+    );
+    expect(notificationList.parse((await call(getNotices, outsider)).data)).toMatchObject({ items: [], unreadCount: 0 });
+    expect(notificationList.parse((await call(getNotices, seller)).data)).toMatchObject({ items: [], unreadCount: 0 });
     const sellerOffers = offers.parse((await call(getOffers, seller, { id })).data).items;
     expect(sellerOffers).toEqual([{ ...proposal, canOpenDraft: false }]);
     const memberOffers = offers.parse((await call(getOffers, second, { id })).data).items;
