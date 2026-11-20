@@ -60,11 +60,16 @@ export const householdStatus = z.strictObject({
   incomeLevel: z.enum(["low", "medium", "high"]).optional(),
   notes: z.string().trim().max(1_000),
 });
+export const cartAiTurn = z.strictObject({
+  role: z.enum(["user", "assistant"]),
+  text: z.string().trim().min(1).max(2_000),
+});
 export const cartAiInput = z.strictObject({
   text: z.string().max(4_000).optional().default(""),
   householdSize: positiveCount.optional(),
   days: z.number().int().min(1).max(365).optional().default(3),
   householdStatus: householdStatus.optional(),
+  history: z.array(cartAiTurn).max(20).optional(),
 });
 export const cartAiResult = z.strictObject({
   draft: z.strictObject({

@@ -95,10 +95,38 @@ export function computeRecommendedNeed(
   }
 
   if (urgency !== "NORMAL" && item.category === "FOOD") {
-    target = Math.min(MAX_QUANTITY, Math.ceil(target * URGENCY_MULTIPLIER[urgency]));
+    const multiplier = URGENCY_MULTIPLIER[urgency];
+    target = Math.min(MAX_QUANTITY, Math.ceil(target * multiplier));
+    label = `${label} × ${multiplier} (${urgency === "URGENT" ? "nhu cầu cấp thiết" : "nhu cầu tăng"})`;
   }
 
   return describeNeed(item, target, stockQty, label);
+}
+
+export type BaselineNorm = {
+  skuId: string;
+  name: string;
+  category: CatalogItem["category"];
+  unit: string;
+  standardTarget: number | null;
+};
+
+/** Pre-compute standard target norms so the LLM has exact arithmetic anchors. */
+export function computeBaselineNorms(
+  catalog: CatalogItem[],
+  householdSize: number | undefined,
+  days = 3,
+): BaselineNorm[] {
+  return catalog.map(item => {
+    const recommended = computeRecommendedNeed(item, householdSize, 0, days, "NORMAL");
+    return {
+      skuId: item.skuId,
+      name: item.name,
+      category: item.category,
+      unit: item.unit,
+      standardTarget: recommended?.needQty ?? null,
+    };
+  });
 }
 
 function describeNeed(item: CatalogItem, target: number, stockQty: number | null, label: string) {
