@@ -16,7 +16,7 @@ import { Chip, INPUT_CLASS } from "@/app/campaigns/_shared/ui";
 import { isPast } from "@/app/campaigns/_shared/dates";
 import { TradeStatus } from "@/app/trade/TradeStatus";
 import { dateTime, useRoundRefresh, useTrade, vnd } from "@/app/trade/trade-client";
-import { orderStates, orderStateTones, paymentKinds } from "../order-labels";
+import { orderStates, orderStateTones, paymentKindLabel } from "../order-labels";
 import { OrderCancellation } from "./OrderCancellation";
 import "../orders.css";
 
@@ -152,7 +152,7 @@ export default function OrderPage() {
             </section>;
           })}
           {order.disbursements.map(payment => <p key={payment.disbursementId}>
-            {paymentKinds[payment.kind]} · {vnd(payment.amountVnd)} · {transferLabels[payment.state]}
+            {paymentKindLabel(payment.kind, order.state, order.reviewScope)} · {vnd(payment.amountVnd)} · {transferLabels[payment.state]}
             {payment.postedAt ? ` · ${dateTime(payment.postedAt)}` : ""}
           </p>)}
         </Card>
