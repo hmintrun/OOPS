@@ -78,6 +78,12 @@ describe("draftFromGemini", () => {
     expect(dynamicSchema.properties.items.items.properties.skuId).toMatchObject({
       anyOf: [{ type: "string", enum: [waterSkuId, riceSkuId, batterySkuId] }, { type: "null" }],
     });
+    expect(dynamicSchema.properties.items.items.properties.stockQty).toMatchObject({
+      anyOf: [{ type: "number", minimum: 0 }, { type: "null" }],
+    });
+    expect(dynamicSchema.properties.items.items.properties.needQty).toMatchObject({
+      anyOf: [{ type: "number", minimum: 0 }, { type: "null" }],
+    });
   });
 
   it("defaults to gemini-4-hydrogen, upgrades deprecated models, and configures thinking for Gemini 3/4", async () => {
@@ -87,8 +93,25 @@ describe("draftFromGemini", () => {
     expect(resolveGeminiModel("gemini-2.5-flash")).toBe(DEFAULT_GEMINI_MODEL);
     expect(resolveGeminiModel("gemini-2.0-flash-lite")).toBe(DEFAULT_GEMINI_MODEL);
     expect(resolveGeminiModel("gemini-4-hydrogen")).toBe("gemini-4-hydrogen");
+    expect(resolveGeminiModel("gemini-3.8-flash")).toBe("gemini-3.8-flash");
     expect(resolveGeminiModel("gemini-3.5-flash-lite")).toBe("gemini-3.5-flash-lite");
     expect(resolveGeminiModel("gemini-test")).toBe("gemini-test");
+
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-3.8-flash");
+    const flash38Provider = mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: { parts: [{ text: JSON.stringify({ householdSize: null, recommendAll: true, items: [] }) }] },
+      }],
+    });
+    vi.stubGlobal("fetch", flash38Provider);
+    await draftFromGemini({ text: "giúp tôi chuẩn bị giỏ", householdSize: 2, days: 3 }, catalog);
+    const [flash38Url, flash38Init] = flash38Provider.mock.calls[0] as unknown as [string, RequestInit];
+    expect(flash38Url).toContain("/models/gemini-3.8-flash:generateContent");
+    expect(JSON.parse(String(flash38Init.body)).generationConfig.thinkingConfig).toEqual({
+      thinkingLevel: "medium",
+    });
 
     vi.stubEnv("GEMINI_API_KEY", "test-key");
     vi.stubEnv("GEMINI_MODEL", "");
@@ -534,7 +557,8 @@ describe("draftFromGemini", () => {
 
   it.each([
     { unit: "thùng", text: "Có 2 thùng nước, gợi ý thêm giúp tôi" },
-    { unit: "chai 1,5 L", text: "Có 2 chai nước loại 1,5 L, gợi ý thêm giúp tôi" },
+    { unit: "bình", text: "Có 2 bình nước, gợi ý thêm giúp tôi" },
+    { unit: "lốc", text: "Có 2 lốc nước, gợi ý thêm giúp tôi" },
   ])("does not replace unresolved water stock in $unit with zero stock", async ({ unit, text }) => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
     vi.stubEnv("GEMINI_MODEL", "gemini-3.5-flash-lite");
@@ -950,5 +974,182 @@ describe("draftFromGemini", () => {
       needQty: 6,
       ruleRef: expect.stringContaining("× 1.5 (nhu cầu cấp thiết)"),
     });
+  });
+
+  it("converts water volume units (L, mL, bottle/container/pack sizes) into 500 mL bottles", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-3.8-flash");
+
+    // "Còn 2 lít nước" -> stockQty 4, needQty 72 - 4 = 68 (4 people, 3 days)
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              recommendAll: false,
+              items: [{ skuId: waterSkuId, label: "Nước uống", unit: "lít", stockQty: 2, needQty: null }],
+            }),
+          }],
+        },
+      }],
+    }));
+    const twoLitresStock = await draftFromGemini({ text: "Còn 2 lít nước", householdSize: 4, days: 3 }, catalog);
+    expect(twoLitresStock.draft.lines).toEqual([{ skuId: waterSkuId, stockQty: 4, needQty: 68 }]);
+    expect(twoLitresStock.unresolved).toEqual([]);
+    expect(twoLitresStock.ruleRefs[0]).toContain("2 lít = 4 chai 500 mL");
+
+    // "Cần mua thêm 2 lít nước" -> needQty 4
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              recommendAll: false,
+              items: [{ skuId: waterSkuId, label: "Nước uống", unit: "lít", stockQty: 0, needQty: 2 }],
+            }),
+          }],
+        },
+      }],
+    }));
+    const twoLitresNeed = await draftFromGemini({ text: "Cần mua thêm 2 lít nước", householdSize: 4, days: 3 }, catalog);
+    expect(twoLitresNeed.draft.lines).toEqual([{ skuId: waterSkuId, stockQty: 0, needQty: 4 }]);
+    expect(twoLitresNeed.ruleRefs).toEqual([expect.stringContaining("2 lít = 4 chai 500 mL")]);
+
+    // Decimal litres & pure mL
+    for (const testCase of [
+      { unit: "lít", stockQty: 0.5, needQty: 1.5, expectedStock: 1, expectedNeed: 3 },
+      { unit: "lít", stockQty: 1.2, needQty: 1.2, expectedStock: 2, expectedNeed: 3 },
+      { unit: "mL", stockQty: 500, needQty: 1500, expectedStock: 1, expectedNeed: 3 },
+    ]) {
+      vi.stubGlobal("fetch", mockGeminiResponse({
+        candidates: [{
+          finishReason: "STOP",
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                householdSize: null,
+                items: [{ skuId: waterSkuId, label: "Nước uống", unit: testCase.unit, stockQty: testCase.stockQty, needQty: testCase.needQty }],
+              }),
+            }],
+          },
+        }],
+      }));
+      const converted = await draftFromGemini({ text: "Nước uống", householdSize: 2, days: 3 }, catalog);
+      expect(converted.draft.lines).toEqual([
+        { skuId: waterSkuId, stockQty: testCase.expectedStock, needQty: testCase.expectedNeed },
+      ]);
+      expect(converted.unresolved).toEqual([]);
+    }
+
+    // Container and pack volumes -> 500 mL bottles
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              items: [{ skuId: waterSkuId, label: "Nước uống", unit: "chai 1,5 L", stockQty: 2, needQty: null }],
+            }),
+          }],
+        },
+      }],
+    }));
+    const largeBottles = await draftFromGemini({ text: "Có 2 chai nước 1,5 L", householdSize: 4, days: 3 }, catalog);
+    expect(largeBottles.draft.lines).toEqual([{ skuId: waterSkuId, stockQty: 6, needQty: 66 }]);
+    expect(largeBottles.unresolved).toEqual([]);
+
+    for (const container of [
+      { unit: "chai 2 lít", stockQty: 1, expected: 4 },
+      { unit: "bình 20 lít", stockQty: 1, expected: 40 },
+      { unit: "can 5 lít", stockQty: 1, expected: 10 },
+      { unit: "thùng 24 chai 500ml", stockQty: 1, expected: 24 },
+    ]) {
+      vi.stubGlobal("fetch", mockGeminiResponse({
+        candidates: [{
+          finishReason: "STOP",
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                householdSize: null,
+                items: [{ skuId: waterSkuId, label: "Nước uống", unit: container.unit, stockQty: container.stockQty, needQty: null }],
+              }),
+            }],
+          },
+        }],
+      }));
+      const res = await draftFromGemini({ text: `Có 1 ${container.unit}`, householdSize: 4, days: 3 }, catalog);
+      expect(res.draft.lines[0].stockQty).toBe(container.expected);
+      expect(res.unresolved).toEqual([]);
+    }
+
+    // Guard against double-counting malformed bare volume unit ("2 lít" with stockQty: 2)
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              items: [{ skuId: waterSkuId, label: "Nước uống", unit: "2 lít", stockQty: 2, needQty: null }],
+            }),
+          }],
+        },
+      }],
+    }));
+    const malformed = await draftFromGemini({ text: "Có 2 lít nước", householdSize: 4, days: 3 }, catalog);
+    expect(malformed.draft.lines).toEqual([]);
+    expect(malformed.unresolved).toEqual(["Nước uống"]);
+  });
+
+  it("converts exact rice metric weights into kg while keeping bare bao unresolved", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-3.8-flash");
+
+    for (const riceCase of [
+      { unit: "g", stockQty: 2000, needQty: 500, expectedStock: 2, expectedNeed: 1 },
+      { unit: "bao 5 kg", stockQty: 1, needQty: null, expectedStock: 5, expectedNeed: 0 },
+      { unit: "yến", stockQty: 0, needQty: 1, expectedStock: 0, expectedNeed: 10 },
+    ]) {
+      vi.stubGlobal("fetch", mockGeminiResponse({
+        candidates: [{
+          finishReason: "STOP",
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                householdSize: null,
+                items: [{ skuId: riceSkuId, label: "Gạo", unit: riceCase.unit, stockQty: riceCase.stockQty, needQty: riceCase.needQty }],
+              }),
+            }],
+          },
+        }],
+      }));
+      const res = await draftFromGemini({ text: "Gạo", householdSize: 4, days: 3 }, catalog);
+      expect(res.draft.lines).toEqual([
+        { skuId: riceSkuId, stockQty: riceCase.expectedStock, needQty: riceCase.expectedNeed },
+      ]);
+      expect(res.unresolved).toEqual([]);
+    }
+
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              items: [{ skuId: riceSkuId, label: "Gạo", unit: "bao", stockQty: 1, needQty: null }],
+            }),
+          }],
+        },
+      }],
+    }));
+    const bareBao = await draftFromGemini({ text: "Có 1 bao gạo", householdSize: 4, days: 3 }, catalog);
+    expect(bareBao.draft.lines).toEqual([]);
+    expect(bareBao.unresolved).toEqual(["Gạo"]);
   });
 });

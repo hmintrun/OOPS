@@ -37,6 +37,11 @@ const nullableIntSchema = (minimum: number, maximum = 2_147_483_647, description
   ...(description ? { description } : {}),
 });
 
+const nullableNumberSchema = (minimum: number, maximum = 2_147_483_647, description?: string) => ({
+  anyOf: [{ type: "number", minimum, maximum }, { type: "null" }],
+  ...(description ? { description } : {}),
+});
+
 const nullableStringSchema = (description?: string) => ({
   anyOf: [{ type: "string" }, { type: "null" }],
   ...(description ? { description } : {}),
@@ -93,10 +98,18 @@ export function buildGeminiResponseSchema(catalog: CatalogItem[]) {
               description: "Tên món ngắn gọn bằng tiếng Việt theo ngôn ngữ người dùng hoặc catalog.",
             },
             unit: nullableStringSchema(
-              "Đơn vị người dùng nêu (giữ nguyên như thùng, bao, chai 1,5 L, ký...), hoặc null nếu không nêu.",
+              "Đơn vị khớp với con số trong stockQty/needQty (vd: 'chai 500 mL', 'lít', 'mL', 'chai 1,5 L', 'bình 20 L', 'kg', 'g', 'bao 5 kg', 'thùng', 'bao'), hoặc null nếu không nêu.",
             ),
-            stockQty: nullableIntSchema(0, 2_147_483_647, "Lượng đang có (0 nếu nói hết/không có, null nếu không nêu)."),
-            needQty: nullableIntSchema(0, 2_147_483_647, "Lượng CẦN MUA THÊM (đã trừ stockQty), hoặc null để server tính."),
+            stockQty: nullableNumberSchema(
+              0,
+              2_147_483_647,
+              "Lượng đang có theo đúng đơn vị trong unit (0 nếu nói hết/không có, null nếu không nêu; hỗ trợ số thập phân như 0.5, 1.5).",
+            ),
+            needQty: nullableNumberSchema(
+              0,
+              2_147_483_647,
+              "Lượng CẦN MUA THÊM theo đúng đơn vị trong unit (đã trừ stockQty; hỗ trợ số thập phân như 1.5), hoặc null để server tính.",
+            ),
             notNeeded: {
               type: "boolean",
               description: "true nếu người dùng nói đã đủ hoặc không cần mua món này.",
@@ -158,8 +171,11 @@ const SYSTEM_INSTRUCTION = [
   "- Nếu người dùng nhắc món KHÔNG có trong `catalog` (vd 'mì gói', 'sữa', 'nến'), vẫn đưa vào `items` với `skuId = null`, giữ `label` và số lượng/đơn vị nếu có để app báo cho người dùng.",
   "",
   "5. ĐƠN VỊ & SỐ LƯỢNG (`stockQty`, `needQty`, `notNeeded`, `estimated`, `reason`):",
-  "- Giữ nguyên đơn vị người dùng nêu vào `unit` (vd 'thùng', 'bao', 'chai 1,5 L', 'ký'). KHÔNG tự quy đổi 'thùng'/'bao'/'chai 1,5 L' sang 'chai'/'kg' TRỪ KHI chính người dùng nêu rõ quy cách trong hội thoại (vd '2 thùng, mỗi thùng 24 chai 500ml' -> `stockQty = 48, unit = 'chai 500 mL'`).",
-  `- Với nước uống đóng chai: dùng \`unit = 'chai'\` nếu không nêu dung tích; nếu nêu dung tích thì ghi rõ (vd 'chai ${DEFAULT_WATER_BOTTLE_ML} mL', 'chai 1,5 L'). Không quy đổi chai dung tích khác ${DEFAULT_WATER_BOTTLE_ML} mL.`,
+  `- Quy chuẩn nước uống của hệ thống: 1 chai nước uống chuẩn = ${DEFAULT_WATER_BOTTLE_ML} mL (0,5 lít) -> 1 lít = 2 chai ${DEFAULT_WATER_BOTTLE_ML} mL, 2 lít = 4 chai ${DEFAULT_WATER_BOTTLE_ML} mL, 1 chai 1,5 L = 3 chai ${DEFAULT_WATER_BOTTLE_ML} mL, 1 bình 20 L = 40 chai ${DEFAULT_WATER_BOTTLE_ML} mL.`,
+  "- ƯU TIÊN ĐỂ SERVER QUY ĐỔI CHÍNH XÁC — QUY TẮC KHỚP ĐƠN VỊ (`unit` phải khớp chính xác với con số trong `stockQty`/`needQty`):",
+  "  * Khi người dùng nêu đơn vị dung tích/khối lượng xác định (`lít`, `L`, `mL`, `chai 1,5 L`, `chai 2 L`, `bình 20 L`, `can 5 L`, `thùng 24 chai 500 mL`, `g`, `gam`, `lạng`, `yến`, `bao 5 kg`), giữ nguyên con số (cho phép số thập phân như `0.5`, `1.5`, `2.5`) và đặt `unit` đúng đơn vị đó (\"lít\", \"mL\", \"chai 1,5 L\", \"bình 20 L\", \"g\", \"bao 5 kg\"). KHÔNG gộp số lượng vào tên đơn vị đơn thuần (vd nói 'còn 2 lít' phải ghi `stockQty = 2, unit = \"lít\"`, KHÔNG ghi `unit = \"2 lít\"`).",
+  `  * Chỉ tự quy đổi về \`chai ${DEFAULT_WATER_BOTTLE_ML} mL\` khi người dùng trộn nhiều dung tích khác nhau cho cùng 1 món (vd '1 chai 1,5 L và 2 chai 500 mL' -> 2,5 L = 5 chai, hoặc 'đang có 2 lít, cần mua thêm 6 chai 500 mL' -> \`stockQty = 4, needQty = 6\`), khi đó BẮT BUỘC đặt \`unit = "chai ${DEFAULT_WATER_BOTTLE_ML} mL"\` (tuyệt đối không đặt \`stockQty = 4\` mà \`unit = "lít"\`).`,
+  "  * KHÔNG tự đoán hay quy đổi các đơn vị đóng gói mơ hồ không nêu dung tích/khối lượng (`thùng`, `lốc`, `bình` không ghi lít, `bao` không ghi kg, `vỉ`) TRỪ KHI người dùng nêu rõ quy cách trong hội thoại (vd '2 thùng, mỗi thùng 24 chai 500ml' -> `stockQty = 48, unit = 'chai 500 mL'`).",
   "- `stockQty`: lượng ĐANG CÓ nêu trong hội thoại (nói hết/không còn -> 0; không nêu -> null).",
   "- `notNeeded`: đặt `true` và `needQty = 0` nếu người dùng nói đã đủ hoặc không cần mua món đó (vd 'gạo đủ rồi', 'không cần pin').",
   "- `needQty`: lượng CẦN MUA THÊM (đã trừ `stockQty`). Phân biệt 'cần mua thêm X' (`needQty = X`) với 'cần tổng cộng X mà đã có Y' (`needQty = max(0, X - Y)`).",
@@ -180,6 +196,8 @@ const SYSTEM_INSTRUCTION = [
   "-> {\"householdSize\":null,\"days\":null,\"recommendAll\":false,\"nothingInStock\":false,\"urgency\":\"ELEVATED\",\"encouragement\":\"Nhà mình cứ yên tâm, OOPS đã ghi nhận phần gạo sẵn có và ưu tiên bổ sung thêm nước uống cho cả gia đình.\",\"items\":[{\"skuId\":\"<skuId_gao>\",\"label\":\"gạo\",\"unit\":\"kg\",\"stockQty\":15,\"needQty\":0,\"notNeeded\":true,\"estimated\":false,\"reason\":null},{\"skuId\":\"<skuId_nuoc_uong>\",\"label\":\"nước uống\",\"unit\":null,\"stockQty\":0,\"needQty\":null,\"notNeeded\":false,\"estimated\":false,\"reason\":null}]}",
   "Ví dụ D (hội thoại làm rõ quy cách): history = [{\"role\":\"user\",\"text\":\"Có 2 thùng nước\"},{\"role\":\"assistant\",\"text\":\"Cần làm rõ: nước\"}], text = \"Mỗi thùng 24 chai 500ml, cần gợi ý thêm gạo nữa\"",
   "-> {\"householdSize\":null,\"days\":null,\"recommendAll\":false,\"nothingInStock\":false,\"urgency\":\"NORMAL\",\"encouragement\":\"Cảm ơn bạn đã bổ sung rõ, OOPS đã quy đổi đúng số chai nước hiện có và tính phần gạo cần thêm.\",\"items\":[{\"skuId\":\"<skuId_nuoc_uong>\",\"label\":\"nước uống\",\"unit\":\"chai 500 mL\",\"stockQty\":48,\"needQty\":null,\"notNeeded\":false,\"estimated\":false,\"reason\":null},{\"skuId\":\"<skuId_gao>\",\"label\":\"gạo\",\"unit\":null,\"stockQty\":0,\"needQty\":null,\"notNeeded\":false,\"estimated\":false,\"reason\":null}]}",
+  "Ví dụ E (đơn vị lít / gam xác định): text = \"Nhà còn 2 lít nước uống, cần mua thêm 1,5 lít nước và 500 g gạo\"",
+  "-> {\"householdSize\":null,\"days\":null,\"recommendAll\":false,\"nothingInStock\":false,\"urgency\":\"NORMAL\",\"encouragement\":\"OOPS đã ghi nhận lượng nước hiện có và quy đổi đúng nhu cầu bổ sung cho gia đình mình.\",\"items\":[{\"skuId\":\"<skuId_nuoc_uong>\",\"label\":\"nước uống\",\"unit\":\"lít\",\"stockQty\":2,\"needQty\":1.5,\"notNeeded\":false,\"estimated\":false,\"reason\":null},{\"skuId\":\"<skuId_gao>\",\"label\":\"gạo\",\"unit\":\"g\",\"stockQty\":0,\"needQty\":500,\"notNeeded\":false,\"estimated\":false,\"reason\":null}]}",
 ].join("\n");
 
 function sleep(ms: number): Promise<void> {

@@ -108,7 +108,7 @@ function classifyUnresolved(unresolved: string[], catalog: CatalogItem[]) {
     const sku = findCatalogSkuForUnresolved(label, catalog);
     if (sku) {
       const expectedUnit = sku.category === "WATER" && sku.unit.trim().toLowerCase() === "chai"
-        ? `chai ${DEFAULT_WATER_BOTTLE_ML} mL`
+        ? `chai ${DEFAULT_WATER_BOTTLE_ML} mL hoặc lít`
         : sku.unit;
       clarifyCatalogItems.push({ label, expectedUnit });
     } else {
