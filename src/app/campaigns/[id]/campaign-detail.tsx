@@ -35,15 +35,19 @@ type Data = {
   householdSize: number;
 };
 type Draft = {
+  householdSize: number;
   supportRequested: boolean;
   quantities: Record<string, string>;
+  stocks: Record<string, number>;
 };
 type CartAction = "save" | "publish";
 
-function toDraft(cart: Cart | null): Draft {
+function toDraft(cart: Cart | null, defaultHouseholdSize = defaultFamilyStatus.members): Draft {
   return {
+    householdSize: cart?.householdSize ?? defaultHouseholdSize,
     supportRequested: cart?.supportRequested ?? false,
     quantities: Object.fromEntries((cart?.lines ?? []).map(line => [line.skuId, String(line.needQty)])),
+    stocks: Object.fromEntries((cart?.lines ?? []).map(line => [line.skuId, line.stockQty])),
   };
 }
 
@@ -122,7 +126,10 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
   const router = useRouter();
   const showError = useErrorToast();
   const [data, setData] = useState<Data | undefined>(() => readClientCache<Data>(detailCacheKey(campaignId))?.value);
-  const [draft, setDraft] = useState<Draft>(() => toDraft(readClientCache<Data>(detailCacheKey(campaignId))?.value.cart ?? null));
+  const [draft, setDraft] = useState<Draft>(() => {
+    const initial = readClientCache<Data>(detailCacheKey(campaignId))?.value;
+    return toDraft(initial?.cart ?? null, initial?.householdSize);
+  });
   const [loadError, setLoadError] = useState("");
   const [notice, setNotice] = useState("");
   const [reload, setReload] = useState(0);
@@ -147,7 +154,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
 
     if (cached) {
       setData(cached.value);
-      setDraft(toDraft(cached.value.cart));
+      setDraft(toDraft(cached.value.cart, cached.value.householdSize));
       dirtyRef.current = false;
       if (cached.isFresh) {
         return () => { active = false; needsRequest.current++; };
@@ -163,7 +170,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
       writeClientCache(key, value);
       setData(value);
       if (!dirtyRef.current || reload > 0) {
-        setDraft(toDraft(value.cart));
+        setDraft(toDraft(value.cart, value.householdSize));
         dirtyRef.current = false;
       }
     }).catch((error: unknown) => {
@@ -241,7 +248,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     </Card>
   ) : <LoadingState />;
 
-  const { campaign, cart, needs, catalog, isRep, householdSize } = data;
+  const { campaign, cart, needs, catalog, isRep } = data;
   const displayState = campaignDisplayState(campaign);
   const editable = displayState === "COLLECTING" && needs.campaignState === "DRAFT";
   const canPublish = needsStatus === "ready" && isRep && needs.campaignState === "DRAFT"
@@ -250,11 +257,11 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
   function applyCart(savedCart: Cart) {
     setData(previous => {
       if (!previous) return previous;
-      const next = { ...previous, cart: savedCart };
+      const next = { ...previous, cart: savedCart, householdSize: savedCart.householdSize };
       writeClientCache(detailCacheKey(campaignId), next);
       return next;
     });
-    setDraft(toDraft(savedCart));
+    setDraft(toDraft(savedCart, savedCart.householdSize));
     dirtyRef.current = false;
     if (cart?.state === "CONFIRMED" || savedCart.state === "CONFIRMED") {
       invalidateClientCache("campaigns:");
@@ -274,15 +281,14 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
 
   function save() {
     if (!editable || saving) return;
-    const existingStock = new Map(cart?.lines.map(line => [line.skuId, line.stockQty]));
     const body: PutCartBody = {
-      householdSize,
+      householdSize: draft.householdSize,
       supportRequested: draft.supportRequested,
       version: cart?.version ?? 0,
       includeInNeeds: true,
       lines: catalog.map(({ skuId }) => ({
         skuId,
-        stockQty: existingStock.get(skuId) ?? 0,
+        stockQty: draft.stocks[skuId] ?? 0,
         needQty: Number(draft.quantities[skuId] ?? 0),
       })).filter(line => line.stockQty !== 0 || line.needQty !== 0),
     };
@@ -378,11 +384,13 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
           </label>
         </form>
         {editable && suggestionOpenedFor === campaignId && (
-          <CartSuggestion campaignId={campaignId} userId={data.userId} householdSize={householdSize}
-            catalog={catalog} onClose={() => setSuggestionOpenedFor(undefined)} onApply={suggestedQuantities => {
+          <CartSuggestion campaignId={campaignId} userId={data.userId} householdSize={draft.householdSize}
+            catalog={catalog} onClose={() => setSuggestionOpenedFor(undefined)} onApply={applied => {
               edit(current => ({
                 ...current,
-                quantities: { ...current.quantities, ...suggestedQuantities },
+                householdSize: applied.householdSize ?? current.householdSize,
+                quantities: { ...current.quantities, ...applied.quantities },
+                stocks: { ...current.stocks, ...applied.stocks },
               }));
               setSuggestionOpenedFor(undefined);
               setNotice("Đã điền gợi ý AI vào giỏ. Kiểm tra lại số lượng và bấm Lưu giỏ bên dưới.");

@@ -175,6 +175,18 @@
 .cart-chat__reply ul { padding-block: 4px; }
 .cart-chat__reply li { display: flex; justify-content: space-between; gap: 12px; }
 .cart-chat__reply strong { text-align: end; font-variant-numeric: tabular-nums; }
+.cart-chat__encouragement { font-weight: 600; color: var(--oops-navy-900); }
+.cart-chat__meta, .cart-chat__stock, .cart-chat__note { font-size: .8125rem; color: var(--oops-navy-600); }
+.cart-chat__sufficient { font-size: .875rem; color: var(--oops-green-800); }
+.cart-chat__refs {
+  font-size: .8125rem;
+  color: var(--oops-navy-600);
+  padding-top: 4px;
+  border-top: 1px solid var(--oops-sky-300);
+}
+.cart-chat__refs summary { cursor: pointer; font-weight: 600; }
+.cart-chat__refs ul { margin-top: 6px; padding-left: 16px; list-style: disc; }
+.cart-chat__refs li { display: list-item; }
 .cart-chat__error { background: var(--oops-rose-tint); color: var(--oops-rose-ink); }
 
 .cart-chat__typing { display: flex; gap: 4px; align-items: center; min-height: 38px; }
@@ -205,7 +217,7 @@
 }
 
 .cart-chat__footer:empty { display: none; }
-.cart-chat__choices, .cart-chat__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cart-chat__choices, .cart-chat__actions, .cart-chat__quick { display: flex; flex-wrap: wrap; gap: 8px; }
 .cart-chat__actions { justify-content: flex-end; }
 .cart-chat__footer .ui-btn { min-height: 44px; padding-inline: 12px; font-size: .875rem; }
 .cart-chat__composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
