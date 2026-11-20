@@ -19,36 +19,6 @@ export async function appliedFunds(db: PoolClient, id: string) {
   return rows;
 }
 
-export async function addContractDisbursement(
-  db: PoolClient, contractId: string, fundId: string, payeeId: string,
-  kind: z.infer<typeof disbursementKind>, amount: bigint, dedupe: string,
-) {
-  if (amount === 0n) return;
-  const result = await db.query(
-    `insert into public.disbursements (contract_id, fund_event_id, payee_id, kind, amount_vnd, state, dedupe_key)
-     select $1, f.id, $3, $4, $5, 'PENDING', $6 from public.fund_events f
-     join public.charges c on c.id = f.charge_id and c.contract_id = $1
-     where f.id = $2 and f.disposition = 'APPLIED' and $5::bigint <= coalesce((
-       select sum(fe.amount_vnd) from public.fund_events fe
-       join public.charges ch on ch.id = fe.charge_id
-       where ch.contract_id = $1 and fe.disposition = 'APPLIED'
-     ), 0) - coalesce((
-       select sum(d.amount_vnd) from public.disbursements d
-       join public.fund_events fe on fe.id = d.fund_event_id
-       where d.contract_id = $1 and fe.disposition = 'APPLIED'
-     ), 0)
-     on conflict (dedupe_key) do nothing`,
-    [contractId, fundId, payeeId, kind, amount.toString(), dedupe],
-  );
-  if (!result.rowCount) {
-    const existing = await db.query(
-      "select 1 from public.disbursements where dedupe_key = $1 and payee_id = $2 and amount_vnd = $3",
-      [dedupe, payeeId, amount.toString()],
-    );
-    if (!existing.rowCount) throw conflict("Khoản chi vượt tiền đã nhận hoặc không khớp sổ.");
-  }
-}
-
 export async function addDisbursement(
   db: PoolClient, contractId: string, fundId: string, payeeId: string,
   kind: z.infer<typeof disbursementKind>, amount: bigint,
@@ -123,20 +93,10 @@ export async function cancelUnderLock(
   }
   const funds = await appliedFunds(db, order.id);
   const holdDeposit = disposition === "SELLER_CANCEL" && funds.some(fund => fund.kind === "DEPOSIT");
-  const refundsByUser = new Map<string, { fundId: string; kind: "DEPOSIT_REFUND" | "GOODS_REFUND"; amount: bigint }>();
   for (const fund of funds) {
     if (holdDeposit && fund.kind === "DEPOSIT") continue;
-    const current = refundsByUser.get(fund.payer_id);
-    refundsByUser.set(fund.payer_id, {
-      fundId: current?.fundId ?? fund.id,
-      kind: current?.kind ?? (fund.kind === "DEPOSIT" ? "DEPOSIT_REFUND" : "GOODS_REFUND"),
-      amount: (current?.amount ?? 0n) + BigInt(fund.amount_vnd),
-    });
-  }
-  for (const [payeeId, entry] of refundsByUser) {
-    await addContractDisbursement(
-      db, order.id, entry.fundId, payeeId, entry.kind, entry.amount, `cancel:${order.id}:${payeeId}`,
-    );
+    await addDisbursement(db, order.id, fund.id, fund.payer_id,
+      fund.kind === "DEPOSIT" ? "DEPOSIT_REFUND" : "GOODS_REFUND", BigInt(fund.amount_vnd));
   }
   await db.query("update public.charges set state = 'EXPIRED' where contract_id = $1 and state = 'PENDING'", [order.id]);
   if (order.state === "AWAIT_COMMITMENTS") {

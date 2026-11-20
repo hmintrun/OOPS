@@ -24,18 +24,3 @@ export const paymentKinds: Record<Contract["disbursements"][number]["kind"], str
   GOODS_PAYOUT: "Chi tiền hàng", GOODS_REFUND: "Hoàn tiền hàng",
   DEPOSIT_REFUND: "Hoàn tiền cọc", DEPOSIT_DEDUCTION: "Khấu trừ cọc",
 };
-
-export function paymentKindLabel(
-  kind: Contract["disbursements"][number]["kind"],
-  contractState?: Contract["state"],
-  reviewScope?: Contract["reviewScope"],
-): string {
-  if (
-    kind === "GOODS_PAYOUT" &&
-    reviewScope !== "DEPOSIT" &&
-    (contractState === "SETTLING" || contractState === "COMPLETED")
-  ) {
-    return "Chi tiền hàng & hoàn cọc";
-  }
-  return paymentKinds[kind];
-}
