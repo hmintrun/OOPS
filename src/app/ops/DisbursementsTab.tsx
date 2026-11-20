@@ -5,7 +5,7 @@ import { Button, Card, CardTitle } from "@/components/ui";
 import { opsList, postTransferResult, type OpsDisbursement } from "@/contracts/orders";
 import { apiFetch } from "@/lib/api-client";
 import { Banner, INPUT_CLASS } from "@/app/campaigns/_shared/ui";
-import { orderStates, paymentKinds } from "@/app/orders/order-labels";
+import { orderStates, paymentKindLabel } from "@/app/orders/order-labels";
 import { TradeStatus } from "@/app/trade/TradeStatus";
 import { dateTime, useTrade, vnd } from "@/app/trade/trade-client";
 import {
@@ -172,7 +172,7 @@ function DisbursementCard({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <CardTitle as="h2" className="ui-card__title--flush">
-            {paymentKinds[item.kind]} · {vnd(item.amountVnd)}
+            {paymentKindLabel(item.kind, item.contractState, item.reviewScope)} · {vnd(item.amountVnd)}
           </CardTitle>
           <p className="text-small text-navy-600 mt-1">
             Đơn {shortCode(item.contractId)}
