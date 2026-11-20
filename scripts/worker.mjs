@@ -45,6 +45,17 @@ module.registerHooks({
     }
     return nextResolve(specifier, context);
   },
+  load(url, context, nextLoad) {
+    if (url.startsWith("file:") && url.endsWith(".json") && context.importAttributes?.type !== "json") {
+      const parsed = JSON.parse(fs.readFileSync(fileURLToPath(url), "utf8"));
+      return {
+        format: "module",
+        source: `export default ${JSON.stringify(parsed)};\n`,
+        shortCircuit: true,
+      };
+    }
+    return nextLoad(url, context);
+  },
 });
 
 const args = new Set(process.argv.slice(2));
