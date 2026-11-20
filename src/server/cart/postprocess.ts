@@ -297,6 +297,7 @@ export function finalizeCartDraft(
   }
 
   const lines: z.output<typeof cartAiResult>["draft"]["lines"] = [];
+  const declinedSkuIds = new Set<string>();
   const handledSkus = new Set<string>();
   const unresolved = new Set<string>();
   const ruleRefs = new Set<string>();
@@ -332,6 +333,8 @@ export function finalizeCartDraft(
           stockQty: effectiveStock,
           needQty: 0,
         });
+      } else {
+        declinedSkuIds.add(sku.skuId);
       }
       continue;
     }
@@ -422,7 +425,12 @@ export function finalizeCartDraft(
 
   if (householdSize === undefined) unresolved.add("Số người trong hộ");
   return cartAiResult.parse({
-    draft: { householdSize, lines },
+    draft: {
+      householdSize,
+      ...(days !== preprocessed.days ? { days } : {}),
+      lines,
+      ...(declinedSkuIds.size > 0 ? { declinedSkuIds: [...declinedSkuIds] } : {}),
+    },
     encouragement: result.encouragement?.trim() || DEFAULT_ENCOURAGEMENT,
     unresolved: [...unresolved],
     ruleRefs: [...ruleRefs],

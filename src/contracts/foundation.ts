@@ -74,9 +74,11 @@ export const cartAiInput = z.strictObject({
 export const cartAiResult = z.strictObject({
   draft: z.strictObject({
     householdSize: positiveCount.optional(),
+    days: z.number().int().min(1).max(365).optional(),
     lines: z.array(z.strictObject({
       skuId: uuid, stockQty: count.optional(), needQty: count.optional(),
     }).refine(line => line.stockQty !== undefined || line.needQty !== undefined)),
+    declinedSkuIds: z.array(uuid).optional(),
   }),
   encouragement: z.string().optional(),
   unresolved: z.array(z.string()),

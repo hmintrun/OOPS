@@ -19,6 +19,12 @@ type SuggestedLine = {
   needQty: number;
 };
 
+export type CartSuggestionApply = {
+  householdSize?: number;
+  quantities: Record<string, string>;
+  stocks: Record<string, number>;
+};
+
 const MAX_TURN_CHARS = 2_000;
 const MAX_HISTORY_ENTRIES = 12;
 
@@ -31,18 +37,37 @@ function mappedLines(result: Result | undefined, catalog: CatalogItem[]): Sugges
   }) ?? [];
 }
 
-function summarizeAssistantTurn(result: Result, catalog: CatalogItem[]): string {
+function mappedDeclinedItems(result: Result | undefined, catalog: CatalogItem[]): CatalogItem[] {
+  const lineIds = new Set(result?.draft.lines.map(line => line.skuId) ?? []);
+  return (result?.draft.declinedSkuIds ?? []).flatMap(skuId => {
+    if (lineIds.has(skuId)) return [];
+    const item = catalog.find(entry => entry.skuId === skuId);
+    return item ? [item] : [];
+  });
+}
+
+function summarizeAssistantTurn(
+  result: Result,
+  catalog: CatalogItem[],
+  effectiveDays: number,
+  effectiveHouseholdSize: number,
+): string {
   const lines = mappedLines(result, catalog);
+  const declined = mappedDeclinedItems(result, catalog);
   const parts: string[] = [];
   if (lines.length > 0) {
-    const summary = lines.map(({ item, needQty }) =>
-      needQty === 0
-        ? `${item.name}: 0 ${item.unit} (đã đủ)`
-        : `${item.name}: ${needQty} ${item.unit}`,
-    ).join(", ");
-    parts.push(`Đã gợi ý: ${summary}.`);
-  } else {
+    const summary = lines.map(({ item, stockQty, needQty }) => {
+      const stockSuffix = stockQty > 0 ? ` (đang có ${stockQty} ${item.unit})` : "";
+      return needQty === 0
+        ? `${item.name}: 0 ${item.unit} (đã đủ${stockSuffix ? `, đang có ${stockQty} ${item.unit}` : ""})`
+        : `${item.name}: ${needQty} ${item.unit}${stockSuffix}`;
+    }).join(", ");
+    parts.push(`Đã gợi ý (${effectiveHouseholdSize} người, ${effectiveDays} ngày): ${summary}.`);
+  } else if (declined.length === 0) {
     parts.push("Chưa có gợi ý cụ thể.");
+  }
+  if (declined.length > 0) {
+    parts.push(`Không cần mua: ${declined.map(item => item.name).join(", ")}.`);
   }
   if (result.unresolved.length > 0) {
     parts.push(`Cần làm rõ: ${result.unresolved.join(", ")}.`);
@@ -100,7 +125,7 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
   householdSize: number;
   catalog: CatalogItem[];
   onClose: () => void;
-  onApply: (quantities: Record<string, string>) => void;
+  onApply: (applied: CartSuggestionApply) => void;
 }) {
   const router = useRouter();
   const [entry, setEntry] = useState("");
@@ -113,7 +138,17 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
   const running = useRef(false);
   const currentResult = turns.at(-1)?.result;
   const latestSuggestions = mappedLines(currentResult, catalog);
+  const latestDeclined = mappedDeclinedItems(currentResult, catalog);
+  const canApplyLatest = latestSuggestions.length > 0 || latestDeclined.length > 0;
   const canCompose = days === undefined || !pending;
+
+  const turnContexts = turns.reduce<Array<{ days: number; householdSize: number }>>((acc, turn) => {
+    const previous = acc.at(-1);
+    const nextDays = turn.result?.draft.days ?? previous?.days ?? days ?? 3;
+    const nextHouseholdSize = turn.result?.draft.householdSize ?? previous?.householdSize ?? householdSize;
+    acc.push({ days: nextDays, householdSize: nextHouseholdSize });
+    return acc;
+  }, []);
 
   useEffect(() => {
     if (messages.current) messages.current.scrollTop = messages.current.scrollHeight;
@@ -138,10 +173,14 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
     const latestTurn = conversation.at(-1);
     if (!latestTurn) return;
 
+    let activeDays = days;
+    let activeHouseholdSize = householdSize;
     const history = conversation.slice(0, -1).flatMap(turn => {
       if (!turn.result) return [];
+      activeDays = turn.result.draft.days ?? activeDays;
+      activeHouseholdSize = turn.result.draft.householdSize ?? activeHouseholdSize;
       const userText = (turn.message.trim() || turn.displayMessage?.trim() || "").slice(0, MAX_TURN_CHARS);
-      const assistantText = summarizeAssistantTurn(turn.result, catalog);
+      const assistantText = summarizeAssistantTurn(turn.result, catalog, activeDays, activeHouseholdSize);
       return [
         ...(userText ? [{ role: "user" as const, text: userText }] : []),
         ...(assistantText ? [{ role: "assistant" as const, text: assistantText }] : []),
@@ -150,8 +189,8 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
 
     const parsed = cartAiInput.safeParse({
       text: latestTurn.message,
-      householdSize: householdSize > 0 ? householdSize : undefined,
-      days,
+      householdSize: activeHouseholdSize > 0 ? activeHouseholdSize : undefined,
+      days: activeDays,
       householdStatus: readSavedFamilyStatus(userId),
       ...(history.length > 0 ? { history } : {}),
     });
@@ -214,10 +253,12 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
           </>}
           {turns.map(({ message, displayMessage, result }, index) => {
             const items = mappedLines(result, catalog);
+            const declinedItems = mappedDeclinedItems(result, catalog);
             const buyItems = items.filter(entryItem => entryItem.needQty > 0);
             const sufficientItems = items.filter(entryItem => entryItem.needQty === 0);
             const resolvedUnresolved = result ? classifyUnresolved(result.unresolved, catalog) : undefined;
             const isLatestTurn = index === turns.length - 1;
+            const turnContext = turnContexts[index];
 
             return <Fragment key={index}>
               <p className="cart-chat__bubble cart-chat__bubble--user">
@@ -226,9 +267,9 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
               {result && <div className="cart-chat__bubble cart-chat__reply">
                 <span className="sr-only">AI: </span>
                 {result.encouragement && <p className="cart-chat__encouragement">{result.encouragement}</p>}
-                {items.length > 0 && (
+                {(items.length > 0 || declinedItems.length > 0) && (
                   <p className="cart-chat__meta">
-                    Tính cho {result.draft.householdSize ?? householdSize} người · {days} ngày
+                    Tính cho {turnContext?.householdSize ?? householdSize} người · {turnContext?.days ?? days} ngày
                   </p>
                 )}
                 {buyItems.length > 0 && <>
@@ -252,6 +293,11 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
                     ).join(", ")}.
                   </p>
                 )}
+                {declinedItems.length > 0 && (
+                  <p className="cart-chat__sufficient">
+                    Không cần mua: {declinedItems.map(item => item.name).join(", ")}.
+                  </p>
+                )}
                 {resolvedUnresolved?.missingHouseholdSize && (
                   <p>Nhà mình có bao nhiêu người để mình tính chính xác hơn nhé?</p>
                 )}
@@ -267,7 +313,7 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
                     {catalogNames ? ` (đợt gom hiện có: ${catalogNames})` : ""}.
                   </p>
                 )}
-                {items.length === 0 && result.unresolved.length === 0 && (
+                {items.length === 0 && declinedItems.length === 0 && result.unresolved.length === 0 && (
                   <p>Bạn muốn mình gợi ý thêm món nào cho giỏ?</p>
                 )}
                 {result.ruleRefs.length > 0 && (
@@ -276,7 +322,7 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
                     <ul>{result.ruleRefs.map((ref, refIndex) => <li key={refIndex}>{ref}</li>)}</ul>
                   </details>
                 )}
-                {isLatestTurn && buyItems.length > 0 && result.unresolved.length === 0 && (
+                {isLatestTurn && (buyItems.length > 0 || declinedItems.length > 0) && result.unresolved.length === 0 && (
                   <p className="cart-chat__note">Bạn có thể nhắn thêm để điều chỉnh số lượng hoặc bấm Dùng gợi ý.</p>
                 )}
               </div>}
@@ -330,10 +376,20 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
           {!pending && turns.length > 0 && <div className="cart-chat__actions">
             <Button full={false} variant="ghost" onClick={restart}>Bắt đầu lại</Button>
             {error && <Button full={false} variant="secondary" onClick={() => void suggest(turns)}>Thử lại</Button>}
-            {latestSuggestions.length > 0 && (
+            {canApplyLatest && (
               <Button
                 full={false}
-                onClick={() => onApply(Object.fromEntries(latestSuggestions.map(({ item, needQty }) => [item.skuId, String(needQty)])))}
+                onClick={() => onApply({
+                  householdSize: turnContexts.at(-1)?.householdSize,
+                  quantities: {
+                    ...Object.fromEntries(latestDeclined.map(item => [item.skuId, "0"])),
+                    ...Object.fromEntries(latestSuggestions.map(({ item, needQty }) => [item.skuId, String(needQty)])),
+                  },
+                  stocks: {
+                    ...Object.fromEntries(latestDeclined.map(item => [item.skuId, 0])),
+                    ...Object.fromEntries(latestSuggestions.map(({ item, stockQty }) => [item.skuId, stockQty])),
+                  },
+                })}
               >
                 Dùng gợi ý
               </Button>

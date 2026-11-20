@@ -338,6 +338,7 @@ describe("draftFromGemini", () => {
 
     expect(result.draft).toEqual({
       householdSize: 4,
+      days: 5,
       lines: [
         { skuId: waterSkuId, stockQty: 0, needQty: 120 },
         { skuId: riceSkuId, stockQty: 0, needQty: 7 },
@@ -413,6 +414,7 @@ describe("draftFromGemini", () => {
     );
     expect(overridden.draft).toEqual({
       householdSize: 4,
+      days: 7,
       lines: [
         { skuId: waterSkuId, stockQty: 0, needQty: 168 },
         { skuId: riceSkuId, stockQty: 0, needQty: 10 },
@@ -740,6 +742,7 @@ describe("draftFromGemini", () => {
       { skuId: waterSkuId, stockQty: 0, needQty: 72 },
       { skuId: riceSkuId, stockQty: 0, needQty: 4 },
     ]);
+    expect(declinedResult.draft.declinedSkuIds).toEqual([batterySkuId]);
 
     // Targeted shopping list does NOT inject unsolicited Pin AA from saved household notes
     vi.stubGlobal("fetch", mockGeminiResponse({
