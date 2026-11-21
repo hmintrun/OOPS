@@ -11,6 +11,7 @@ import { PageBack } from "./page-back";
 export const SHELL_NAV_ITEMS: NavItem[] = [
   { key: "groups", label: "Nhóm của tôi", icon: "groups", href: "/groups", relatedPaths: ["/", "/campaigns"], prefetch: false },
   { key: "feed", label: "Nhu cầu", icon: "newspaper", href: "/feed", relatedPaths: ["/trade/needs"] },
+  { key: "relief", label: "Cứu trợ", icon: "sos", href: "/relief" },
   { key: "orders", label: "Đơn hàng", icon: "inventory_2", href: "/orders", relatedPaths: ["/trade/drafts", "/trade/rounds", "/notifications", "/ops", "/admin"] },
   { key: "me", label: "Tài khoản", icon: "person", href: "/me" },
 ];
@@ -43,16 +44,19 @@ export function AppShell({ title, subtitle, icon, aside, children, bare = false,
 
   return (
     <main className={familyBackground ? "ui-app-page ui-family-page" : "ui-app-page"}>
+      <a href="#oops-main-content" className="ui-skip-link">
+        Chuyển tới nội dung chính
+      </a>
       <BottomNav items={SHELL_NAV_ITEMS} />
       {title && <ScreenHeader title={title} subtitle={subtitle} icon={icon} aside={aside} familyBackground={familyBackground} illustration={illustration} />}
-      <div className="ui-screen-body">
+      <div id="oops-main-content" className="ui-screen-body">
         {pathname !== "/" && pathname !== "/groups" && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <PageBack href={backHref} />
             {pageActions}
           </div>
         )}
-        <div className={bodyClassName}>
+        <div key={pathname} className={`ui-page-enter ${bodyClassName ?? ""}`.trim()}>
           {bare ? children : <Card>{children}</Card>}
         </div>
       </div>

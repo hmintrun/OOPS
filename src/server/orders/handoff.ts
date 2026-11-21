@@ -4,7 +4,7 @@ import type { z } from "zod";
 import type { issueInput, receiptInput, terminationInput } from "@/contracts/orders";
 import { conflict, forbidden, invalid, notFound } from "../errors";
 import { recordOrderEvent } from "./events";
-import { addDisbursement, appliedFunds, cancelUnderLock, expireCollectionUnderLock } from "./ledger";
+import { addContractDisbursement, appliedFunds, cancelUnderLock, expireCollectionUnderLock } from "./ledger";
 import {
   findOrder, lockOrderStock, orderAllocations, orderDto, receiptDto, requireHandoffParty,
   type AllocationRow, type OrderRow, type ReceiptRow, type TerminationRow,
@@ -130,21 +130,42 @@ async function settleReceipt(db: PoolClient, order: OrderRow, allocations: Alloc
   const funds = await appliedFunds(db, order.id);
   const deposit = funds.find(fund => fund.kind === "DEPOSIT");
   if (!deposit || BigInt(deposit.amount_vnd) !== BigInt(order.deposit_vnd)) throw conflict("Sổ tiền cọc không khớp hợp đồng.");
-  if (refundDeposit) await addDisbursement(db, order.id, deposit.id, deposit.payer_id, "DEPOSIT_REFUND", BigInt(deposit.amount_vnd));
   const goods = new Map(funds.filter(fund => fund.kind === "GOODS").map(fund => [fund.allocation_id, fund]));
   const price = BigInt(order.unit_price_vnd);
+  let sellerGoodsPayout = 0n;
+  const buyerRefunds = new Map<string, { fundId: string; amount: bigint }>();
   for (const part of allocations) {
     const received = quantities.get(part.id)!;
     if (price > 0n) {
       const fund = goods.get(part.id);
       if (!fund || BigInt(fund.amount_vnd) !== BigInt(part.goods_vnd)) throw conflict("Sổ tiền hàng không khớp hợp đồng.");
       const payout = BigInt(received) * price;
-      await addDisbursement(db, order.id, fund.id, order.seller_id, "GOODS_PAYOUT", payout);
-      await addDisbursement(db, order.id, fund.id, fund.payer_id, "GOODS_REFUND", BigInt(fund.amount_vnd) - payout);
+      sellerGoodsPayout += payout;
+      const refund = BigInt(fund.amount_vnd) - payout;
+      if (refund > 0n) {
+        const current = buyerRefunds.get(fund.payer_id);
+        buyerRefunds.set(fund.payer_id, {
+          fundId: current?.fundId ?? fund.id,
+          amount: (current?.amount ?? 0n) + refund,
+        });
+      }
     }
     await db.query(
       `update public.demand_shares set reserved = reserved - $3, received = received + $4
        where demand_item_id = $1 and membership_id = $2`, [order.demand_item_id, part.membership_id, part.qty, received],
+    );
+  }
+  const sellerDepositRefund = refundDeposit ? BigInt(deposit.amount_vnd) : 0n;
+  const sellerTotal = sellerGoodsPayout + sellerDepositRefund;
+  if (sellerTotal > 0n) {
+    const sellerKind = sellerGoodsPayout > 0n ? "GOODS_PAYOUT" : "DEPOSIT_REFUND";
+    await addContractDisbursement(
+      db, order.id, deposit.id, order.seller_id, sellerKind, sellerTotal, `settlement:${order.id}:${order.seller_id}`,
+    );
+  }
+  for (const [payeeId, entry] of buyerRefunds) {
+    await addContractDisbursement(
+      db, order.id, entry.fundId, payeeId, "GOODS_REFUND", entry.amount, `settlement:${order.id}:${payeeId}`,
     );
   }
   await db.query("update public.demand_items set reserved = reserved - $2, received = received + $3 where id = $1",

@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { readNotifications, useNotifications } from "@/components/notifications";
-import { Button, Card, IconTile, MaterialSymbol } from "@/components/ui";
+import { Button, Card, CardSkeleton, EmptyState, IconTile, MaterialSymbol } from "@/components/ui";
 import { useErrorToast } from "@/components/ui/error-toast";
 import { notification, notificationReadAllResult, type NotificationItem, type NotificationList } from "@/contracts/orders";
 import { apiFetch } from "@/lib/api-client";
@@ -96,12 +96,23 @@ function NotificationInbox({ page: latest, loading, error, needsSignIn, refresh 
           {readingAll ? "Đang đánh dấu…" : "Đánh dấu tất cả là đã đọc"}
         </Button>
       </div>}
-      {loading && <Card><p role="status">Đang tải thông báo…</p></Card>}
+      {loading && !page && <div role="status" aria-live="polite" className="grid gap-3">
+        <span className="sr-only">Đang tải thông báo…</span>
+        <CardSkeleton lines={2} />
+        <CardSkeleton lines={2} />
+      </div>}
       {error && <Card className="flex flex-wrap items-center justify-between gap-3">
         <p role="alert">{error}</p>
         <Button variant="secondary" full={false} onClick={refresh}>Thử lại</Button>
       </Card>}
-      {page?.items.length === 0 && <Card><p>Chưa có thông báo nào.</p></Card>}
+      {page?.items.length === 0 && <Card>
+        <EmptyState
+          icon="notifications_none"
+          tone="sky"
+          title="Chưa có thông báo"
+          description="Cập nhật về đơn hàng và đề nghị sẽ hiện tại đây."
+        />
+      </Card>}
       {!!page?.items.length && <Card padding="flush" className="overflow-hidden">
         <ul className="notifications-list" aria-label="Danh sách thông báo">
           {page.items.map(item => {

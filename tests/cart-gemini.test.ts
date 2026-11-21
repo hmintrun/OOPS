@@ -2,7 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CatalogItem } from "@/contracts/foundation";
 import type { FamilyStatusData } from "@/lib/family-status";
 import { ApiFailure } from "@/server/errors";
-import { draftFromGemini, geminiResponseSchema } from "@/server/cart/gemini";
+import {
+  buildGeminiResponseSchema,
+  DEFAULT_GEMINI_MODEL,
+  draftFromGemini,
+  geminiResponseSchema,
+  resolveGeminiModel,
+} from "@/server/cart/gemini";
+import { computeRecommendedNeed } from "@/server/cart/norms";
+import { extractInputSignals, normalizeUserText } from "@/server/cart/preprocess";
 import { waterSkuId } from "./fixtures/foundation";
 
 vi.mock("server-only", () => ({}));
@@ -63,8 +71,81 @@ afterEach(() => {
 });
 
 describe("draftFromGemini", () => {
-  it("uses only Gemini-supported JSON Schema keywords without maxItems", () => {
+  it("uses only Gemini-supported JSON Schema keywords without maxItems and constrains skuId enum", () => {
     walkSchema(geminiResponseSchema);
+    const dynamicSchema = buildGeminiResponseSchema(catalog);
+    walkSchema(dynamicSchema);
+    expect(dynamicSchema.properties.items.items.properties.skuId).toMatchObject({
+      anyOf: [{ type: "string", enum: [waterSkuId, riceSkuId, batterySkuId] }, { type: "null" }],
+    });
+    expect(dynamicSchema.properties.items.items.properties.stockQty).toMatchObject({
+      anyOf: [{ type: "number", minimum: 0 }, { type: "null" }],
+    });
+    expect(dynamicSchema.properties.items.items.properties.needQty).toMatchObject({
+      anyOf: [{ type: "number", minimum: 0 }, { type: "null" }],
+    });
+  });
+
+  it("defaults to gemini-4-hydrogen, upgrades deprecated models, and configures thinking for Gemini 3/4", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(resolveGeminiModel(undefined)).toBe(DEFAULT_GEMINI_MODEL);
+    expect(resolveGeminiModel("")).toBe(DEFAULT_GEMINI_MODEL);
+    expect(resolveGeminiModel("gemini-2.5-flash")).toBe(DEFAULT_GEMINI_MODEL);
+    expect(resolveGeminiModel("gemini-2.0-flash-lite")).toBe(DEFAULT_GEMINI_MODEL);
+    expect(resolveGeminiModel("gemini-4-hydrogen")).toBe("gemini-4-hydrogen");
+    expect(resolveGeminiModel("gemini-3.8-flash")).toBe("gemini-3.8-flash");
+    expect(resolveGeminiModel("gemini-3.5-flash-lite")).toBe("gemini-3.5-flash-lite");
+    expect(resolveGeminiModel("gemini-test")).toBe("gemini-test");
+
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-3.8-flash");
+    const flash38Provider = mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: { parts: [{ text: JSON.stringify({ householdSize: null, recommendAll: true, items: [] }) }] },
+      }],
+    });
+    vi.stubGlobal("fetch", flash38Provider);
+    await draftFromGemini({ text: "giúp tôi chuẩn bị giỏ", householdSize: 2, days: 3 }, catalog);
+    const [flash38Url, flash38Init] = flash38Provider.mock.calls[0] as unknown as [string, RequestInit];
+    expect(flash38Url).toContain("/models/gemini-3.8-flash:generateContent");
+    expect(JSON.parse(String(flash38Init.body)).generationConfig.thinkingConfig).toEqual({
+      thinkingLevel: "medium",
+    });
+
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "");
+    const defaultProvider = mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: { parts: [{ text: JSON.stringify({ householdSize: null, recommendAll: true, items: [] }) }] },
+      }],
+    });
+    vi.stubGlobal("fetch", defaultProvider);
+
+    await draftFromGemini({ text: "giúp tôi chuẩn bị giỏ", householdSize: 2, days: 3 }, catalog);
+    const [defaultUrl, defaultInit] = defaultProvider.mock.calls[0] as unknown as [string, RequestInit];
+    expect(defaultUrl).toContain(`/models/${DEFAULT_GEMINI_MODEL}:generateContent`);
+    const defaultSent = JSON.parse(String(defaultInit.body)) as {
+      generationConfig: { thinkingConfig?: { thinkingLevel: string } };
+    };
+    expect(defaultSent.generationConfig.thinkingConfig).toEqual({ thinkingLevel: "medium" });
+
+    vi.stubEnv("GEMINI_MODEL", "gemini-test");
+    const customProvider = mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: { parts: [{ text: JSON.stringify({ householdSize: null, recommendAll: true, items: [] }) }] },
+      }],
+    });
+    vi.stubGlobal("fetch", customProvider);
+    await draftFromGemini({ text: "giúp tôi chuẩn bị giỏ", householdSize: 2, days: 3 }, catalog);
+    const [customUrl, customInit] = customProvider.mock.calls[0] as unknown as [string, RequestInit];
+    expect(customUrl).toContain("/models/gemini-test:generateContent");
+    const customSent = JSON.parse(String(customInit.body)) as {
+      generationConfig: { thinkingConfig?: unknown };
+    };
+    expect(customSent.generationConfig.thinkingConfig).toBeUndefined();
   });
 
   it("keeps explicit user quantities untouched and flags conflicting units as unresolved", async () => {
@@ -109,7 +190,7 @@ describe("draftFromGemini", () => {
     });
     const [, init] = provider.mock.calls[0] as unknown as [string, RequestInit];
     const sent = JSON.parse(String(init.body)) as { generationConfig: { responseJsonSchema: unknown } };
-    expect(sent.generationConfig.responseJsonSchema).toEqual(geminiResponseSchema);
+    expect(sent.generationConfig.responseJsonSchema).toEqual(buildGeminiResponseSchema(catalog));
   });
 
   it("recommends three days of water and rice when user asks generally without mentioning batteries", async () => {
@@ -234,12 +315,25 @@ describe("draftFromGemini", () => {
     });
     const [, init] = provider.mock.calls[0] as unknown as [string, RequestInit];
     const body = JSON.parse(String(init.body));
-    expect(JSON.parse(body.contents[0].parts[0].text)).toEqual({
+    expect(JSON.parse(body.contents[0].parts[0].text)).toMatchObject({
       text: "",
       householdSize: 3,
       days: 1,
-      householdStatus: savedHousehold,
+      householdStatus: {
+        ...savedHousehold,
+        housingDescription: expect.any(String),
+        incomeGuidance: expect.any(String),
+      },
       catalog,
+      baselineForInput: {
+        householdSize: 3,
+        days: 1,
+        items: [
+          { skuId: waterSkuId, standardTarget: 18 },
+          { skuId: riceSkuId, standardTarget: 1 },
+          { skuId: batterySkuId, standardTarget: 4 },
+        ],
+      },
     });
   });
 
@@ -267,6 +361,7 @@ describe("draftFromGemini", () => {
 
     expect(result.draft).toEqual({
       householdSize: 4,
+      days: 5,
       lines: [
         { skuId: waterSkuId, stockQty: 0, needQty: 120 },
         { skuId: riceSkuId, stockQty: 0, needQty: 7 },
@@ -277,9 +372,193 @@ describe("draftFromGemini", () => {
     expect(result.encouragement).toBeTruthy();
   });
 
+  it("enforces input-grounded guardrails on householdSize and days", async () => {
+    expect(extractInputSignals(["Tầng 5, cần nước"])).toMatchObject({
+      hasHouseholdSizeMention: false,
+      hasDurationMention: false,
+    });
+    expect(extractInputSignals(["nhà 2 vợ chồng 2 con, dự trữ 1 tuần"])).toMatchObject({
+      hasHouseholdSizeMention: true,
+      hasDurationMention: true,
+    });
+
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-4-hydrogen");
+
+    // Gemini hallucinates householdSize=6 and days=3 when user text mentions neither
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: 6,
+              days: 3,
+              recommendAll: true,
+              items: [],
+            }),
+          }],
+        },
+      }],
+    }));
+
+    const guarded = await draftFromGemini(
+      { text: "Hết nước với gạo", householdSize: 3, days: 7 },
+      catalog,
+    );
+    expect(guarded.draft).toEqual({
+      householdSize: 3,
+      lines: [
+        { skuId: waterSkuId, stockQty: 0, needQty: 126 },
+        { skuId: riceSkuId, stockQty: 0, needQty: 7 },
+      ],
+    });
+
+    // When user text mentions natural Vietnamese household & duration, accept extracted overrides
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: 4,
+              days: 7,
+              recommendAll: true,
+              items: [],
+            }),
+          }],
+        },
+      }],
+    }));
+
+    const overridden = await draftFromGemini(
+      { text: "nhà 2 vợ chồng 2 con, dự trữ 1 tuần", householdSize: 2, days: 3 },
+      catalog,
+    );
+    expect(overridden.draft).toEqual({
+      householdSize: 4,
+      days: 7,
+      lines: [
+        { skuId: waterSkuId, stockQty: 0, needQty: 168 },
+        { skuId: riceSkuId, stockQty: 0, needQty: 10 },
+      ],
+    });
+  });
+
+  it("supports multi-turn history and passes conversationHistory cleanly", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-4-hydrogen");
+    const provider = mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              days: null,
+              recommendAll: false,
+              items: [
+                { skuId: waterSkuId, label: "nước uống", unit: "chai 500 mL", stockQty: 48, needQty: null },
+              ],
+            }),
+          }],
+        },
+      }],
+    });
+    vi.stubGlobal("fetch", provider);
+
+    const result = await draftFromGemini({
+      text: normalizeUserText("  Mỗi thùng 24 chai 500ml \r\n"),
+      householdSize: 4,
+      days: 3,
+      history: [
+        { role: "user", text: "Có 2 thùng nước" },
+        { role: "assistant", text: "Cần làm rõ: nước" },
+      ],
+    }, catalog);
+
+    expect(result.draft).toEqual({
+      householdSize: 4,
+      lines: [{ skuId: waterSkuId, stockQty: 48, needQty: 24 }],
+    });
+    const [, init] = provider.mock.calls[0] as unknown as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+    const promptPayload = JSON.parse(body.contents[0].parts[0].text);
+    expect(promptPayload.conversationHistory).toEqual([
+      { role: "user", text: "Có 2 thùng nước" },
+      { role: "assistant", text: "Cần làm rõ: nước" },
+    ]);
+    expect(promptPayload.text).toBe("Mỗi thùng 24 chai 500ml");
+  });
+
+  it("normalizes safe Vietnamese unit synonyms while flagging ambiguous units unresolved", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-4-hydrogen");
+
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              recommendAll: false,
+              items: [
+                { skuId: waterSkuId, label: "Nước", unit: "chai 500ml", stockQty: 2, needQty: null },
+                { skuId: riceSkuId, label: "Gạo", unit: "ký", stockQty: 1, needQty: null },
+                { skuId: batterySkuId, label: "Pin AA", unit: "cục pin", stockQty: 2, needQty: null },
+              ],
+            }),
+          }],
+        },
+      }],
+    }));
+
+    const normalized = await draftFromGemini(
+      { text: "Còn 2 chai 500ml, 1 ký gạo, 2 cục pin", householdSize: 4, days: 3 },
+      catalog,
+    );
+    expect(normalized.draft.lines).toEqual([
+      { skuId: waterSkuId, stockQty: 2, needQty: 70 },
+      { skuId: riceSkuId, stockQty: 1, needQty: 3 },
+      { skuId: batterySkuId, stockQty: 2, needQty: 2 },
+    ]);
+    expect(normalized.unresolved).toEqual([]);
+
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              recommendAll: false,
+              items: [
+                { skuId: waterSkuId, label: "Nước", unit: "chai 0,5 lít", stockQty: 4, needQty: null },
+                { skuId: riceSkuId, label: "Gạo", unit: "cân", stockQty: 1, needQty: 2 },
+                { skuId: batterySkuId, label: "Pin", unit: "vỉ", stockQty: 1, needQty: null },
+              ],
+            }),
+          }],
+        },
+      }],
+    }));
+
+    const mixed = await draftFromGemini(
+      { text: "Có 4 chai 0,5 lít, còn 1 cân gạo mua thêm 2 kí, có 1 vỉ pin", householdSize: 2, days: 3 },
+      catalog,
+    );
+    expect(mixed.draft.lines).toEqual([
+      { skuId: waterSkuId, stockQty: 4, needQty: 32 },
+      { skuId: riceSkuId, stockQty: 1, needQty: 2 },
+    ]);
+    expect(mixed.unresolved).toEqual(["Pin"]);
+  });
+
   it.each([
     { unit: "thùng", text: "Có 2 thùng nước, gợi ý thêm giúp tôi" },
-    { unit: "chai 1,5 L", text: "Có 2 chai nước loại 1,5 L, gợi ý thêm giúp tôi" },
+    { unit: "bình", text: "Có 2 bình nước, gợi ý thêm giúp tôi" },
+    { unit: "lốc", text: "Có 2 lốc nước, gợi ý thêm giúp tôi" },
   ])("does not replace unresolved water stock in $unit with zero stock", async ({ unit, text }) => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
     vi.stubEnv("GEMINI_MODEL", "gemini-3.5-flash-lite");
@@ -305,6 +584,74 @@ describe("draftFromGemini", () => {
     expect(result.draft.lines).toEqual([{ skuId: riceSkuId, stockQty: 0, needQty: 4 }]);
     expect(result.unresolved).toEqual(["nước"]);
     expect(result.ruleRefs).toHaveLength(1);
+  });
+
+  it("repairs fenced JSON, overlong strings, fractional counts, and unambiguous SKU aliases", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-4-hydrogen");
+
+    const longEncouragement = `${"Bạn đừng lo, OOPS luôn đồng hành cùng bà con chuẩn bị nhu yếu phẩm. ".repeat(8)}Cố lên nhé!`;
+    const longReason = `${"Ước lượng tăng thêm gạo theo khẩu phần ăn thực tế của cả gia đình. ".repeat(8)}Hết.`;
+    expect(longEncouragement.length).toBeGreaterThan(300);
+    expect(longReason.length).toBeGreaterThan(300);
+
+    const fencedPayload = [
+      "```json",
+      JSON.stringify({
+        householdSize: null,
+        urgency: "ELEVATED",
+        encouragement: longEncouragement,
+        items: [
+          { skuId: null, label: "gạo", unit: "kí", stockQty: 1.8, needQty: 5.2, estimated: true, reason: longReason },
+          { skuId: null, label: "Mì gói", unit: "gói", stockQty: 0, needQty: 10 },
+        ],
+      }),
+      "```",
+    ].join("\n");
+
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{ finishReason: "STOP", content: { parts: [{ text: fencedPayload }] } }],
+    }));
+
+    const result = await draftFromGemini(
+      { text: "Nhà ăn nhiều gạo, thêm 10 gói mì", householdSize: 4, days: 3 },
+      catalog,
+    );
+    expect(result.draft.lines).toEqual([{ skuId: riceSkuId, stockQty: 1, needQty: 6 }]);
+    expect(result.unresolved).toEqual(["Mì gói"]);
+    expect(result.encouragement!.length).toBeLessThanOrEqual(300);
+    expect(result.ruleRefs[0].length).toBeLessThanOrEqual(300);
+  });
+
+  it("handles notNeeded items without re-adding them during recommendAll", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-4-hydrogen");
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              recommendAll: true,
+              items: [
+                { skuId: riceSkuId, label: "Gạo", unit: "kg", stockQty: 10, needQty: 0, notNeeded: true },
+              ],
+            }),
+          }],
+        },
+      }],
+    }));
+
+    const result = await draftFromGemini(
+      { text: "Đủ gạo rồi có 10 kg, gợi ý thêm giúp tôi", householdSize: 4, days: 3 },
+      catalog,
+    );
+    expect(result.draft.lines).toEqual([
+      { skuId: riceSkuId, stockQty: 10, needQty: 0 },
+      { skuId: waterSkuId, stockQty: 0, needQty: 72 },
+    ]);
+    expect(result.unresolved).toEqual([]);
   });
 
   it("recommends batteries when user explicitly mentions power outage or batteries, and scales urgent need higher than normal", async () => {
@@ -337,6 +684,7 @@ describe("draftFromGemini", () => {
       { skuId: waterSkuId, stockQty: 0, needQty: 108 },
       { skuId: riceSkuId, stockQty: 0, needQty: 6 },
     ]);
+    expect(urgentResult.ruleRefs[1]).toContain("× 1.5");
 
     vi.stubGlobal("fetch", mockGeminiResponse({
       candidates: [{
@@ -364,6 +712,82 @@ describe("draftFromGemini", () => {
     expect(batteryResult.draft.lines).toEqual([
       { skuId: batterySkuId, stockQty: 0, needQty: 4 },
     ]);
+  });
+
+  it("applies power-outage battery safety net only when appropriate and respects explicit decline", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-4-hydrogen");
+
+    // Safety net adds Pin AA when user text mentions power outage even if LLM omitted it
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              recommendAll: true,
+              items: [],
+            }),
+          }],
+        },
+      }],
+    }));
+    const outageResult = await draftFromGemini(
+      { text: "Nhà hay mất điện, giúp chuẩn bị giỏ", householdSize: 4, days: 3 },
+      catalog,
+    );
+    expect(outageResult.draft.lines).toEqual([
+      { skuId: waterSkuId, stockQty: 0, needQty: 72 },
+      { skuId: riceSkuId, stockQty: 0, needQty: 4 },
+      { skuId: batterySkuId, stockQty: 0, needQty: 4 },
+    ]);
+
+    // Explicit decline suppresses Pin AA even when text mentions power outage
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              recommendAll: true,
+              items: [{ skuId: batterySkuId, label: "Pin AA", unit: null, stockQty: null, needQty: 0, notNeeded: true }],
+            }),
+          }],
+        },
+      }],
+    }));
+    const declinedResult = await draftFromGemini(
+      { text: "Nhà hay mất điện nhưng không cần pin", householdSize: 4, days: 3 },
+      catalog,
+    );
+    expect(declinedResult.draft.lines).toEqual([
+      { skuId: waterSkuId, stockQty: 0, needQty: 72 },
+      { skuId: riceSkuId, stockQty: 0, needQty: 4 },
+    ]);
+    expect(declinedResult.draft.declinedSkuIds).toEqual([batterySkuId]);
+
+    // Targeted shopping list does NOT inject unsolicited Pin AA from saved household notes
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              recommendAll: false,
+              items: [{ skuId: riceSkuId, label: "Gạo", unit: "kg", stockQty: 0, needQty: 2 }],
+            }),
+          }],
+        },
+      }],
+    }));
+    const targetedResult = await draftFromGemini(
+      { text: "Cần 2 kg gạo", householdSize: 3, days: 3, householdStatus: savedHousehold },
+      catalog,
+    );
+    expect(targetedResult.draft.lines).toEqual([{ skuId: riceSkuId, stockQty: 0, needQty: 2 }]);
   });
 
   it("marks duplicate SKUs or missing householdSize unresolved while defaulting omitted stockQty to 0", async () => {
@@ -398,7 +822,7 @@ describe("draftFromGemini", () => {
     });
   });
 
-  it("uses server rules for estimated water and keeps contextual estimates for other items", async () => {
+  it("uses server rules for estimated water, keeps reasonable estimates, and rejects absurd estimates", async () => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
     vi.stubEnv("GEMINI_MODEL", "gemini-3.5-flash-lite");
     const reason = "Ước lượng 8 kg gạo vì nhu cầu ăn cao hơn bình thường.";
@@ -465,25 +889,267 @@ describe("draftFromGemini", () => {
       householdSize: 4,
       days: 5,
     });
+
+    // Absurd estimate (500 kg rice for 4 people, 3 days) falls back to deterministic norm (4 kg)
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              urgency: "ELEVATED",
+              items: [
+                {
+                  skuId: riceSkuId,
+                  label: "Gạo",
+                  unit: "kg",
+                  stockQty: 0,
+                  needQty: 500,
+                  estimated: true,
+                  reason: "Ước lượng quá lớn.",
+                },
+              ],
+            }),
+          }],
+        },
+      }],
+    }));
+    const bounded = await draftFromGemini(
+      { text: "Nhà ăn nhiều gạo", householdSize: 4, days: 3 },
+      catalog,
+    );
+    expect(bounded.draft.lines).toEqual([{ skuId: riceSkuId, stockQty: 0, needQty: 5 }]);
+    expect(bounded.ruleRefs[0]).toContain("× 1.25");
   });
 
-  it("maps provider 400 errors and invalid JSON to 503 SERVICE_UNAVAILABLE", async () => {
+  it("retries once on transient 429/503 errors and maps 400 or MAX_TOKENS directly to 503 SERVICE_UNAVAILABLE", async () => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
-    vi.stubEnv("GEMINI_MODEL", "gemini-3.5-flash-lite");
+    vi.stubEnv("GEMINI_MODEL", "gemini-4-hydrogen");
     vi.spyOn(console, "error").mockImplementation(() => {});
 
-    vi.stubGlobal("fetch", mockGeminiResponse({ error: { code: 400, status: "INVALID_ARGUMENT" } }, 400));
+    const transientProvider = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 429 } }), { status: 429 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        candidates: [{
+          finishReason: "STOP",
+          content: {
+            parts: [{ text: JSON.stringify({ householdSize: null, items: [{ skuId: riceSkuId, label: "Gạo", unit: "kg", stockQty: 0, needQty: 3 }] }) }],
+          },
+        }],
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", transientProvider);
+
+    const retried = await draftFromGemini({ text: "Cần 3 kg gạo", householdSize: 4 }, catalog);
+    expect(transientProvider).toHaveBeenCalledTimes(2);
+    expect(retried.draft.lines).toEqual([{ skuId: riceSkuId, stockQty: 0, needQty: 3 }]);
+
+    const badArgProvider = mockGeminiResponse({ error: { code: 400, status: "INVALID_ARGUMENT" } }, 400);
+    vi.stubGlobal("fetch", badArgProvider);
     await expect(draftFromGemini({ text: "Cần nước" }, catalog)).rejects.toMatchObject({
       status: 503,
       code: "SERVICE_UNAVAILABLE",
     } satisfies Partial<ApiFailure>);
+    expect(badArgProvider).toHaveBeenCalledTimes(1);
+
+    const maxTokensProvider = mockGeminiResponse({
+      candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: "{}" }] } }],
+    });
+    vi.stubGlobal("fetch", maxTokensProvider);
+    await expect(draftFromGemini({ text: "Cần nước" }, catalog)).rejects.toMatchObject({
+      status: 503,
+      code: "SERVICE_UNAVAILABLE",
+    } satisfies Partial<ApiFailure>);
+    expect(maxTokensProvider).toHaveBeenCalledTimes(1);
+  });
+
+  it("includes urgency multiplier explanations in FOOD ruleRefs", () => {
+    const elevated = computeRecommendedNeed(catalog[1], 4, 0, 3, "ELEVATED");
+    expect(elevated).toEqual({
+      needQty: 5,
+      ruleRef: expect.stringContaining("× 1.25 (nhu cầu tăng)"),
+    });
+    const urgent = computeRecommendedNeed(catalog[1], 4, 0, 3, "URGENT");
+    expect(urgent).toEqual({
+      needQty: 6,
+      ruleRef: expect.stringContaining("× 1.5 (nhu cầu cấp thiết)"),
+    });
+  });
+
+  it("converts water volume units (L, mL, bottle/container/pack sizes) into 500 mL bottles", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-3.8-flash");
+
+    // "Còn 2 lít nước" -> stockQty 4, needQty 72 - 4 = 68 (4 people, 3 days)
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              recommendAll: false,
+              items: [{ skuId: waterSkuId, label: "Nước uống", unit: "lít", stockQty: 2, needQty: null }],
+            }),
+          }],
+        },
+      }],
+    }));
+    const twoLitresStock = await draftFromGemini({ text: "Còn 2 lít nước", householdSize: 4, days: 3 }, catalog);
+    expect(twoLitresStock.draft.lines).toEqual([{ skuId: waterSkuId, stockQty: 4, needQty: 68 }]);
+    expect(twoLitresStock.unresolved).toEqual([]);
+    expect(twoLitresStock.ruleRefs[0]).toContain("2 lít = 4 chai 500 mL");
+
+    // "Cần mua thêm 2 lít nước" -> needQty 4
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              recommendAll: false,
+              items: [{ skuId: waterSkuId, label: "Nước uống", unit: "lít", stockQty: 0, needQty: 2 }],
+            }),
+          }],
+        },
+      }],
+    }));
+    const twoLitresNeed = await draftFromGemini({ text: "Cần mua thêm 2 lít nước", householdSize: 4, days: 3 }, catalog);
+    expect(twoLitresNeed.draft.lines).toEqual([{ skuId: waterSkuId, stockQty: 0, needQty: 4 }]);
+    expect(twoLitresNeed.ruleRefs).toEqual([expect.stringContaining("2 lít = 4 chai 500 mL")]);
+
+    // Decimal litres & pure mL
+    for (const testCase of [
+      { unit: "lít", stockQty: 0.5, needQty: 1.5, expectedStock: 1, expectedNeed: 3 },
+      { unit: "lít", stockQty: 1.2, needQty: 1.2, expectedStock: 2, expectedNeed: 3 },
+      { unit: "mL", stockQty: 500, needQty: 1500, expectedStock: 1, expectedNeed: 3 },
+    ]) {
+      vi.stubGlobal("fetch", mockGeminiResponse({
+        candidates: [{
+          finishReason: "STOP",
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                householdSize: null,
+                items: [{ skuId: waterSkuId, label: "Nước uống", unit: testCase.unit, stockQty: testCase.stockQty, needQty: testCase.needQty }],
+              }),
+            }],
+          },
+        }],
+      }));
+      const converted = await draftFromGemini({ text: "Nước uống", householdSize: 2, days: 3 }, catalog);
+      expect(converted.draft.lines).toEqual([
+        { skuId: waterSkuId, stockQty: testCase.expectedStock, needQty: testCase.expectedNeed },
+      ]);
+      expect(converted.unresolved).toEqual([]);
+    }
+
+    // Container and pack volumes -> 500 mL bottles
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              items: [{ skuId: waterSkuId, label: "Nước uống", unit: "chai 1,5 L", stockQty: 2, needQty: null }],
+            }),
+          }],
+        },
+      }],
+    }));
+    const largeBottles = await draftFromGemini({ text: "Có 2 chai nước 1,5 L", householdSize: 4, days: 3 }, catalog);
+    expect(largeBottles.draft.lines).toEqual([{ skuId: waterSkuId, stockQty: 6, needQty: 66 }]);
+    expect(largeBottles.unresolved).toEqual([]);
+
+    for (const container of [
+      { unit: "chai 2 lít", stockQty: 1, expected: 4 },
+      { unit: "bình 20 lít", stockQty: 1, expected: 40 },
+      { unit: "can 5 lít", stockQty: 1, expected: 10 },
+      { unit: "thùng 24 chai 500ml", stockQty: 1, expected: 24 },
+    ]) {
+      vi.stubGlobal("fetch", mockGeminiResponse({
+        candidates: [{
+          finishReason: "STOP",
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                householdSize: null,
+                items: [{ skuId: waterSkuId, label: "Nước uống", unit: container.unit, stockQty: container.stockQty, needQty: null }],
+              }),
+            }],
+          },
+        }],
+      }));
+      const res = await draftFromGemini({ text: `Có 1 ${container.unit}`, householdSize: 4, days: 3 }, catalog);
+      expect(res.draft.lines[0].stockQty).toBe(container.expected);
+      expect(res.unresolved).toEqual([]);
+    }
+
+    // Guard against double-counting malformed bare volume unit ("2 lít" with stockQty: 2)
+    vi.stubGlobal("fetch", mockGeminiResponse({
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              items: [{ skuId: waterSkuId, label: "Nước uống", unit: "2 lít", stockQty: 2, needQty: null }],
+            }),
+          }],
+        },
+      }],
+    }));
+    const malformed = await draftFromGemini({ text: "Có 2 lít nước", householdSize: 4, days: 3 }, catalog);
+    expect(malformed.draft.lines).toEqual([]);
+    expect(malformed.unresolved).toEqual(["Nước uống"]);
+  });
+
+  it("converts exact rice metric weights into kg while keeping bare bao unresolved", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "test-key");
+    vi.stubEnv("GEMINI_MODEL", "gemini-3.8-flash");
+
+    for (const riceCase of [
+      { unit: "g", stockQty: 2000, needQty: 500, expectedStock: 2, expectedNeed: 1 },
+      { unit: "bao 5 kg", stockQty: 1, needQty: null, expectedStock: 5, expectedNeed: 0 },
+      { unit: "yến", stockQty: 0, needQty: 1, expectedStock: 0, expectedNeed: 10 },
+    ]) {
+      vi.stubGlobal("fetch", mockGeminiResponse({
+        candidates: [{
+          finishReason: "STOP",
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                householdSize: null,
+                items: [{ skuId: riceSkuId, label: "Gạo", unit: riceCase.unit, stockQty: riceCase.stockQty, needQty: riceCase.needQty }],
+              }),
+            }],
+          },
+        }],
+      }));
+      const res = await draftFromGemini({ text: "Gạo", householdSize: 4, days: 3 }, catalog);
+      expect(res.draft.lines).toEqual([
+        { skuId: riceSkuId, stockQty: riceCase.expectedStock, needQty: riceCase.expectedNeed },
+      ]);
+      expect(res.unresolved).toEqual([]);
+    }
 
     vi.stubGlobal("fetch", mockGeminiResponse({
-      candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: "{}" }] } }],
+      candidates: [{
+        finishReason: "STOP",
+        content: {
+          parts: [{
+            text: JSON.stringify({
+              householdSize: null,
+              items: [{ skuId: riceSkuId, label: "Gạo", unit: "bao", stockQty: 1, needQty: null }],
+            }),
+          }],
+        },
+      }],
     }));
-    await expect(draftFromGemini({ text: "Cần nước" }, catalog)).rejects.toMatchObject({
-      status: 503,
-      code: "SERVICE_UNAVAILABLE",
-    } satisfies Partial<ApiFailure>);
+    const bareBao = await draftFromGemini({ text: "Có 1 bao gạo", householdSize: 4, days: 3 }, catalog);
+    expect(bareBao.draft.lines).toEqual([]);
+    expect(bareBao.unresolved).toEqual(["Gạo"]);
   });
 });

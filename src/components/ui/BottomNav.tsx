@@ -4,6 +4,7 @@ import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
 import { MaterialSymbol } from "./MaterialSymbol";
+import { useSlidingIndicator } from "./use-sliding-indicator";
 
 export type NavItem = {
   key: string;
@@ -24,16 +25,41 @@ function NavIcon({ icon, active }: { icon: string; active: boolean }) {
   );
 }
 
-export function NavigationFrame({ children, label, count }: {
+export function NavigationFrame({ children, label, count, activeSection }: {
   children: ReactNode;
   label: string;
   count: number;
+  activeSection?: string;
 }) {
+  const { containerRef, indicatorStyle, hasIndicator, animate } = useSlidingIndicator<HTMLElement>(
+    activeSection ?? "",
+    ".ui-nav__item--active",
+  );
+
   return (
     <div className="ui-nav-shell">
       <div className="ui-nav-shell__inner">
-        <span className="ui-nav-brand">OOPS</span>
-        <nav className="ui-nav" aria-label={label} style={{ "--nav-count": count } as CSSProperties}>
+        <Link href="/groups" className="ui-nav-brand" aria-label="OOPS — Trang chủ nhóm">
+          <span className="ui-nav-brand__mark" aria-hidden>
+            <MaterialSymbol name="home" size={18} filled />
+          </span>
+          <span>OOPS</span>
+        </Link>
+        <nav
+          ref={containerRef}
+          className="ui-nav"
+          aria-label={label}
+          data-has-ind={hasIndicator ? "true" : undefined}
+          data-active-section={activeSection}
+          style={{ "--nav-count": count } as CSSProperties}
+        >
+          {hasIndicator && (
+            <span
+              className={`ui-nav__indicator ${animate ? "ui-nav__indicator--animate" : ""}`}
+              style={indicatorStyle}
+              aria-hidden="true"
+            />
+          )}
           {children}
         </nav>
       </div>
@@ -43,13 +69,16 @@ export function NavigationFrame({ children, label, count }: {
 
 export function BottomNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
+  const activeKey = items.find((item) =>
+    [item.href, ...(item.relatedPaths ?? [])].some(
+      (path) => pathname === path || pathname.startsWith(`${path}/`),
+    ),
+  )?.key;
 
   return (
-    <NavigationFrame label="Điều hướng chính" count={items.length}>
+    <NavigationFrame label="Điều hướng chính" count={items.length} activeSection={activeKey}>
       {items.map((item) => {
-        const active = [item.href, ...(item.relatedPaths ?? [])].some(
-          (path) => pathname === path || pathname.startsWith(`${path}/`),
-        );
+        const active = item.key === activeKey;
         return (
           <Link
             key={item.key}

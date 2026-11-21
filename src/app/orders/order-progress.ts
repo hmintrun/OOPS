@@ -25,15 +25,15 @@ export function orderProgress(state: Contract["state"]) {
 
 export function orderStageDetail(state: Contract["state"]) {
   const details = {
-    AWAIT_COMMITMENTS: { step: 2, icon: "verified_user", hint: "Chờ các hộ ký xác nhận trên Fuji" },
-    AWAIT_DEPOSIT: { step: 2, icon: "account_balance_wallet", hint: "Chờ cửa hàng nộp cọc giữ đơn" },
-    AWAIT_PAYMENT: { step: 2, icon: "payments", hint: "Chờ các hộ thanh toán tiền hàng" },
-    AWAIT_HANDOFF: { step: 3, icon: "local_shipping", hint: "Đang chuẩn bị giao hàng tới sảnh" },
-    AWAIT_APPROVAL: { step: 3, icon: "fact_check", hint: "Đã giao — chờ hai bên duyệt biên nhận" },
-    SETTLING: { step: 3, icon: "receipt_long", hint: "Đang quyết toán chi & hoàn tiền" },
-    COMPLETED: { step: 4, icon: "check_circle", hint: "Đã hoàn tất giao nhận & quyết toán" },
-    NEEDS_REVIEW: { step: 3, icon: "warning", hint: "Đang tạm giữ để đối soát lại" },
-    CANCELED: { step: 1, icon: "cancel", hint: "Đơn hàng đã hủy" },
+    AWAIT_COMMITMENTS: { step: 2, icon: "verified_user", hint: "Chờ các hộ xác nhận" },
+    AWAIT_DEPOSIT: { step: 2, icon: "account_balance_wallet", hint: "Chờ cửa hàng đặt cọc" },
+    AWAIT_PAYMENT: { step: 2, icon: "payments", hint: "Chờ thanh toán tiền hàng" },
+    AWAIT_HANDOFF: { step: 3, icon: "local_shipping", hint: "Cửa hàng đang chuẩn bị giao" },
+    AWAIT_APPROVAL: { step: 3, icon: "fact_check", hint: "Chờ duyệt biên nhận bàn giao" },
+    SETTLING: { step: 3, icon: "receipt_long", hint: "Đang quyết toán" },
+    COMPLETED: { step: 4, icon: "check_circle", hint: "Hoàn tất đơn hàng" },
+    NEEDS_REVIEW: { step: 3, icon: "warning", hint: "Đang đối soát lại" },
+    CANCELED: { step: 1, icon: "cancel", hint: "Đơn đã hủy" },
   } as const;
   return details[state];
 }

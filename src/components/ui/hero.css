@@ -184,8 +184,8 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .ui-hero__cloud-a, .ui-hero__cloud-b, .ui-hero__cloud-c {
-    animation: ui-hero-cloud-drift 18s ease-in-out infinite alternate;
+    animation: ui-hero-cloud-drift 14s ease-in-out 2 alternate;
   }
-  .ui-hero__cloud-b { animation-delay: -6s; }
-  .ui-hero__cloud-c { animation-delay: -12s; }
+  .ui-hero__cloud-b { animation-delay: -4s; }
+  .ui-hero__cloud-c { animation-delay: -8s; }
 }

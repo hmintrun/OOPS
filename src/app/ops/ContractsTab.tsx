@@ -10,7 +10,7 @@ import {
 } from "@/contracts/orders";
 import { apiFetch } from "@/lib/api-client";
 import { Banner, INPUT_CLASS } from "@/app/campaigns/_shared/ui";
-import { orderStates, orderStateTones, paymentKinds } from "@/app/orders/order-labels";
+import { orderStates, orderStateTones, paymentKindLabel } from "@/app/orders/order-labels";
 import { TradeStatus } from "@/app/trade/TradeStatus";
 import { dateTime, useTrade, vnd } from "@/app/trade/trade-client";
 import {
@@ -249,7 +249,7 @@ function ContractDetailPanel({ detail }: { detail: OpsContractDetail }) {
           detail.disbursements.map(d => (
             <div key={d.disbursementId} className="rounded-input border border-line p-2.5 flex flex-wrap justify-between gap-2">
               <span>
-                <strong>{paymentKinds[d.kind]}</strong> · {d.payeeName ?? shortCode(d.payeeId ?? d.disbursementId)} · {vnd(d.amountVnd)}
+                <strong>{paymentKindLabel(d.kind, detail.state, detail.reviewScope)}</strong> · {d.payeeName ?? shortCode(d.payeeId ?? d.disbursementId)} · {vnd(d.amountVnd)}
               </span>
               <span>
                 {disbursementStateLabels[d.state]}

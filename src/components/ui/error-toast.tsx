@@ -24,7 +24,7 @@ export function ErrorToastProvider({ children }: { children: ReactNode }) {
   return <ErrorToastContext.Provider value={showError}>
     {children}
     {toast && createPortal(
-      <div role="alert" className="pointer-events-none fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[80] mx-auto flex max-w-md items-center gap-3 rounded-card border border-danger/20 bg-surface p-3 text-navy-900 shadow-xl">
+      <div role="alert" className="ui-toast pointer-events-none fixed inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[80] mx-auto flex max-w-md items-center gap-3 rounded-card border border-danger/20 bg-surface p-3 text-navy-900 shadow-xl">
         <IconTile icon="error" tone="rose" size="sm" />
         <p className="min-w-0 wrap-anywhere text-body font-semibold">{toast.message}</p>
       </div>,

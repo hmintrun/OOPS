@@ -16,7 +16,7 @@ import { Chip, INPUT_CLASS } from "@/app/campaigns/_shared/ui";
 import { isPast } from "@/app/campaigns/_shared/dates";
 import { TradeStatus } from "@/app/trade/TradeStatus";
 import { dateTime, useRoundRefresh, useTrade, vnd } from "@/app/trade/trade-client";
-import { orderStates, orderStateTones, paymentKinds } from "../order-labels";
+import { orderStates, orderStateTones, paymentKindLabel } from "../order-labels";
 import { OrderCancellation } from "./OrderCancellation";
 import "../orders.css";
 
@@ -79,7 +79,7 @@ export default function OrderPage() {
 
   return <AppShell title="Chi tiết đơn hàng" illustration="parcel" backHref="/orders" bare>
     <div className="grid gap-4">
-      <TradeStatus {...trade} retry={() => void trade.refresh()} />
+      <TradeStatus {...trade} hasData={Boolean(trade.data)} retry={() => void trade.refresh()} />
       {order && <div className="ui-card-grid">
         <Card id="commitments" tabIndex={-1} className="order-stage grid gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -152,7 +152,7 @@ export default function OrderPage() {
             </section>;
           })}
           {order.disbursements.map(payment => <p key={payment.disbursementId}>
-            {paymentKinds[payment.kind]} · {vnd(payment.amountVnd)} · {transferLabels[payment.state]}
+            {paymentKindLabel(payment.kind, order.state, order.reviewScope)} · {vnd(payment.amountVnd)} · {transferLabels[payment.state]}
             {payment.postedAt ? ` · ${dateTime(payment.postedAt)}` : ""}
           </p>)}
         </Card>

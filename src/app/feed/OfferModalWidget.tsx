@@ -114,12 +114,12 @@ export function OfferModalWidget({
   };
 
   const isWater = category === "WATER" || item.name.toLowerCase().includes("nước");
-  const imgSrc = isWater ? "/assets/water-bottles.jpg" : "/assets/groceries-box.jpg";
+  const imgSrc = isWater ? "/assets/water-bottles.webp" : "/assets/groceries-box.webp";
 
   return (
-    <WidgetDialog title="Đề nghị cấp phát & Chào hàng" icon="storefront" onClose={onClose}>
+    <WidgetDialog title="Chào hàng & Tặng hàng" icon="storefront" onClose={onClose}>
       {maxQty === 0 ? (
-        <p role="status" className="text-body font-bold">Nhu cầu này hiện chưa thể chốt thêm hàng.</p>
+        <p role="status" className="text-body font-bold">Nhu cầu này đã đủ số lượng.</p>
       ) : !schedule.available ? (
         <p role="status" className="text-body font-bold">Lịch giao còn quá gần để mở đề nghị mới.</p>
       ) : (
@@ -129,15 +129,15 @@ export function OfferModalWidget({
             <img
               src={imgSrc}
               alt=""
+              width={56}
+              height={56}
+              decoding="async"
               className="h-14 w-14 rounded-tile object-cover border border-white flex-none"
             />
             <div className="min-w-0 flex-1">
-              <span className="inline-block rounded-pill bg-surface px-2.5 py-0.5 text-small font-extrabold text-green-700">
-                Nhu cầu gom chung cư dân
-              </span>
-              <h4 className="text-title font-extrabold text-navy-900 truncate mt-0.5">{item.name}</h4>
-              <p className="text-body text-navy-600">
-                Có thể chốt thêm <strong className="text-green-700">{maxQty} {item.unit}</strong> · Hạn cần: <strong className="text-navy-900">{formatDateTime(item.needBy)}</strong>
+              <h4 className="text-title font-extrabold text-navy-900 truncate">{item.name}</h4>
+              <p className="text-small text-navy-600 mt-0.5">
+                Còn cần <strong className="text-green-700">{maxQty} {item.unit}</strong> · Hạn <strong className="text-navy-900">{formatDateTime(item.needBy)}</strong>
               </p>
             </div>
           </div>
@@ -145,7 +145,7 @@ export function OfferModalWidget({
           {/* Chọn chế độ có hình minh họa SVG */}
           <div>
             <p className="text-label font-extrabold text-navy-900 mb-2">
-              Chọn hình thức hỗ trợ bà con:
+              Hình thức cung cấp
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <button
@@ -168,8 +168,8 @@ export function OfferModalWidget({
               >
                 <ModeObjectSvg gift={true} />
                 <div>
-                  <div className="text-label font-extrabold text-navy-900">Tặng 0đ cứu trợ</div>
-                  <div className="text-small text-navy-600">Bà con nhận miễn phí 100%</div>
+                  <div className="text-label font-extrabold text-navy-900">Tặng miễn phí (0đ)</div>
+                  <div className="text-small text-navy-600">Không thu tiền hàng</div>
                 </div>
               </button>
 
@@ -193,8 +193,8 @@ export function OfferModalWidget({
               >
                 <ModeObjectSvg gift={false} />
                 <div>
-                  <div className="text-label font-extrabold text-navy-900">Bán trợ giá</div>
-                  <div className="text-small text-navy-600">Bán mức giá ưu đãi mùa lũ</div>
+                  <div className="text-label font-extrabold text-navy-900">Bán ưu đãi</div>
+                  <div className="text-small text-navy-600">Chào giá tốt cho nhóm</div>
                 </div>
               </button>
             </div>
@@ -264,10 +264,10 @@ export function OfferModalWidget({
                 style={{ border: "2px solid var(--oops-green-700)" }}
               >
                 <strong className="text-title font-extrabold text-green-700">
-                  Đơn giá: 0 đồng (Miễn phí)
+                  Miễn phí (0đ)
                 </strong>
-                <p className="text-body text-navy-900">
-                  Cư dân nhận hàng hoàn toàn không mất tiền hàng. Cảm ơn bạn đã đồng hành cứu trợ!
+                <p className="text-small text-navy-900">
+                  Hộ dân nhận hàng miễn phí, không thu tiền hàng.
                 </p>
               </div>
             ) : (

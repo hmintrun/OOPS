@@ -63,6 +63,7 @@ Thử nghiệm luồng 3 hộ xác nhận cùng phiên bản đơn 7 chai (`2 + 
 - **Nhóm & lời mời:** Tài khoản mới tự có nhóm riêng khi vào Nhóm/Tài khoản; đại diện tạo link dùng lại (`/join?token=…`) hoặc mã nhóm 8 ký tự.
 - **Giỏ nhu yếu phẩm & gợi ý Gemini:** Hộ tự nhập lượng cần mua hoặc dùng **Gợi ý bằng AI** (Gemini trả về dữ liệu có cấu trúc qua validation); luôn nhập tay được qua cùng API khi AI lỗi.
 - **Feed nhu cầu theo khu vực:** Đại diện đăng tổng nhu cầu gắn vị trí phường/xã/đặc khu; người bán lọc Feed theo địa bàn và danh mục.
+- **Cứu trợ khẩn cấp (`/relief`):** Gửi yêu cầu cứu trợ khẩn cấp (`WATER`, `FOOD`, `MEDICAL`, `GEAR`) kèm vị trí và số điện thoại, nhận hỗ trợ và đóng yêu cầu qua `/api/v1/relief`.
 - **Thương lượng 1 SKU & ca chuẩn `10 → 7`:** Người bán chào lượng tối đa (ví dụ 10 chai); các hộ tham gia qua vòng phiếu hoặc nháp chung (ví dụ góp `2 + 2 + 3`), chỉ chốt và giao đúng 7 chai cho 3 hộ tham gia. Người bán có thể chấp thuận, từ chối hoặc yêu cầu sửa.
 - **Cọc & tiền hàng `SIM` tách bạch:** Tiền hàng và cọc tính bằng VND số nguyên ở backend; cọc người bán tính theo `max(50.000, ceil(tiền hàng / 10))` (đơn 0đ vẫn cần cọc 50.000đ).
 - **Bàn giao, bằng chứng ảnh & quyết toán:** Hai bên duyệt cùng phiên bản biên nhận; ảnh bằng chứng lưu tại Supabase Storage private (URL ký có hạn 5 phút); giao thiếu quyết toán theo thực nhận từng hộ.
@@ -73,7 +74,7 @@ Thử nghiệm luồng 3 hộ xác nhận cùng phiên bản đơn 7 chai (`2 + 
 | Thành phần | Công nghệ & vai trò |
 | --- | --- |
 | Web & API | Next.js 16, React 19, TypeScript, Tailwind CSS 4 (endpoint dưới `/api/v1`) |
-| Database, Auth & Storage | Supabase Auth / PostgreSQL / Private Storage (`14` migration trong `supabase/migrations`) |
+| Database, Auth & Storage | Supabase Auth / PostgreSQL / Private Storage (`15` migration trong `supabase/migrations`) |
 | Worker & Indexer | Node.js (`npm run worker`) xử lý outbox mở vòng, retry và đồng bộ log Fuji theo cursor |
 | Blockchain & Ví | Solidity `0.8` (`solc`), `viem`, Avalanche Fuji; tùy chọn ví tích hợp Openfort + Alchemy ERC-4337 |
 | AI & Kiểm thử | Gemini API (`GEMINI_API_KEY`), Vitest |
@@ -83,13 +84,13 @@ Các nghiệp vụ chốt đơn, giữ lượng (`pending + reserved + received 
 | Thư mục | Nội dung |
 | --- | --- |
 | `src/app/` | Giao diện Next.js App Router và các API route `/api/v1` |
-| `src/server/` | Logic nghiệp vụ (`negotiation/`, `orders/`, `fuji/`, `cart/`, `worker/`) |
-| `src/contracts/` | DTO và schema kiểm dữ liệu (`zod`) dùng chung ([foundation.ts](src/contracts/foundation.ts), [negotiation.ts](src/contracts/negotiation.ts)) |
+| `src/server/` | Logic nghiệp vụ (`negotiation/`, `orders/`, `fuji/`, `cart/`, `worker/`, `relief.ts`) |
+| `src/contracts/` | DTO và schema kiểm dữ liệu (`zod`) dùng chung ([foundation.ts](src/contracts/foundation.ts), [negotiation.ts](src/contracts/negotiation.ts), [relief.ts](src/contracts/relief.ts)) |
 | `src/lib/fuji/`, `src/components/wallet/` | Client ký Core Wallet và ví tích hợp Fuji |
 | `contracts/` | Contract [OopsFuji.sol](contracts/src/OopsFuji.sol) và artifact ABI [OopsFuji.json](contracts/OopsFuji.json) |
-| `supabase/` | 14 migration SQL và dữ liệu mẫu [seed.sql](supabase/seed.sql) |
+| `supabase/` | 15 migration SQL và dữ liệu mẫu [seed.sql](supabase/seed.sql) |
 | `scripts/` | Script seed, worker, build/thiết lập Fuji và smoke test |
-| `tests/` | 26 file test unit, DB integration và worker Fuji |
+| `tests/` | 30 file test unit, DB integration và worker Fuji |
 | `docs/` | Đặc tả, kiến trúc, schema, API doc và hướng dẫn cấu hình |
 
 ## Chạy local
@@ -123,7 +124,7 @@ Có thể mở `/ui-preview` (hoặc `/ui-preview/demo`) để xem design system
 
 ## Kiểm thử
 
-Bộ kiểm thử gồm 26 file test, bao gồm suite tích hợp PostgreSQL thật ([tests/foundation.db.test.ts](tests/foundation.db.test.ts)) và worker Fuji ([tests/fuji-worker.test.ts](tests/fuji-worker.test.ts)).
+Bộ kiểm thử gồm 30 file test, bao gồm suite tích hợp PostgreSQL thật ([tests/foundation.db.test.ts](tests/foundation.db.test.ts)) và worker Fuji ([tests/fuji-worker.test.ts](tests/fuji-worker.test.ts)).
 
 | Lệnh | Kiểm chứng |
 | --- | --- |
@@ -141,7 +142,7 @@ Bộ kiểm thử gồm 26 file test, bao gồm suite tích hợp PostgreSQL th�
 
 - Đặt `OOPS_PAYMENT_MODE=SIM` cho luồng chốt, thu mô phỏng và ghi chi. Cấp quyền ops riêng bằng một dòng `ops_accounts.user_id` cho hồ sơ vận hành đã xác thực trên DB dev.
 - Dùng `OOPS_EVIDENCE_BUCKET` trỏ tới bucket Supabase riêng và giữ `SUPABASE_SECRET_KEY` ở server. Bằng chứng dùng trường multipart `file` và liên kết đọc có hạn 5 phút.
-- Đặt `GEMINI_API_KEY` và `GEMINI_MODEL` để tạo gợi ý giỏ. Giỏ nhập tay dùng cùng API lưu và xác nhận khi AI lỗi. [Gemini GenerateContent](https://ai.google.dev/api/generate-content)
+- Đặt `GEMINI_API_KEY` (và tùy chọn `GEMINI_MODEL`, mặc định `gemini-4-hydrogen`) để tạo gợi ý giỏ. Giỏ nhập tay dùng cùng API lưu và xác nhận khi AI lỗi. [Gemini GenerateContent](https://ai.google.dev/api/generate-content)
 - Điền `OOPS_FUJI_RPC_URL`, `OOPS_FUJI_CONFIRMATION_CONTRACT`, `OOPS_FUJI_CREDENTIAL_CONTRACT` và `OOPS_FUJI_CREDENTIAL_ABI` từ deployment Fuji. ABI là một hàm `view` nhận `address`, trả `bool` hoặc số dư `uint256`. Worker mở vòng từ outbox và đồng bộ xác nhận; bộ test DB dùng RPC và xác nhận mô phỏng. [Interface Fuji và worker](docs/architecture.md#bàn-giao-backend-và-worker)
 
 ### Cấu hình email đăng ký

@@ -32,7 +32,7 @@ export function IconTile({
 
   return (
     <span className={classes}>
-      {children ?? (icon ? <MaterialSymbol name={icon} filled={tone === "green"} /> : null)}
+      {children ?? (icon ? <MaterialSymbol name={icon} /> : null)}
     </span>
   );
 }

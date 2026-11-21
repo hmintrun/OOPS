@@ -13,11 +13,6 @@
   margin: 0;
 }
 
-.me-account .ui-icon-tile {
-  background: var(--oops-mint);
-  color: var(--oops-jade-dark);
-}
-
 .me-profile {
   display: flex;
   flex-wrap: wrap;
@@ -25,8 +20,9 @@
   gap: 14px;
   margin-block-end: 16px;
   padding: 16px;
+  border: 1px solid var(--oops-line);
   border-radius: var(--oops-radius-input);
-  background: linear-gradient(125deg, var(--oops-mint), var(--oops-haze) 55%, var(--oops-sky-tint));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--oops-mint) 65%, var(--oops-surface)), var(--oops-haze) 72%);
 }
 .me-profile__avatar {
   width: 68px;
@@ -82,21 +78,469 @@
   font-size: 0.875rem;
 }
 
-.me-wallet__heading {
-  padding: 8px 12px;
-  border-radius: var(--oops-radius-input);
-  background: linear-gradient(110deg, var(--oops-sky-tint), var(--oops-mint));
+.me-wallet-card {
+  display: grid;
+  gap: 16px;
 }
-.me-wallet__shield {
-  inline-size: 44px;
-  block-size: 44px;
+
+.me-wallet-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+}
+.me-wallet-top__id {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.me-wallet-top__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.me-wallet-top__copy .ui-card__title {
+  margin: 0;
+}
+.me-wallet-net-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--oops-jade-dark);
+}
+.me-wallet-net-pill__dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--oops-green-600);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .me-wallet-net-pill__dot::after {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: 999px;
+    background: var(--oops-green-600);
+    opacity: 0;
+    animation: oops-live-beacon 2.6s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+    pointer-events: none;
+  }
+  @keyframes oops-live-beacon {
+    0% { opacity: 0.45; transform: scale(0.9); }
+    70%, 100% { opacity: 0; transform: scale(2.4); }
+  }
+}
+
+/* ---------- Chiếc Ví OOPS (tông mint-sage sáng dịu, miệng ví cong, phiếu ló ngăn trên & quai khóa bấm) ---------- */
+.me-wallet-obj {
+  position: relative;
+  padding-top: 40px;
+}
+
+/* Mặt lưng miệng ví tạo chiều sâu mở ngăn */
+.me-wallet-obj__back {
+  position: absolute;
+  inset: 16px 4px 12px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #b8decb 0%, #9fceb7 100%);
+  border: 1px solid #96c7b0;
+}
+
+/* Các lớp phiếu/thẻ ló lên từ ngăn trong chiếc ví */
+.me-wallet-obj__slip {
+  position: absolute;
+  border-radius: 14px 14px 0 0;
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+.me-wallet-obj__slip--back {
+  inset-block-start: 6px;
+  inset-inline: 28px;
+  height: 62px;
+  background: linear-gradient(180deg, #fff6db 0%, #fde9b2 100%);
+  border: 1px solid #ebd189;
+  transform: rotate(-1.4deg);
+  transform-origin: center bottom;
+}
+.me-wallet-obj__slip--front {
+  inset-block-start: 14px;
+  inset-inline: 18px;
+  height: 60px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 14px 0;
+  background: linear-gradient(180deg, #ffffff 0%, #f1faf5 100%);
+  border: 1px solid #cde4d8;
+  color: var(--oops-jade-dark);
+  box-shadow: 0 -2px 8px rgba(14, 39, 68, 0.04);
+}
+.me-wallet-obj__slip-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+.me-wallet-obj__slip-tag {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--oops-navy-600);
+}
+
+/* Ngăn trước chiếc ví: nền pastel xanh ngọc dịu + vết khoét miệng ví cong ở giữa */
+.me-wallet-obj__body {
+  --wallet-border: #a7d4bf;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+  margin-top: 12px;
+  border-radius: 0 0 22px 22px;
+  color: var(--oops-navy-900);
+  background: linear-gradient(180deg, #e2f5eb 0%, #d2efe1 55%, #c2e6d6 100%);
+  border: 1px solid var(--wallet-border);
+  border-top: 0;
+  box-shadow: 0 10px 22px -12px rgba(0, 86, 67, 0.22);
+  transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.me-wallet-obj--verified .me-wallet-obj__body {
+  --wallet-border: #93cbb1;
+  background: linear-gradient(180deg, #def4e8 0%, #c9ebd9 55%, #b8e1cd 100%);
+}
+
+/* Miệng ví khoét cong (thumb notch) liền mạch hoàn toàn với thân ví */
+.me-wallet-obj__lip {
+  position: absolute;
+  inset-block-start: -24px;
+  inset-inline: -1px;
+  width: calc(100% + 2px);
+  height: 26px;
+  color: #e2f5eb;
+  pointer-events: none;
+}
+.me-wallet-obj--verified .me-wallet-obj__lip {
+  color: #def4e8;
+}
+
+/* Đường chỉ khâu tinh tế quanh mép ví */
+.me-wallet-obj__stitch {
+  position: absolute;
+  inset: 2px 8px 8px;
+  border-radius: 10px 10px 16px 16px;
+  border: 1.5px dashed rgba(0, 86, 67, 0.18);
+  border-top: 0;
+  pointer-events: none;
+}
+
+.me-wallet-obj__content {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 14px;
+  flex: 1;
+  min-width: 0;
+  padding: 20px 72px 18px 20px;
+}
+.me-wallet-obj__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.me-wallet-obj__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--oops-jade-dark);
+}
+.me-wallet-obj__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--oops-radius-pill);
+  border: 1px solid rgba(133, 69, 12, 0.18);
+  background: var(--oops-sun-tint);
+  color: var(--oops-amber-ink);
+  font-size: 0.8125rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.me-wallet-obj__pill--ok {
+  border-color: rgba(0, 120, 93, 0.22);
+  background: var(--oops-surface);
+  color: var(--oops-jade-dark);
+}
+.me-wallet-obj__pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--oops-warn);
+}
+.me-wallet-obj__pill--ok .me-wallet-obj__pill-dot {
+  background: var(--oops-green-600);
+}
+
+.me-wallet-obj__main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.me-wallet-obj__addr-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.me-wallet-obj__addr-row .me-copy {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(0, 86, 67, 0.16);
+  color: var(--oops-jade-dark);
+}
+.me-wallet-obj__addr-row .me-copy:hover {
+  background: var(--oops-surface);
+}
+.me-wallet-obj__label {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--oops-navy-600);
+}
+.me-wallet-obj__addr {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1.0625rem;
+  font-weight: 800;
+  letter-spacing: 0.015em;
+  color: var(--oops-navy-900);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.me-wallet-obj__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 86, 67, 0.14);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--oops-jade-dark);
+}
+.me-wallet-obj__owner {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.me-wallet-obj__net {
   flex: none;
-  object-fit: cover;
-  border-radius: var(--oops-radius-tile);
-  mix-blend-mode: multiply;
+  color: var(--oops-navy-600);
 }
-.me-wallet__address { flex-wrap: wrap; }
-.me-wallet__address .me-item__body { flex-basis: 10rem; }
+
+/* Quai khóa gập bên phải ôm mép ví + khuy bấm tròn màu vàng ấm */
+.me-wallet-obj__clasp {
+  position: absolute;
+  inset-inline-end: -2px;
+  inset-block-start: 52%;
+  transform: translateY(-50%);
+  width: 58px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-inline-start: 11px;
+  border-radius: 999px 10px 10px 999px;
+  background: linear-gradient(180deg, #0e7c61 0%, #075c47 100%);
+  border: 1.5px solid #064d3b;
+  box-shadow: -4px 4px 10px rgba(0, 86, 67, 0.22);
+  transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.me-wallet-obj__stud {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 32%, #fff3c4, #ffcf55 58%, #d69d26 100%);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes wallet-slip-front-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes wallet-slip-back-in {
+    from { opacity: 0; transform: translateY(16px) rotate(0deg); }
+    to { opacity: 1; transform: translateY(0) rotate(-1.4deg); }
+  }
+  .me-wallet-obj__slip--front {
+    animation: wallet-slip-front-in 480ms cubic-bezier(0.22, 1, 0.36, 1) 90ms backwards;
+  }
+  .me-wallet-obj__slip--back {
+    animation: wallet-slip-back-in 520ms cubic-bezier(0.22, 1, 0.36, 1) 140ms backwards;
+  }
+  .me-wallet-obj:active .me-wallet-obj__body {
+    transform: scale(0.992);
+    transition-duration: 90ms;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .me-wallet-obj:hover .me-wallet-obj__body {
+    transform: translateY(-2px);
+  }
+  .me-wallet-obj:hover .me-wallet-obj__slip--front {
+    transform: translateY(-18px);
+  }
+  .me-wallet-obj:hover .me-wallet-obj__slip--back {
+    transform: translateY(-22px) rotate(-2.4deg);
+  }
+  .me-wallet-obj:hover .me-wallet-obj__clasp {
+    transform: translateY(-50%) translateX(2px);
+  }
+  .me-wallet-obj:hover .me-wallet-obj__stud {
+    transform: scale(1.08);
+  }
+}
+
+@media (max-width: 400px) {
+  .me-wallet-obj__content {
+    padding: 18px 60px 16px 16px;
+  }
+  .me-wallet-obj__clasp {
+    width: 48px;
+    height: 40px;
+    padding-inline-start: 9px;
+  }
+}
+
+/* ---------- Khối Bento thông tin ví bên dưới thẻ ---------- */
+.me-wallet-body {
+  display: grid;
+  gap: 12px;
+}
+.me-wallet-box {
+  padding: 12px 14px;
+  border: 1px solid var(--oops-line);
+  border-radius: var(--oops-radius-input);
+  background: var(--oops-haze);
+}
+.me-wallet-box__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.me-wallet-box__label {
+  margin: 0 0 3px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--oops-navy-600);
+}
+.me-wallet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (max-width: 420px) {
+  .me-wallet-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.me-wallet-stat {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--oops-line);
+  border-radius: var(--oops-radius-input);
+  background: var(--oops-haze);
+}
+.me-wallet-stat__value {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--oops-navy-900);
+}
+.me-wallet-stat__sub {
+  font-size: 0.8125rem;
+  color: var(--oops-navy-600);
+}
+
+.me-wallet-banner {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--oops-radius-input);
+  border: 1px solid transparent;
+}
+.me-wallet-banner--ok {
+  background: var(--oops-mint);
+  border-color: color-mix(in srgb, var(--oops-jade) 24%, transparent);
+  color: var(--oops-jade-dark);
+}
+.me-wallet-banner--warn {
+  background: var(--oops-sun-tint);
+  border-color: color-mix(in srgb, var(--oops-amber-ink) 20%, transparent);
+  color: var(--oops-amber-ink);
+}
+.me-wallet-banner__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.me-wallet-banner__head strong {
+  font-size: 0.9375rem;
+  font-weight: 800;
+}
+.me-wallet-banner__tag {
+  padding: 2px 9px;
+  border-radius: var(--oops-radius-pill);
+  background: var(--oops-surface);
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  font-size: 0.8125rem;
+  font-weight: 800;
+}
+.me-wallet-banner p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.me-wallet-actions {
+  display: grid;
+  gap: 8px;
+}
+.me-wallet-tech {
+  font-size: 0.8125rem;
+  color: var(--oops-navy-600);
+}
+.me-wallet-tech summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--oops-navy-600);
+}
+.me-wallet-tech p {
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
 
 .me-rows {
   display: grid;
@@ -156,21 +600,21 @@
 }
 .me-hint {
   margin: 8px 0 0;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
   color: var(--oops-navy-600);
 }
 .me-notice {
   margin: 8px 0 0;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
   color: var(--oops-green-700);
 }
 .me-error {
   margin: 8px 0 0;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
   color: var(--oops-danger);
@@ -185,7 +629,7 @@
   height: 30px;
   padding: 0 12px;
   border-radius: var(--oops-radius-pill);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1;
   text-decoration: none;
