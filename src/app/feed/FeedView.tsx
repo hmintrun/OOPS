@@ -437,7 +437,7 @@ export default function FeedView({ offerLeadHours }: { offerLeadHours: number | 
 
       {selectedItemForOffer && (
         <WidgetDialog title={selectedItemForOffer.name} icon="storefront" onClose={() => setSelectedItemForOffer(null)}>
-          <OffersPanel id={selectedItemForOffer.demandItemId} demand={selectedItemForOffer}
+          <OffersPanel id={selectedItemForOffer.demandItemId} sellerOnly demand={selectedItemForOffer}
             initialGift={selectedItemForOffer.supportRequested}
             leadHours={offerLeadHours}
             onCreated={() => setSelectedItemForOffer(null)} />

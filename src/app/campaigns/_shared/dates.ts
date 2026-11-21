@@ -25,7 +25,11 @@ export function localInputToIso(value: string): string | null {
   );
 }
 
-const formatter = new Intl.DateTimeFormat("vi-VN", { dateStyle: "medium", timeStyle: "short" });
+const formatter = new Intl.DateTimeFormat("vi-VN", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Asia/Ho_Chi_Minh",
+});
 
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return "—";

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button, Card, CardTitle, MaterialSymbol } from "@/components/ui";
 import { useErrorToast } from "@/components/ui/error-toast";
-import { createOfferInput, draft as draftSchema, offer, offers } from "@/contracts/negotiation";
+import { createOfferInput, draft as draftSchema, offer, offers, sentOfferList } from "@/contracts/negotiation";
 import type { DemandItem } from "@/contracts/foundation";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { INPUT_CLASS } from "@/app/campaigns/_shared/ui";
@@ -37,10 +37,11 @@ function OfferModeArtwork({ gift }: { gift: boolean }) {
   );
 }
 
-export function OffersPanel({ id, standalone = false, buyerOnly = false, activeOnly = false, demand, proposalId, onCreated, initialGift = false, leadHours = null }: {
+export function OffersPanel({ id, standalone = false, buyerOnly = false, sellerOnly = false, activeOnly = false, demand, proposalId, onCreated, initialGift = false, leadHours = null }: {
   id: string;
   standalone?: boolean;
   buyerOnly?: boolean;
+  sellerOnly?: boolean;
   activeOnly?: boolean;
   demand?: Pick<DemandItem, "missing" | "offerable" | "needBy" | "unit">;
   proposalId?: string;
@@ -94,14 +95,26 @@ export function OffersPanel({ id, standalone = false, buyerOnly = false, activeO
         ],
       };
     }
+    if (sellerOnly) {
+      if (id.startsWith("sample-")) return { items: [] };
+      const result = await apiFetch(`/api/v1/offers?${new URLSearchParams({ demandItemId: id })}`, {
+        schema: sentOfferList,
+      });
+      return {
+        items: result.items.map(({ itemName: _itemName, unit: _unit, ...item }) => item),
+      };
+    }
     try { return await apiFetch(path, { schema: offers }); }
     catch (error) {
       if (!buyerOnly && (id.startsWith("sample-") || (error instanceof ApiError && error.status === 404))) return { items: [] };
       throw error;
     }
-  }, [path, id, buyerOnly, demand?.missing]);
+  }, [path, id, buyerOnly, sellerOnly, demand?.missing]);
   const isDemo = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
-  const trade = useTrade(load, isDemo ? `offers:demo:${id}` : `offers:${id}:${buyerOnly ? "buyer" : "all"}`);
+  const trade = useTrade(
+    load,
+    isDemo ? `offers:demo:${id}` : `offers:${id}:${buyerOnly ? "buyer" : sellerOnly ? "seller" : "all"}`,
+  );
   const [isGift, setIsGift] = useState(initialGift);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");

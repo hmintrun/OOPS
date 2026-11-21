@@ -9,6 +9,7 @@ import {
   walletLinkPrimaryLabel,
 } from "@/components/wallet/WalletLinkModal";
 import { embeddedFujiConfigured } from "@/lib/fuji/embedded";
+import { classifySponsoredWalletError } from "@/lib/fuji/sponsored";
 import { representative } from "./fixtures/foundation";
 
 const EMBEDDED_ENV = {
@@ -302,5 +303,23 @@ describe("Server-safe rendering", () => {
     expect(verifiedCoreHtml).toContain("Đã xác minh");
     expect(verifiedCoreHtml).toContain("Đổi ví Core Wallet");
     expect(verifiedCoreHtml).not.toContain("Thiết lập xác nhận trong OOPS");
+  });
+});
+
+describe("classifySponsoredWalletError", () => {
+  it("nhận diện lỗi Openfort Shield 401 A_INVALID và gợi ý chuyển sang Core Wallet", () => {
+    expect(
+      classifySponsoredWalletError(new Error('body={"message":"Invalid token","code":"A_INVALID"}')),
+    ).toContain("401 A_INVALID");
+
+    expect(
+      classifySponsoredWalletError({ cause: { status: 401, code: "INVALID_TOKEN" } }),
+    ).toContain("Core Wallet");
+  });
+
+  it("trả thông điệp mặc định thân thiện cho lỗi không xác định", () => {
+    expect(classifySponsoredWalletError(new Error("network timeout"))).toBe(
+      "Ví OOPS chưa gửi được yêu cầu tài trợ trên Fuji. Vui lòng thử lại.",
+    );
   });
 });

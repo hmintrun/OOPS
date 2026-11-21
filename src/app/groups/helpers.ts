@@ -8,6 +8,7 @@
 const dateTimeFormatter = new Intl.DateTimeFormat("vi-VN", {
   dateStyle: "medium",
   timeStyle: "short",
+  timeZone: "Asia/Ho_Chi_Minh",
 });
 
 /** ISO 8601 → "19 thg 11, 2026, 17:00". Trả nguyên chuỗi nếu không parse được. */

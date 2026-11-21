@@ -18,7 +18,11 @@ const stateLabel: Record<DemandItem["state"], string> = {
   FULFILLED: "Đã nhận đủ",
 };
 
-const needByFormat = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short", timeStyle: "short" });
+const needByFormat = new Intl.DateTimeFormat("vi-VN", {
+  dateStyle: "short",
+  timeStyle: "short",
+  timeZone: "Asia/Ho_Chi_Minh",
+});
 
 export function DemandCard({
   item,

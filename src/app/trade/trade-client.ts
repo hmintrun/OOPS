@@ -10,9 +10,13 @@ export const vnd = (amount: number) => new Intl.NumberFormat("vi-VN", {
   style: "currency", currency: "VND",
 }).format(amount);
 
-export const dateTime = (value: string) => new Intl.DateTimeFormat("vi-VN", {
-  dateStyle: "short", timeStyle: "short",
-}).format(new Date(value));
+const dateTimeFormatter = new Intl.DateTimeFormat("vi-VN", {
+  dateStyle: "short",
+  timeStyle: "short",
+  timeZone: "Asia/Ho_Chi_Minh",
+});
+
+export const dateTime = (value: string) => dateTimeFormatter.format(new Date(value));
 
 export function localDateTime(date: Date) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);

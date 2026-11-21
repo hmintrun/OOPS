@@ -72,7 +72,10 @@ export default function OpsPage() {
           <Card className="grid gap-3">
             <CardTitle as="h2" className="ui-card__title--flush">Quyền truy cập quản trị</CardTitle>
             <p role="alert" className="text-body text-navy-900">
-              Màn hình này chỉ dành cho tài khoản quản trị vận hành (<code>ops_accounts</code>). Trong môi trường demo local, bạn có thể đăng nhập bằng tài khoản mẫu <strong>Quản trị viên (Admin)</strong> tại màn hình đăng nhập.
+              Màn hình này chỉ dành cho tài khoản quản trị vận hành (<code>ops_accounts</code>). Tài khoản hiện tại không có quyền quản trị.
+              {process.env.NODE_ENV === "development" && (
+                <> Bạn có thể đăng nhập bằng tài khoản mẫu <strong>Quản trị viên (Admin)</strong> tại màn hình đăng nhập.</>
+              )}
             </p>
             <div className="flex flex-wrap gap-2">
               <Link href="/orders" className="ui-btn ui-btn--secondary">Về đơn hàng</Link>

@@ -12,6 +12,7 @@ export function SignOutSection() {
   const [message, setMessage] = useState<string | null>(null);
 
   async function signOut() {
+    if (signingOut) return;
     setSigningOut(true);
     setMessage(null);
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
@@ -19,7 +20,7 @@ export function SignOutSection() {
     try {
       if (url && key) {
         const supabase = createBrowserClient(url, key);
-        const { error } = await supabase.auth.signOut();
+        const { error } = await supabase.auth.signOut({ scope: "local" });
         if (error) throw error;
       }
       clearClientCache();
