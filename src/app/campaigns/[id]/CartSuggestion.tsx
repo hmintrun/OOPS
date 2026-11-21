@@ -8,6 +8,7 @@ import { WidgetDialog } from "@/components/ui/WidgetDialog";
 import { cartAiInput, cartAiResult, type CatalogItem } from "@/contracts/foundation";
 import { ApiError, apiFetch, newIdempotencyKey } from "@/lib/api-client";
 import { readSavedFamilyStatus } from "@/lib/family-status";
+import { classifyInitialCartInput, DEFAULT_RESERVE_DAYS } from "@/lib/reserve-days";
 import { DEFAULT_WATER_BOTTLE_ML } from "@/lib/water-reserve";
 
 type Result = z.output<typeof cartAiResult>;
@@ -130,10 +131,14 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
   const router = useRouter();
   const [entry, setEntry] = useState("");
   const [days, setDays] = useState<number>();
+  const [daysLabel, setDaysLabel] = useState<string>();
+  const [skippedDaysStep, setSkippedDaysStep] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const messages = useRef<HTMLDivElement>(null);
+  const daysInputRef = useRef<HTMLInputElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const request = useRef<{ body: string; key: string } | undefined>(undefined);
   const running = useRef(false);
   const currentResult = turns.at(-1)?.result;
@@ -154,26 +159,39 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
     if (messages.current) messages.current.scrollTop = messages.current.scrollHeight;
   }, [days, turns, pending, error]);
 
-  function chooseDays(value: number) {
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (days === undefined) daysInputRef.current?.focus();
+      else if (!pending) chatInputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [days, pending]);
+
+  function chooseDays(value: number, label = `${value} ngày`) {
     setDays(value);
+    setDaysLabel(label);
+    setSkippedDaysStep(false);
     setEntry("");
     setError("");
   }
 
   function restart() {
     setDays(undefined);
+    setDaysLabel(undefined);
+    setSkippedDaysStep(false);
     setEntry("");
     setTurns([]);
     setError("");
     request.current = undefined;
   }
 
-  async function suggest(conversation: Turn[]) {
-    if (running.current || days === undefined) return;
+  async function suggest(conversation: Turn[], overrideDays?: number) {
+    const baseDays = overrideDays ?? days;
+    if (running.current || baseDays === undefined) return;
     const latestTurn = conversation.at(-1);
     if (!latestTurn) return;
 
-    let activeDays = days;
+    let activeDays = baseDays;
     let activeHouseholdSize = householdSize;
     const history = conversation.slice(0, -1).flatMap(turn => {
       if (!turn.result) return [];
@@ -186,6 +204,18 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
         ...(assistantText ? [{ role: "assistant" as const, text: assistantText }] : []),
       ];
     }).slice(-MAX_HISTORY_ENTRIES);
+
+    if (overrideDays === undefined && latestTurn.message.trim()) {
+      const followUp = classifyInitialCartInput(latestTurn.message);
+      if (followUp.kind === "INVALID_DURATION") {
+        setError(followUp.error);
+        return;
+      }
+      if (followUp.kind === "DURATION_ONLY" || followUp.kind === "DURATION_AND_CART") {
+        activeDays = followUp.days;
+        setDays(followUp.days);
+      }
+    }
 
     const parsed = cartAiInput.safeParse({
       text: latestTurn.message,
@@ -230,8 +260,29 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
     const value = entry.trim();
     if (!value || !canCompose) return;
     if (days === undefined) {
-      chooseDays(Number(value));
-      return;
+      const classified = classifyInitialCartInput(value);
+      switch (classified.kind) {
+        case "DURATION_ONLY":
+          chooseDays(classified.days, classified.label);
+          return;
+        case "DURATION_AND_CART":
+          setDays(classified.days);
+          setDaysLabel(classified.label);
+          setSkippedDaysStep(true);
+          void suggest([{ message: classified.text }], classified.days);
+          return;
+        case "CART_QUERY":
+          setDays(DEFAULT_RESERVE_DAYS);
+          setDaysLabel(undefined);
+          setSkippedDaysStep(true);
+          void suggest([{ message: classified.text }], DEFAULT_RESERVE_DAYS);
+          return;
+        case "INVALID_DURATION":
+        case "NEEDS_CLARIFICATION":
+          setError(classified.error);
+          daysInputRef.current?.focus();
+          return;
+      }
     }
     const baseTurns = turns.at(-1)?.result ? turns : turns.slice(0, -1);
     void suggest([...baseTurns, { message: value }]);
@@ -244,8 +295,8 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
       <div className="cart-chat">
         <div ref={messages} className="cart-chat__messages" role="log" aria-label="Cuộc trò chuyện với AI" tabIndex={0}>
           <p className="cart-chat__bubble"><span className="sr-only">AI: </span>Bạn muốn dự trữ cho mấy ngày?</p>
-          {days !== undefined && <>
-            <p className="cart-chat__bubble cart-chat__bubble--user"><span className="sr-only">Bạn: </span>{days} ngày</p>
+          {days !== undefined && !skippedDaysStep && <>
+            <p className="cart-chat__bubble cart-chat__bubble--user"><span className="sr-only">Bạn: </span>{daysLabel ?? `${days} ngày`}</p>
             <p className="cart-chat__bubble">
               <span className="sr-only">AI: </span>
               Đang tính cho {householdSize} người trong {days} ngày. Nhà mình đang có sẵn gì và muốn mua thêm món nào? Bạn cũng có thể bấm gợi ý nhanh bên dưới.
@@ -350,10 +401,24 @@ export function CartSuggestion({ campaignId, userId, householdSize, catalog, onC
           </div>}
           {canCompose && <form className="cart-chat__composer" onSubmit={submit}>
             {days === undefined ? (
-              <input type="number" min={1} max={365} step={1} inputMode="numeric" required aria-label="Số ngày khác"
-                placeholder="Nhập số ngày khác" value={entry} onChange={event => setEntry(event.target.value)} />
+              <input
+                ref={daysInputRef}
+                autoFocus
+                type="text"
+                inputMode="text"
+                maxLength={MAX_TURN_CHARS}
+                required
+                aria-label="Số ngày khác"
+                placeholder="Vd: 10 tuần, 2 tháng, hoặc nhà 4 người hết nước"
+                value={entry}
+                onChange={event => {
+                  setEntry(event.target.value);
+                  if (error) setError("");
+                }}
+              />
             ) : (
               <textarea
+                ref={chatInputRef}
                 rows={2}
                 maxLength={MAX_TURN_CHARS}
                 required
