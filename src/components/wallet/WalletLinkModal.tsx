@@ -307,9 +307,24 @@ export function WalletLinkModal({
             )}
 
             {error && (
-              <p role="alert" className="me-error">
-                {error}
-              </p>
+              <div className="grid gap-2">
+                <p role="alert" className="me-error">
+                  {error}
+                </p>
+                {embedded && !busy && (
+                  <Button
+                    variant="secondary"
+                    full={false}
+                    onClick={() => {
+                      setMethod("core");
+                      setError("");
+                      setSponsored(null);
+                    }}
+                  >
+                    Chuyển sang liên kết Core Wallet
+                  </Button>
+                )}
+              </div>
             )}
 
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-[auto_minmax(0,1fr)] sm:justify-self-end">

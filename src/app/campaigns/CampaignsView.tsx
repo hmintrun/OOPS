@@ -265,7 +265,7 @@ export function CampaignsView() {
   );
 }
 
-function EmptyStateInline() {
+export function EmptyStateInline() {
   return (
     <div className="flex flex-col items-center gap-[12px] py-[20px] text-center">
       <span className="flex h-[44px] w-[44px] items-center justify-center rounded-[14px] bg-sky-tint">
@@ -275,11 +275,9 @@ function EmptyStateInline() {
       <span className="text-body text-navy-600">
         {isPast(null) ? "" : "Nhóm chưa mở đợt gom nhu yếu phẩm nào. Đại diện tạo đợt để các hộ bắt đầu nhập giỏ."}
       </span>
-      <Link href="/groups" className="w-full">
-        <Button variant="secondary">
-          <span className="ui-btn__icon material-symbols-rounded">groups</span>
-          Xem nhóm của tôi
-        </Button>
+      <Link href="/groups" className="ui-btn ui-btn--full ui-btn--secondary">
+        <span className="ui-btn__icon material-symbols-rounded">groups</span>
+        Xem nhóm của tôi
       </Link>
     </div>
   );

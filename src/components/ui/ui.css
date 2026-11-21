@@ -35,8 +35,8 @@
 }
 .ui-btn:disabled {
   background: var(--oops-sky-tint);
-  border-color: var(--oops-line);
-  color: var(--oops-navy-600);
+  border-color: var(--oops-sky-300);
+  color: var(--oops-navy-900);
   cursor: not-allowed;
   transform: none;
   box-shadow: none;

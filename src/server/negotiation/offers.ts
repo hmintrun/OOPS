@@ -143,8 +143,13 @@ export async function readOffers(client: PoolClient, userId: string, demandItemI
   };
 }
 
-export async function listSentOffers(client: PoolClient, sellerId: string, filters: { cursor?: string; limit?: number }) {
+export async function listSentOffers(
+  client: PoolClient,
+  sellerId: string,
+  filters: { cursor?: string; limit?: number; demandItemId?: string },
+) {
   const limit = filters.limit ?? 20;
+  const hasDemandFilter = Boolean(filters.demandItemId);
   const { rows } = await client.query<ProposalRow & {
     draft_id: string | null; too_late: boolean; item_name: string; unit: string;
   }>(
@@ -154,13 +159,14 @@ export async function listSentOffers(client: PoolClient, sellerId: string, filte
      join public.catalog_items ci on ci.id = d.sku_id
      left join public.negotiations n on n.proposal_id = p.id
      where p.seller_id = $1 and ($2::uuid is null or p.id > $2)
-       and not exists (select 1 from public.contracts c where c.proposal_id = p.id)
+       and ($5::uuid is null or p.demand_item_id = $5)
+       and ($5::uuid is not null or not exists (select 1 from public.contracts c where c.proposal_id = p.id))
      order by p.id limit $3`,
-    [sellerId, filters.cursor ?? null, limit + 1, requiredLeadHours],
+    [sellerId, filters.cursor ?? null, limit + 1, requiredLeadHours, filters.demandItemId ?? null],
   );
   return {
     items: rows.slice(0, limit).map(row => ({
-      ...offerDto(row.too_late ? { ...row, state: "EXPIRED" } : row, false, row.draft_id ?? undefined),
+      ...offerDto(row.too_late ? { ...row, state: "EXPIRED" } : row, hasDemandFilter, row.draft_id ?? undefined),
       itemName: row.item_name, unit: row.unit,
     })),
     ...(rows.length > limit && { nextCursor: rows[limit - 1].id }),

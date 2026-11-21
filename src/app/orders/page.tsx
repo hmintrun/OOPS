@@ -8,7 +8,7 @@ import { Button, Card, CardTitle, EmptyState, MaterialSymbol } from "@/component
 import { useSlidingIndicator } from "@/components/ui/use-sliding-indicator";
 import { sentOfferList, type SentOffer } from "@/contracts/negotiation";
 import { contractList, type Contract } from "@/contracts/orders";
-import { ApiError, apiFetch } from "@/lib/api-client";
+import { ApiError, apiFetch, getMe, type Me } from "@/lib/api-client";
 import { readClientCache, writeClientCache } from "@/lib/client-cache";
 import { dateTime, useTrade, vnd } from "../trade/trade-client";
 import { TradeStatus } from "../trade/TradeStatus";
@@ -95,6 +95,7 @@ const ROLE_OPTIONS = [
 export default function OrdersPage() {
   const [role, setRole] = useState(() => readClientCache<string>("orders:role")?.value ?? "");
   const [refreshing, setRefreshing] = useState(false);
+  const [isOps, setIsOps] = useState(() => readClientCache<Me>("me")?.value?.isOps === true);
   const refreshFn = useRef<(() => void) | null>(null);
   const { containerRef, indicatorStyle, hasIndicator, animate } = useSlidingIndicator(
     role || "all",
@@ -102,6 +103,21 @@ export default function OrdersPage() {
   );
   const { page: notifications } = useNotifications();
   const unread = notifications?.unreadCount ?? 0;
+  useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1") return;
+    const cached = readClientCache<Me>("me");
+    if (cached) {
+      setIsOps(cached.value?.isOps === true);
+      if (cached.isFresh) return;
+    }
+    let active = true;
+    void getMe()
+      .then(profile => {
+        if (active) setIsOps(profile.isOps === true);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
   return <AppShell title="Đơn hàng" subtitle="Theo dõi tiến độ, thanh toán và nhận hàng." illustration="parcel" bare
     pageActions={(
       <nav aria-label="Tiện ích đơn hàng" className="orders-shortcuts">
@@ -111,10 +127,12 @@ export default function OrdersPage() {
           {unread > 0 && <span className="orders-notification-count" aria-hidden="true">{unread}</span>}
           <span className="hidden sm:inline">Thông báo</span>
         </Link>
-        <Link href="/ops" aria-label="Quản trị & Đối soát SIM" title="Quản trị & Đối soát SIM" className="ui-btn ui-btn--ghost">
-          <MaterialSymbol name="account_balance_wallet" size={20} />
-          <span className="hidden sm:inline">Quản trị &amp; Đối soát SIM</span>
-        </Link>
+        {isOps && (
+          <Link href="/ops" aria-label="Quản trị & Đối soát SIM" title="Quản trị & Đối soát SIM" className="ui-btn ui-btn--ghost">
+            <MaterialSymbol name="account_balance_wallet" size={20} />
+            <span className="hidden sm:inline">Quản trị &amp; Đối soát SIM</span>
+          </Link>
+        )}
       </nav>
     )}
   >

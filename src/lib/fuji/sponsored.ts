@@ -18,6 +18,47 @@ type WalletCall = { contractAddress: string } & (
 
 class EmbeddedWalletError extends Error {}
 
+function inspectWalletErrorDetails(error: unknown, depth = 0, out: string[] = []): string[] {
+  if (depth > 3 || error == null) return out;
+  if (typeof error === "string") {
+    out.push(error);
+    return out;
+  }
+  if (typeof error === "number") {
+    out.push(String(error));
+    return out;
+  }
+  if (typeof error !== "object") return out;
+
+  const record = error as Record<string, unknown>;
+  for (const key of ["message", "code", "error_description", "status", "statusCode"]) {
+    const value = record[key];
+    if (typeof value === "string" || typeof value === "number") {
+      out.push(String(value));
+    }
+  }
+  for (const key of ["cause", "data", "body", "response", "error"]) {
+    if (key in record) inspectWalletErrorDetails(record[key], depth + 1, out);
+  }
+  return out;
+}
+
+export function classifySponsoredWalletError(error: unknown): string {
+  if (error instanceof ApiError || error instanceof EmbeddedWalletError) {
+    return error.message;
+  }
+  const details = inspectWalletErrorDetails(error).join(" ");
+  if (
+    /\bA_INVALID\b/i.test(details) ||
+    /\bINVALID_TOKEN\b/i.test(details) ||
+    /invalid token/i.test(details) ||
+    /\b401\b/.test(details)
+  ) {
+    return "Ví tích hợp OOPS tạm thời không xác thực được phiên Shield (401 A_INVALID). Bạn có thể chuyển sang Core Wallet để xác minh ngay.";
+  }
+  return "Ví OOPS chưa gửi được yêu cầu tài trợ trên Fuji. Vui lòng thử lại.";
+}
+
 function alchemyTransport() {
   return alchemyWalletTransport({ apiKey: process.env.NEXT_PUBLIC_OOPS_ALCHEMY_API_KEY! });
 }
@@ -32,10 +73,16 @@ export async function sendSponsoredCall(call: WalletCall): Promise<SponsoredFuji
   const session = await apiFetch("/api/v1/wallet/embedded-session", { method: "POST", schema: sessionSchema });
   const readAccessToken = async () => {
     const { data, error } = await supabase.auth.getSession();
-    if (error || data.session?.user.id !== session.userId) {
+    let activeSession = error ? null : data.session;
+    const expiresAtMs = activeSession?.expires_at ? activeSession.expires_at * 1000 : 0;
+    if (!activeSession || expiresAtMs <= Date.now() + 60_000) {
+      const refreshed = await supabase.auth.refreshSession();
+      activeSession = refreshed.error ? null : refreshed.data.session;
+    }
+    if (!activeSession || activeSession.user.id !== session.userId) {
       throw new EmbeddedWalletError("Phiên đăng nhập đã thay đổi. Vui lòng đăng nhập lại.");
     }
-    return data.session.access_token;
+    return activeSession.access_token;
   };
 
   const storage = new Map<string, string>();
@@ -97,7 +144,7 @@ export async function sendSponsoredCall(call: WalletCall): Promise<SponsoredFuji
     return { id, address };
   } catch (error) {
     if (error instanceof ApiError || error instanceof EmbeddedWalletError) throw error;
-    throw new EmbeddedWalletError("Ví OOPS chưa gửi được yêu cầu tài trợ trên Fuji. Vui lòng thử lại.");
+    throw new EmbeddedWalletError(classifySponsoredWalletError(error));
   } finally {
     storage.clear();
   }
