@@ -1,5 +1,0 @@
-.DS_Store
-# Keys live only in web/.env.local and the server's senpai.env.
-.env*
-!.env.example
-*.env

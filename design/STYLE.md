@@ -1,4 +1,4 @@
-# OOPS Design Style — chuẩn hóa từ `ref/style-temp.png`
+# OOPS Design Style
 
 Nguồn: ảnh tham khảo phong cách (mobile PWA, nhóm hộ gia đình, tông cộng đồng thân thiện).
 Mọi màn hình và component **bắt buộc** dùng tokens dưới đây, không hard-code màu/size.

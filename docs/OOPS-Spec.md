@@ -10,7 +10,6 @@
 | [architecture.md](architecture.md) | Sơ đồ thành phần, vòng đời hợp đồng, máy trạng thái, thứ tự khóa, bảo mật. |
 | [schema.md](schema.md) | Bảng PostgreSQL, khóa, ràng buộc và bất biến dữ liệu. |
 | [API doc.md](API%20doc.md) | Endpoint, payload, quyền, mã lỗi của `/api/v1`. |
-| [OOPS-7-Day-Development-Plan.md](OOPS-7-Day-Development-Plan.md) | Task, giờ công, lịch 7 ngày, cổng kiểm thử, rủi ro. |
 | [AGENTS.md](../AGENTS.md) | Căn cứ phân công, sở hữu file và quy ước triển khai. |
 
 Khi tài liệu lệch nhau, áp dụng quyết định mới nhất đã được xác nhận. Luồng nghiệp vụ trong file này là căn cứ cập nhật các tài liệu liên quan khi triển khai. API, schema và kiến trúc chi tiết vẫn mô tả luồng hiện hành cho đến khi được đồng bộ. Tra phân công và cách xử lý mâu thuẫn trong [AGENTS.md](../AGENTS.md#2-tài-liệu-và-xử-lý-mâu-thuẫn). `*.before-edit.md` và `*.diff` là lịch sử.
@@ -400,7 +399,7 @@ Các mục dưới đây **chưa** có quyết định trong tài liệu hiện 
 | G-06 | Deployment, ABI credential, cấp/thu hồi quyền xác nhận và chính sách block/cutoff/reorg | DEV 3 cấu hình contract và worker Fuji theo [interface backend](architecture.md#bàn-giao-backend-và-worker). Dùng [chuẩn băm và vector đã chốt](#chuẩn-băm-phiên-bản) cho `versionHash`. |
 | G-07 | Định mức nhu yếu phẩm có nguồn và bộ quy tắc gợi ý | MVP seed SKU đại diện và để hộ sửa tay. |
 | G-08 | Điều kiện, mức khấu trừ cọc, bên nhận khấu trừ, thẩm quyền xử lý ca mâu thuẫn | Demo dừng ở `NEEDS_REVIEW`/`DEPOSIT`. |
-| G-12 | Năng lực và quyền môi trường thực tế, cách bổ sung giờ cho các mốc vượt quỹ | Xác nhận ở D1 theo [kế hoạch 7 ngày](OOPS-7-Day-Development-Plan.md). |
+| G-12 | Năng lực và quyền môi trường thực tế, cách bổ sung giờ cho các mốc vượt quỹ | Xác nhận ở D1. |
 
 ## 17. Thứ tự đọc theo vai
 
@@ -408,4 +407,4 @@ Các mục dưới đây **chưa** có quyết định trong tài liệu hiện 
 | --- | --- |
 | **DEV 1** | File này → mục 5, 6, 10, 13 → [API doc](API%20doc.md) → [OOPS-MVP-Plan.md](OOPS-MVP-Plan.md) mục 2 |
 | **DEV 2** | File này → mục 6, 7, 9, 13 → [schema.md](schema.md) → [architecture.md](architecture.md) mục Nhất quán |
-| **DEV 3** | File này → mục 4, 7.1, 11 → [architecture.md](architecture.md) → [OOPS-7-Day-Development-Plan.md](OOPS-7-Day-Development-Plan.md) mục 5, 14 |
+| **DEV 3** | File này → mục 4, 7.1, 11 → [architecture.md](architecture.md) |

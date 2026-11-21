@@ -1,46 +1,130 @@
-# OOPS
+# OOPS — Gom nhu yếu phẩm cộng đồng, xác nhận minh bạch trên Avalanche
 
-Backend phục vụ xác thực, hồ sơ, nhóm và lời mời, danh mục, đợt gom, giỏ tay, đăng nhu cầu, Feed, đề nghị và nháp thương lượng. Các route nằm dưới `/api/v1` theo [đặc tả API](docs/API%20doc.md). Frontend có thể dùng DTO cho [phần nền](src/contracts/foundation.ts) và [thương lượng](src/contracts/negotiation.ts).
+OOPS giúp các hộ trong cùng khu vực rà lại đồ đang có, gom phần nhu yếu phẩm còn thiếu và nhận đề nghị từ người bán (giá thường, giá hỗ trợ hoặc 0đ) để chuẩn bị trước thiên tai. Nhóm chốt từng món, người bán đặt cọc cam kết và hai bên xác nhận bàn giao trước khi quyết toán.
 
-## Chạy với Supabase dev
+> Mỗi hộ xác nhận đúng phần của mình trên Avalanche Fuji — đồng thuận của **từng hộ**, không phải biểu quyết đa số.
 
-1. Dùng Node.js 22.18 trở lên. Chạy `npm ci`.
-2. Sao chép `.env.example` thành `.env.local`. Điền URL và publishable key của project Supabase dev, `DATABASE_URL` của PostgreSQL, `APP_URL` và `OOPS_INVITE_SECRET`. Dùng cùng hostname trong `APP_URL` và khi truy cập app. Dùng một secret ngẫu nhiên ổn định có ít nhất 32 byte để các lần retry tạo lời mời trả lại đúng link.
-3. Áp dụng [các migration](supabase/migrations) theo thứ tự tên file lên project dev được phép. Với Supabase CLI, chạy `supabase init` nếu chưa có `supabase/config.toml`, liên kết project dev, rồi chạy `supabase db push --remote`. Xác nhận project đích trong đầu ra của CLI. Dùng kết nối PostgreSQL trực tiếp hoặc Supavisor session pooler. Nếu cần chứng thư CA để xác minh TLS, tải từ project và đặt đường dẫn local ở `DATABASE_CA_FILE`.
-4. Điền `OOPS_DEV_PROJECT_REF`, `SUPABASE_SECRET_KEY` và mật khẩu demo `OOPS_DEMO_PASSWORD`, sau đó chạy `npm run db:seed`. Script tạo danh mục, năm hộ, một người bán, một tài khoản quản trị vận hành (`oops-dev-admin@example.test`) và giỏ nước đã xác nhận tổng 12 chai. Seed giữ nguyên giỏ, vai trò và deadline đã có khi chạy lại.
-5. Chạy `npm run dev`. API đọc phiên cookie Supabase. Frontend dùng Supabase SSR client cùng origin và gửi JSON cho các thao tác ghi. Gửi `Idempotency-Key` cho POST nghiệp vụ và dùng lại khóa chỉ khi gửi lại đúng request.
+## Vấn đề và giải pháp
 
-Tài khoản đại diện seed là `oops-dev-household-1@example.test`. Hộ còn lại có số 2–5, người bán là `oops-dev-seller@example.test` và quản trị vận hành là `oops-dev-admin@example.test` (thuộc `public.ops_accounts`, mở trang quản trị và đối soát SIM tại `/ops` hoặc `/admin`). Tài khoản seed dùng mật khẩu đặt lúc tạo. Từ phiên đại diện, GET `/api/v1/groups/{groupId}` lấy đợt gom, GET `/api/v1/campaigns/{id}/needs` xem trước 12 chai, rồi POST `/api/v1/campaigns/{id}/publish` với `{}` để đăng sớm. Feed đọc được bằng phiên người bán qua `GET /api/v1/feed?district=OOPS_DEMO&category=WATER`.
+| Vấn đề | OOPS giải quyết |
+| --- | --- |
+| Mua lẻ đắt hoặc thiếu hàng khi chuẩn bị trước thiên tai | Gom nhu cầu theo nhóm hộ cùng khu vực, đăng công khai lên Feed để người bán chào hàng |
+| Thiếu tin cậy giữa người gom, các hộ và người bán | Người bán nộp cọc cam kết, từng hộ có phần tự xác nhận trực tiếp on-chain trước khi chốt |
+| Điều khoản hoặc số lượng bị sửa sau khi thỏa thuận | Đóng băng phiên bản bằng `versionHash` (`keccak256`); mọi bản sửa đều phải xác nhận lại từ đầu |
+| Người dùng phổ thông không quen dùng ví Web3 hay mua AVAX trả gas | Tích hợp ví OOPS (Openfort + Alchemy ERC-4337) được tài trợ gas trên Fuji, vẫn hỗ trợ Core Wallet |
 
-## Thử luồng trên giao diện
+## Tích hợp Avalanche
 
-1. Mở `/` để vào ứng dụng. Đăng nhập tại `/login`, hoặc chọn **Tạo tài khoản mới** (`/login?mode=signup`). Nhập tên hiển thị, nơi sinh sống, số điện thoại, email và mật khẩu có ít nhất 9 ký tự, rồi nhập lại mật khẩu. Nếu Supabase yêu cầu xác nhận, mở link mới nhất trong email; màn chờ có nút gửi lại và quay về đăng nhập. Nếu Supabase trả phiên ngay, app mở nhóm trực tiếp. Liên kết mời được giữ xuyên suốt đăng ký/xác nhận/đăng nhập.
-2. Tại **Nhóm của tôi**, đại diện chọn **Lấy liên kết và mã nhóm**. Cùng một link hoặc mã 8 ký tự có thể chia sẻ cho nhiều hộ. Người nhận mở link hoặc chọn **Tham gia nhóm qua lời mời** rồi dán link hoặc nhập mã.
-3. Mở một đợt. Hộ nhập số lượng cần mua ở cột bên phải hoặc mở **Gợi ý bằng AI** để trả lời số ngày dự trữ và mô tả nhu cầu. Bấm **Lưu giỏ** để cập nhật nhu cầu khi ví Fuji đã sẵn sàng. Đại diện có thể đăng tổng nhu cầu trước hạn cần hàng. Nút **Xem đơn** mở tiến độ và các đề nghị của đúng món trong tab Đơn hàng hoặc mở chi tiết đơn khi đã chốt.
-4. Dùng một phiên người bán để mở **Feed** và tìm bài vừa đăng. Trang **Tài khoản** hiển thị hồ sơ, liên hệ riêng và trạng thái ví từ API.
+- **Mạng:** Avalanche Fuji C-Chain (`chainId: 43113`)
+- **Smart contract:** [contracts/src/OopsFuji.sol](contracts/src/OopsFuji.sol) · **ABI:** [contracts/OopsFuji.json](contracts/OopsFuji.json)
+- **Contract address:** _Đang cập nhật_ <!-- TODO: điền địa chỉ OOPS_FUJI_CONFIRMATION_CONTRACT đã deploy và link https://testnet.snowtrace.io/address/... -->
+- **Demo:** _Đang cập nhật_ <!-- TODO: điền link bản triển khai staging/production và video demo -->
 
-Mở `/ui-preview` để xem các component thiết kế. Phần ví trong bản này hiển thị dữ liệu của backend nền. Giao dịch Fuji thuộc mốc tích hợp tiếp theo.
+| Hàm contract | Vai trò |
+| --- | --- |
+| `proveWallet(challengeHash)` | Chứng minh quyền sở hữu ví bằng challenge một lần do server cấp, chống dùng lại |
+| `openRound(roundKey, versionHash, participants, signingHours, openBy)` | Operator mở một vòng xác nhận bất biến cho phiên bản người bán đã chấp thuận, snapshot ví tham gia và hạn ký |
+| `confirmVersion(roundKey, versionHash)` | Từng hộ trong danh sách `participants` xác nhận đúng `(roundKey, versionHash)` trước `confirmBy` |
+| `isEligible(wallet)` / `setEligible(wallet, eligible)` | Kiểm tra và cập nhật trạng thái đủ điều kiện tham gia ký |
 
-Các bảng nghiệp vụ không mở trực tiếp cho browser. Giữ thông tin kết nối DB, secret Auth và secret lời mời ở server. Link dùng lại chứa mã nhóm ở `/join?token=…`. Lời mời một lần lưu hash token ở DB.
+**Nguyên tắc riêng tư:** Trên chain chỉ lưu `roundKey`, `versionHash`, địa chỉ ví tham gia và mốc thời gian. Thông tin cá nhân, tên hộ, số lượng, số tiền VND và ghi chú bàn giao nằm off-chain tại Supabase.
 
-## Cấu hình email đăng ký
+```mermaid
+sequenceDiagram
+    participant Seller as "Người bán"
+    participant Backend as "OOPS API & DB"
+    participant Worker as "Worker & Indexer"
+    participant Fuji as "Avalanche Fuji (OopsFuji)"
+    participant Household as "Từng hộ (Ví OOPS / Core)"
+    participant Rep as "Đại diện nhóm"
 
-Khi đăng ký, chọn phường/xã/đặc khu tại TP.HCM trong mục **Nơi sinh sống**. Tài khoản chưa vào nhóm nào có nhóm riêng ngay khi mở trang Nhóm hoặc Tài khoản và có thể tạo liên kết mời. Nhu cầu lưu vị trí của đại diện tại thời điểm đăng để lọc Feed. Áp hai migration vị trí ngày 17/11/2026 trước khi chạy bản này. [Nguồn dữ liệu và hợp đồng vị trí](docs/locations.md)
-
-Trong Supabase **Authentication → URL Configuration**, đặt **Site URL** là URL HTTPS của bản triển khai chính. Trong **Redirect URLs**, cho phép callback `/login/confirm` cùng query `next` và `sb_flow_id` của bản triển khai. Khi thử local, thêm `http://localhost:3000/**` hoặc `http://localhost:3001/**` cho đúng cổng đang chạy. Dùng cùng hostname khi mở app và đăng ký. Kiểm tra Email provider cho phép đăng ký và đặt độ dài mật khẩu tối thiểu là 9 ở Supabase Auth để áp dụng cùng giới hạn cho API Auth.
-
-Callback hỗ trợ cả link mặc định có `code`/`sb_flow_id` (PKCE, cần trình duyệt đã đăng ký) và link có `token_hash` (`type=email` hoặc `signup`). Để xác nhận trên trình duyệt/thiết bị khác, có thể cấu hình **Confirm signup** email template:
-
-```html
-<h2>Xác nhận tài khoản OOPS</h2>
-<p><a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email">Xác nhận email</a></p>
+    Seller->>Backend: Chấp thuận bản thương lượng (APPROVE)
+    Backend->>Backend: Kiểm tra ví các hộ & ghi outbox mở vòng
+    Worker->>Fuji: openRound(roundKey, versionHash, participants, signingHours, openBy)
+    Household->>Fuji: confirmVersion(roundKey, versionHash) trước confirmBy
+    Worker->>Fuji: Indexer quét getLogs sự kiện VersionConfirmed
+    Worker->>Backend: Đồng bộ xác nhận theo cursor & minConfirmations
+    Rep->>Backend: Duyệt cuối tạo đơn (chỉ hợp lệ khi đủ từng hộ & đủ lượng)
 ```
 
-Template này dùng URL do OOPS gửi khi `signUp`/`resend`, luôn có `?next=…`, nên giữ được lời mời. Link mặc định vẫn được hỗ trợ nếu chưa đổi template. Link chỉ dùng một lần; khi hết hạn hoặc mở sai trình duyệt, app cho đăng nhập lại hoặc gửi lại email, không tự bỏ qua xác nhận.
+- **Xác minh phía server, không tin tx hash từ client:** Indexer tại [src/server/fuji/indexer.ts](src/server/fuji/indexer.ts) đọc trực tiếp log trên Fuji và đối chiếu đúng chain, contract, vòng, `versionHash`, ví snapshot và deadline; sử dụng cursor bền vững trong DB và số block xác nhận cấu hình qua `OOPS_FUJI_CONFIRMATIONS`.
+- **Ví tích hợp tài trợ gas + Core Wallet:** Người dùng không cần cài extension hay giữ AVAX vẫn tạo/khôi phục ví hợp đồng và ký `proveWallet` / `confirmVersion` qua Openfort + Alchemy ERC-4337; đồng thời vẫn tương thích Core Wallet. Chi tiết cấu hình xem tại [docs/fuji-embedded-wallet.md](docs/fuji-embedded-wallet.md).
 
-Để mở đăng ký cho email ngoài danh sách được Supabase cho phép, cấu hình **custom SMTP** và kiểm tra giới hạn gửi. Nếu gặp `email_address_not_authorized`, cần sửa cấu hình gửi email của project; thay form hoặc tắt thông báo lỗi không giải quyết được. Tham khảo [Supabase password Auth](https://supabase.com/docs/guides/auth/passwords), [redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls), [custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp).
+### Bằng chứng trên Fuji (18/11/2026)
+
+Thử nghiệm luồng 3 hộ xác nhận cùng phiên bản đơn 7 chai (`2 + 2 + 3`) bằng ví hợp đồng số dư `0 AVAX` do Alchemy tài trợ gas; indexer tự ghi nhận 3/3 và chuyển vòng sang `CONFIRMED`:
+
+- Xác nhận 2 chai: [0xcc58e2c9...23e0b5e7 trên Snowtrace Fuji](https://testnet.snowtrace.io/tx/0xcc58e2c9d2c7824b411558bf5d19e58119b289a66347d57ca39dad8623e0b5e7)
+- Xác nhận 2 chai: [0x741e655d...01dc2fcb trên Snowtrace Fuji](https://testnet.snowtrace.io/tx/0x741e655d51860a0337fc25125cb17d9e202ad663780e644ef57d542101dc2fcb)
+- Xác nhận 3 chai: [0xa08ec751...a2372276eb trên Snowtrace Fuji](https://testnet.snowtrace.io/tx/0xa08ec751a4f3a2c086ac0f8c8e70a66fa0df6139b1b29fea3e3060a2372276eb)
+
+## Tính năng chính
+
+- **Nhóm & lời mời:** Tài khoản mới tự có nhóm riêng khi vào Nhóm/Tài khoản; đại diện tạo link dùng lại (`/join?token=…`) hoặc mã nhóm 8 ký tự.
+- **Giỏ nhu yếu phẩm & gợi ý Gemini:** Hộ tự nhập lượng cần mua hoặc dùng **Gợi ý bằng AI** (Gemini trả về dữ liệu có cấu trúc qua validation); luôn nhập tay được qua cùng API khi AI lỗi.
+- **Feed nhu cầu theo khu vực:** Đại diện đăng tổng nhu cầu gắn vị trí phường/xã/đặc khu; người bán lọc Feed theo địa bàn và danh mục.
+- **Cứu trợ khẩn cấp (`/relief`):** Gửi yêu cầu cứu trợ khẩn cấp (`WATER`, `FOOD`, `MEDICAL`, `GEAR`) kèm vị trí và số điện thoại, nhận hỗ trợ và đóng yêu cầu qua `/api/v1/relief`.
+- **Thương lượng 1 SKU & ca chuẩn `10 → 7`:** Người bán chào lượng tối đa (ví dụ 10 chai); các hộ tham gia qua vòng phiếu hoặc nháp chung (ví dụ góp `2 + 2 + 3`), chỉ chốt và giao đúng 7 chai cho 3 hộ tham gia. Người bán có thể chấp thuận, từ chối hoặc yêu cầu sửa.
+- **Cọc & tiền hàng `SIM` tách bạch:** Tiền hàng và cọc tính bằng VND số nguyên ở backend; cọc người bán tính theo `max(50.000, ceil(tiền hàng / 10))` (đơn 0đ vẫn cần cọc 50.000đ).
+- **Bàn giao, bằng chứng ảnh & quyết toán:** Hai bên duyệt cùng phiên bản biên nhận; ảnh bằng chứng lưu tại Supabase Storage private (URL ký có hạn 5 phút); giao thiếu quyết toán theo thực nhận từng hộ.
+- **Đối soát vận hành (`/ops`, `/admin`) & thông báo realtime:** Tài khoản vận hành thuộc `public.ops_accounts` đối soát thu/chi/hoàn `SIM` bằng mã giao dịch duy nhất (`POSTED`) để hoàn tất đơn (`COMPLETED`).
+
+## Kiến trúc & công nghệ
+
+| Thành phần | Công nghệ & vai trò |
+| --- | --- |
+| Web & API | Next.js 16, React 19, TypeScript, Tailwind CSS 4 (endpoint dưới `/api/v1`) |
+| Database, Auth & Storage | Supabase Auth / PostgreSQL / Private Storage (`15` migration trong `supabase/migrations`) |
+| Worker & Indexer | Node.js (`npm run worker`) xử lý outbox mở vòng, retry và đồng bộ log Fuji theo cursor |
+| Blockchain & Ví | Solidity `0.8` (`solc`), `viem`, Avalanche Fuji; tùy chọn ví tích hợp Openfort + Alchemy ERC-4337 |
+| AI & Kiểm thử | Gemini API (`GEMINI_API_KEY`), Vitest |
+
+Các nghiệp vụ chốt đơn, giữ lượng (`pending + reserved + received ≤ target`), tạo khoản cọc/thu và ghi outbox chạy trong cùng transaction PostgreSQL với thứ tự khóa thống nhất; các POST nghiệp vụ dùng `Idempotency-Key` để chống áp dụng lặp.
+
+| Thư mục | Nội dung |
+| --- | --- |
+| `src/app/` | Giao diện Next.js App Router và các API route `/api/v1` |
+| `src/server/` | Logic nghiệp vụ (`negotiation/`, `orders/`, `fuji/`, `cart/`, `worker/`, `relief.ts`) |
+| `src/contracts/` | DTO và schema kiểm dữ liệu (`zod`) dùng chung ([foundation.ts](src/contracts/foundation.ts), [negotiation.ts](src/contracts/negotiation.ts), [relief.ts](src/contracts/relief.ts)) |
+| `src/lib/fuji/`, `src/components/wallet/` | Client ký Core Wallet và ví tích hợp Fuji |
+| `contracts/` | Contract [OopsFuji.sol](contracts/src/OopsFuji.sol) và artifact ABI [OopsFuji.json](contracts/OopsFuji.json) |
+| `supabase/` | 15 migration SQL và dữ liệu mẫu [seed.sql](supabase/seed.sql) |
+| `scripts/` | Script seed, worker, build/thiết lập Fuji và smoke test |
+| `tests/` | 30 file test unit, DB integration và worker Fuji |
+| `docs/` | Đặc tả, kiến trúc, schema, API doc và hướng dẫn cấu hình |
+
+## Chạy local
+
+1. Dùng Node.js 22.18 trở lên. Chạy `npm ci`.
+2. Sao chép `.env.example` thành `.env.local`. Điền URL và publishable key của project Supabase dev, `DATABASE_URL` PostgreSQL, `APP_URL` và `OOPS_INVITE_SECRET` (ngẫu nhiên, tối thiểu 32 byte, dùng cùng hostname giữa `APP_URL` và trình duyệt).
+3. Áp dụng [các migration](supabase/migrations) theo thứ tự tên file lên project dev được phép (ví dụ `supabase init` nếu chưa có `supabase/config.toml`, liên kết project rồi chạy `supabase db push --remote`). Nếu cần TLS CA, đặt đường dẫn ở `DATABASE_CA_FILE`.
+4. Điền `OOPS_DEV_PROJECT_REF`, `SUPABASE_SECRET_KEY` và `OOPS_DEMO_PASSWORD`, rồi chạy `npm run db:seed` để tạo danh mục, 5 hộ, 1 người bán, 1 tài khoản vận hành và giỏ nước 12 chai.
+5. Cấu hình Fuji (đọc `.env.example` và [docs/fuji-embedded-wallet.md](docs/fuji-embedded-wallet.md)):
+   - Chạy `npm run contracts:build` để biên dịch contract.
+   - Chạy `npm run fuji:setup init`, cấp AVAX testnet cho ví operator, rồi `npm run fuji:setup deploy` (kiểm tra lại bằng `npm run fuji:setup status`) hoặc điền sẵn các biến `OOPS_FUJI_*` của bản đã deploy.
+   - Mở thêm một terminal chạy worker: `npm run worker` (hoặc chạy một lượt `npm run worker:once`).
+6. Chạy web app: `npm run dev`. Gửi `Idempotency-Key` cho các POST nghiệp vụ và chỉ dùng lại khóa khi gửi lại đúng request.
+
+Tài khoản seed mặc định: đại diện `oops-dev-household-1@example.test`, các hộ khác `2–5`, người bán `oops-dev-seller@example.test`, quản trị vận hành `oops-dev-admin@example.test` (thuộc `public.ops_accounts`, truy cập `/ops` hoặc `/admin`), dùng mật khẩu trong `OOPS_DEMO_PASSWORD`. Từ phiên đại diện có thể gọi `GET /api/v1/groups/{groupId}`, `GET /api/v1/campaigns/{id}/needs`, `POST /api/v1/campaigns/{id}/publish` (`{}`), và đọc Feed qua phiên người bán tại `GET /api/v1/feed?district=OOPS_DEMO&category=WATER`.
+
+## Kịch bản demo
+
+1. Mở `/` hoặc `/login` để đăng nhập (hoặc **Tạo tài khoản mới** tại `/login?mode=signup` với nơi sinh sống và mật khẩu >= 9 ký tự).
+2. Tại **Nhóm của tôi**, đại diện chọn **Lấy liên kết và mã nhóm** (dùng lại hoặc mã 8 ký tự) để các hộ tham gia.
+3. Trong đợt gom, từng hộ nhập số lượng cần mua hoặc dùng **Gợi ý bằng AI** → **Lưu giỏ**; đại diện đăng tổng nhu cầu lên Feed.
+4. Người bán mở **Feed**, chọn `demandItemId` và gửi đề nghị (`POST /api/v1/needs/{id}/offers`).
+5. Các hộ tham gia góp phần `2 + 2 + 3` trên tổng 10 chào bán (qua vòng phiếu hoặc nháp chung tại `POST /api/v1/offers/{id}/draft` và `PUT /api/v1/drafts/{id}/my-line`, xem [fixture thương lượng](tests/fixtures/negotiation.ts)).
+6. Người bán chấp thuận (`APPROVE`); backend kiểm tra điều kiện ví và ghi yêu cầu mở vòng Fuji vào outbox để worker gọi `openRound`.
+7. Từng hộ có phần ký `confirmVersion` trên Fuji bằng ví OOPS tích hợp hoặc Core Wallet (xem trạng thái ví tại trang **Tài khoản**).
+8. Sau khi indexer xác nhận đủ từng hộ, đại diện duyệt cuối để chốt đơn hàng, tạo khoản cọc seller và giữ lượng `pending`.
+9. Người bán nộp cọc `SIM`, các hộ nộp tiền hàng `SIM` (nếu đơn > 0đ); hai bên xác nhận cùng biên nhận bàn giao kèm ảnh bằng chứng.
+10. Tài khoản ops tại `/ops` hoặc `/admin` đối soát, ghi `POSTED` bằng mã `SIM` duy nhất để hoàn tất đơn (`COMPLETED`).
+
+Có thể mở `/ui-preview` (hoặc `/ui-preview/demo`) để xem design system khi chưa cấu hình Supabase. Các bảng nghiệp vụ không mở trực tiếp cho browser; luôn giữ thông tin kết nối DB, secret Auth và secret lời mời ở server.
 
 ## Kiểm thử
+
+Bộ kiểm thử gồm 30 file test, bao gồm suite tích hợp PostgreSQL thật ([tests/foundation.db.test.ts](tests/foundation.db.test.ts)) và worker Fuji ([tests/fuji-worker.test.ts](tests/fuji-worker.test.ts)).
 
 | Lệnh | Kiểm chứng |
 | --- | --- |
@@ -52,13 +136,38 @@ Template này dùng URL do OOPS gửi khi `signUp`/`resend`, luôn có `?next=�
 
 `test:db` hỗ trợ PostgreSQL thử nghiệm trên loopback có bảng `auth.users` và các role Supabase, hoặc project Supabase dev được xác nhận bằng `OOPS_DEV_PROJECT_REF`. Với Supabase dev, suite dùng secret Auth để tạo và xóa tài khoản test tạm thời.
 
-Từ `demandItemId` trên Feed, người bán gửi đề nghị qua `POST /api/v1/needs/{id}/offers`. Hộ có nhu cầu dùng `proposalId` để mở nháp bằng `POST /api/v1/offers/{id}/draft`, rồi mỗi hộ cập nhật dòng của mình tại `PUT /api/v1/drafts/{id}/my-line` bằng `editRevision` hiện hành. [Fixture thương lượng](tests/fixtures/negotiation.ts) mô tả ca chào 10, các hộ góp 2+2+3.
+## Cấu hình
 
-Đề nghị mới dùng vòng phiếu và cần ít nhất 12 giờ trước giờ giao với cấu hình mẫu. Luồng nháp cũ dùng `POST /api/v1/drafts/{id}/submit` và mốc 30 giờ. Khi người bán chấp thuận, API kiểm credential và đưa yêu cầu mở vòng Fuji vào outbox để worker xử lý ngay. [Thời hạn](docs/OOPS-Spec.md#8-thời-hạn) · [Chuẩn băm phiên bản](docs/OOPS-Spec.md#chuẩn-băm-phiên-bản)
-
-## Cấu hình backend demo
+### Cấu hình backend demo
 
 - Đặt `OOPS_PAYMENT_MODE=SIM` cho luồng chốt, thu mô phỏng và ghi chi. Cấp quyền ops riêng bằng một dòng `ops_accounts.user_id` cho hồ sơ vận hành đã xác thực trên DB dev.
 - Dùng `OOPS_EVIDENCE_BUCKET` trỏ tới bucket Supabase riêng và giữ `SUPABASE_SECRET_KEY` ở server. Bằng chứng dùng trường multipart `file` và liên kết đọc có hạn 5 phút.
 - Đặt `GEMINI_API_KEY` (và tùy chọn `GEMINI_MODEL`, mặc định `gemini-4-hydrogen`) để tạo gợi ý giỏ. Giỏ nhập tay dùng cùng API lưu và xác nhận khi AI lỗi. [Gemini GenerateContent](https://ai.google.dev/api/generate-content)
-- Điền `OOPS_FUJI_RPC_URL`, `OOPS_FUJI_CONFIRMATION_CONTRACT`, `OOPS_FUJI_CREDENTIAL_CONTRACT` và `OOPS_FUJI_CREDENTIAL_ABI` từ deployment của DEV 3. ABI là một hàm `view` nhận `address`, trả `bool` hoặc số dư `uint256`. Worker mở vòng từ outbox và đồng bộ xác nhận. Bộ test DB dùng RPC và xác nhận mô phỏng. [Interface Fuji và worker](docs/architecture.md#bàn-giao-backend-và-worker)
+- Điền `OOPS_FUJI_RPC_URL`, `OOPS_FUJI_CONFIRMATION_CONTRACT`, `OOPS_FUJI_CREDENTIAL_CONTRACT` và `OOPS_FUJI_CREDENTIAL_ABI` từ deployment Fuji. ABI là một hàm `view` nhận `address`, trả `bool` hoặc số dư `uint256`. Worker mở vòng từ outbox và đồng bộ xác nhận; bộ test DB dùng RPC và xác nhận mô phỏng. [Interface Fuji và worker](docs/architecture.md#bàn-giao-backend-và-worker)
+
+### Cấu hình email đăng ký
+
+Khi đăng ký, chọn phường/xã/đặc khu tại TP.HCM trong mục **Nơi sinh sống**. Nhu cầu lưu vị trí của đại diện tại thời điểm đăng để lọc Feed; cần áp hai migration vị trí ngày 17/11/2026 trước khi chạy. [Nguồn dữ liệu và hợp đồng vị trí](docs/locations.md)
+
+Trong Supabase **Authentication → URL Configuration**, đặt **Site URL** là URL HTTPS của bản triển khai chính. Trong **Redirect URLs**, cho phép callback `/login/confirm` cùng query `next` và `sb_flow_id` (khi thử local, thêm `http://localhost:3000/**` hoặc `http://localhost:3001/**` theo đúng cổng đang chạy). Kiểm tra Email provider cho phép đăng ký và đặt độ dài mật khẩu tối thiểu là `9` ở Supabase Auth để khớp API Auth.
+
+Callback hỗ trợ cả link mặc định có `code`/`sb_flow_id` (PKCE, cần cùng trình duyệt đã đăng ký) và link có `token_hash` (`type=email` hoặc `signup`). Để xác nhận trên trình duyệt/thiết bị khác, cấu hình **Confirm signup** email template:
+
+```html
+<h2>Xác nhận tài khoản OOPS</h2>
+<p><a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email">Xác nhận email</a></p>
+```
+
+Template này dùng URL do OOPS gửi khi `signUp`/`resend` (luôn có `?next=…`) nên giữ được lời mời; link dùng một lần. Để mở đăng ký cho email ngoài danh sách mặc định của Supabase, cấu hình **custom SMTP** và kiểm tra giới hạn gửi (tham khảo [Supabase password Auth](https://supabase.com/docs/guides/auth/passwords), [redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls), [custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp)).
+
+## Tài liệu
+
+- [Đặc tả tổng thể (OOPS-Spec)](docs/OOPS-Spec.md)
+- [Yêu cầu & ca nghiệm thu (requirements)](docs/requirements.md)
+- [Kế hoạch MVP & kịch bản (OOPS-MVP-Plan)](docs/OOPS-MVP-Plan.md)
+- [Kiến trúc & luồng trạng thái (architecture)](docs/architecture.md)
+- [Schema dữ liệu & bất biến (schema)](docs/schema.md)
+- [Đặc tả API `/api/v1` (API doc)](docs/API%20doc.md)
+- [Ví tích hợp trên Avalanche Fuji (fuji-embedded-wallet)](docs/fuji-embedded-wallet.md)
+- [Dữ liệu & hợp đồng vị trí (locations)](docs/locations.md)
+- [Design system (STYLE)](design/STYLE.md) (`/ui-preview`)
