@@ -4,6 +4,9 @@ OOPS giúp các hộ trong cùng khu vực rà lại đồ đang có, gom phần
 
 > Mỗi hộ xác nhận đúng phần của mình trên Avalanche Fuji — đồng thuận của **từng hộ**, không phải biểu quyết đa số.
 
+- **Live App:** https://oops-livid.vercel.app/
+- **Contract (Avalanche Fuji):** [`0x6c8dfa771037d7adce23d7b39250cc564de4df88`](https://testnet.snowtrace.io/address/0x6c8dfa771037d7adce23d7b39250cc564de4df88)
+
 ## Vấn đề và giải pháp
 
 | Vấn đề | OOPS giải quyết |
@@ -17,8 +20,8 @@ OOPS giúp các hộ trong cùng khu vực rà lại đồ đang có, gom phần
 
 - **Mạng:** Avalanche Fuji C-Chain (`chainId: 43113`)
 - **Smart contract:** [contracts/src/OopsFuji.sol](contracts/src/OopsFuji.sol) · **ABI:** [contracts/OopsFuji.json](contracts/OopsFuji.json)
-- **Contract address:** _Đang cập nhật_ <!-- TODO: điền địa chỉ OOPS_FUJI_CONFIRMATION_CONTRACT đã deploy và link https://testnet.snowtrace.io/address/... -->
-- **Demo:** _Đang cập nhật_ <!-- TODO: điền link bản triển khai staging/production và video demo -->
+- **Contract address:** [`0x6c8dfa771037d7adce23d7b39250cc564de4df88`](https://testnet.snowtrace.io/address/0x6c8dfa771037d7adce23d7b39250cc564de4df88)
+- **Live app:** https://oops-livid.vercel.app/
 
 | Hàm contract | Vai trò |
 | --- | --- |
@@ -90,7 +93,7 @@ Các nghiệp vụ chốt đơn, giữ lượng (`pending + reserved + received 
 | `contracts/` | Contract [OopsFuji.sol](contracts/src/OopsFuji.sol) và artifact ABI [OopsFuji.json](contracts/OopsFuji.json) |
 | `supabase/` | 15 migration SQL và dữ liệu mẫu [seed.sql](supabase/seed.sql) |
 | `scripts/` | Script seed, worker, build/thiết lập Fuji và smoke test |
-| `tests/` | 30 file test unit, DB integration và worker Fuji |
+| `tests/` | 31 file test unit, DB integration và worker Fuji |
 | `docs/` | Đặc tả, kiến trúc, schema, API doc và hướng dẫn cấu hình |
 
 ## Chạy local
@@ -124,7 +127,7 @@ Có thể mở `/ui-preview` (hoặc `/ui-preview/demo`) để xem design system
 
 ## Kiểm thử
 
-Bộ kiểm thử gồm 30 file test, bao gồm suite tích hợp PostgreSQL thật ([tests/foundation.db.test.ts](tests/foundation.db.test.ts)) và worker Fuji ([tests/fuji-worker.test.ts](tests/fuji-worker.test.ts)).
+Bộ kiểm thử gồm 31 file test, bao gồm suite tích hợp PostgreSQL thật ([tests/foundation.db.test.ts](tests/foundation.db.test.ts)) và worker Fuji ([tests/fuji-worker.test.ts](tests/fuji-worker.test.ts)).
 
 | Lệnh | Kiểm chứng |
 | --- | --- |
